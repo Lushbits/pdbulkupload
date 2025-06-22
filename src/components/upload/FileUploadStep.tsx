@@ -14,7 +14,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { ExcelUtils, type ExcelParseResult } from '../../services/excelParser';
-import { ValidationService } from '../../services/mappingService';
+import { ValidationService, MappingService } from '../../services/mappingService';
 import type { 
   StepComponentProps, 
   ParsedExcelData, 
@@ -153,11 +153,47 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
   }, []);
 
   /**
+   * Handle template download
+   */
+  const handleDownloadTemplate = useCallback(() => {
+    try {
+      console.log('📋 Starting template download...');
+      
+      // Check if field definitions are loaded
+      const status = ValidationService.getStatus();
+      console.log('🔍 ValidationService status:', status);
+      
+      if (!status.isLoaded) {
+        setUploadError('Portal field definitions not loaded yet. Please wait a moment and try again.');
+        return;
+      }
+      
+      // Generate template data using portal configuration
+      const templateData = MappingService.generatePortalTemplate();
+      
+      console.log('📊 Template data generated:', {
+        headerCount: templateData.headers.length,
+        fieldOrderCount: templateData.fieldOrder.length,
+        customFieldsIncluded: templateData.fieldOrder.filter(f => f.isCustom).length,
+        requiredFieldsIncluded: templateData.fieldOrder.filter(f => f.isRequired).length
+      });
+      
+      // Download the Excel file
+      ExcelUtils.downloadTemplate(templateData);
+      
+      console.log('✅ Template download initiated');
+    } catch (error) {
+      console.error('❌ Template download failed:', error);
+      setUploadError('Failed to download template. Please try again.');
+    }
+  }, []);
+
+  /**
    * Render file upload area
    */
   const renderUploadArea = () => (
     <Card
-      className={`relative border-2 border-dashed transition-colors cursor-pointer ${
+      className={`relative border-2 border-dashed transition-colors cursor-pointer h-full flex flex-col justify-center ${
         isDragOver
           ? 'border-blue-400 bg-blue-50'
           : 'border-gray-300 hover:border-gray-400'
@@ -167,26 +203,18 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="text-center py-12">
+      <div className="text-center p-6">
         <div className="mb-4">
           {isProcessing ? (
             <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
           ) : (
-            <svg
-              className="mx-auto h-12 w-12 text-gray-400"
-              stroke="currentColor"
-              fill="none"
-              viewBox="0 0 48 48"
-            >
-              <path
-                d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
           )}
         </div>
         
@@ -441,7 +469,47 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       {/* Upload Area or Results */}
       {!parseResult?.data ? (
         <>
-          {renderUploadArea()}
+          {/* Upload and Template Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Upload Area - Left side (2/3 width) */}
+            <div className="lg:col-span-2">
+              {renderUploadArea()}
+            </div>
+            
+            {/* Download Template - Right side (1/3 width) */}
+            <div className="lg:col-span-1">
+              <Card className="h-full flex flex-col justify-center">
+                <div className="text-center p-6">
+                  <div className="mb-4">
+                    <div className="mx-auto w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Download Excel Template
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Get a pre-formatted Excel template with your portal's fields and requirements
+                  </p>
+                  <Button
+                    onClick={handleDownloadTemplate}
+                    disabled={isProcessing || !isAuthenticated}
+                    variant="secondary"
+                    className="w-full"
+                  >
+                    Download
+                  </Button>
+                  {!isAuthenticated && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Template will be available after authentication
+                    </p>
+                  )}
+                </div>
+              </Card>
+            </div>
+          </div>
           
           {/* Error Display */}
           {uploadError && (

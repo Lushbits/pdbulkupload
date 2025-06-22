@@ -497,6 +497,125 @@ export class ExcelParser {
       throw new Error('Failed to export Excel file');
     }
   }
+
+  /**
+   * Generate and download Excel template based on portal configuration
+   */
+  static downloadTemplate(templateData: {
+    headers: string[];
+    examples: string[][];
+    instructions: Record<string, string>;
+    fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
+  }): void {
+    try {
+      // Create new workbook
+      const workbook = XLSX.utils.book_new();
+      
+      // Sheet 1: Employee Data Template
+      // Use clean headers without asterisks for proper import compatibility
+      const cleanHeaders = templateData.fieldOrder.map(field => field.displayName);
+      
+      const employeeData = [cleanHeaders, ...templateData.examples];
+      const employeeWorksheet = XLSX.utils.aoa_to_sheet(employeeData);
+      
+      // Style the header row with different colors for required vs optional fields
+      const headerRange = XLSX.utils.decode_range(employeeWorksheet['!ref'] || 'A1');
+      for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+        if (!employeeWorksheet[cellAddress]) continue;
+        
+        const field = templateData.fieldOrder[col];
+        const isRequired = field?.isRequired || false;
+        const isCustom = field?.isCustom || false;
+        
+        // Different colors for required, optional, and custom fields
+        let fillColor = 'E6F3FF'; // Default blue for optional
+        if (isRequired) {
+          fillColor = 'FFE6E6'; // Light red for required
+        } else if (isCustom) {
+          fillColor = 'F0F8E8'; // Light green for custom
+        }
+        
+        employeeWorksheet[cellAddress].s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: fillColor } },
+          border: {
+            top: { style: 'thin' },
+            bottom: { style: 'thin' },
+            left: { style: 'thin' },
+            right: { style: 'thin' }
+          }
+        };
+      }
+      
+      // Set column widths for better readability
+      const columnWidths = templateData.headers.map(header => {
+        if (header.includes('Email') || header.includes('User Name')) return { wch: 25 };
+        if (header.includes('Department') || header.includes('Employee Group')) return { wch: 20 };
+        if (header.includes('Address') || header.includes('Street')) return { wch: 30 };
+        if (header.includes('Phone')) return { wch: 15 };
+        return { wch: 12 };
+      });
+      employeeWorksheet['!cols'] = columnWidths;
+      
+      // Keep data sheet clean for import compatibility - all info is in Instructions tab
+      
+      XLSX.utils.book_append_sheet(workbook, employeeWorksheet, 'Employee Data');
+      
+      // Sheet 2: Instructions
+      const instructionData: string[][] = [
+        ['Field', 'Required', 'Type', 'Instructions'],
+        ...templateData.fieldOrder.map(field => [
+          field.displayName,
+          field.isRequired ? 'Yes' : 'No',
+          field.isCustom ? 'Custom' : 'Standard',
+          templateData.instructions[field.field] || field.description || 'Enter appropriate value'
+        ])
+      ];
+      
+      const instructionWorksheet = XLSX.utils.aoa_to_sheet(instructionData);
+      
+      // Style the instruction sheet header
+      const instructionHeaderRange = XLSX.utils.decode_range(instructionWorksheet['!ref'] || 'A1');
+      for (let col = instructionHeaderRange.s.c; col <= instructionHeaderRange.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+        if (!instructionWorksheet[cellAddress]) continue;
+        
+        instructionWorksheet[cellAddress].s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: 'F0F8E8' } },
+          border: {
+            top: { style: 'thin' },
+            bottom: { style: 'thin' },
+            left: { style: 'thin' },
+            right: { style: 'thin' }
+          }
+        };
+      }
+      
+      // Set column widths for instructions sheet
+      instructionWorksheet['!cols'] = [
+        { wch: 20 }, // Field
+        { wch: 10 }, // Required
+        { wch: 10 }, // Type
+        { wch: 50 }  // Instructions
+      ];
+      
+      XLSX.utils.book_append_sheet(workbook, instructionWorksheet, 'Instructions');
+      
+      // Generate filename with current date
+      const today = new Date().toISOString().split('T')[0];
+      const filename = `Planday_Employee_Template_${today}.xlsx`;
+      
+      // Download file
+      XLSX.writeFile(workbook, filename);
+      
+      console.log(`✅ Template downloaded: ${filename}`);
+    } catch (error) {
+      console.error('❌ Template download failed:', error);
+      throw new Error('Failed to download template');
+    }
+  }
 }
 
 /**
@@ -552,5 +671,17 @@ export const ExcelUtils = {
     if (bytes === 0) return '0 Bytes';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+  },
+
+  /**
+   * Download Excel template based on portal configuration
+   */
+  downloadTemplate(templateData: {
+    headers: string[];
+    examples: string[][];
+    instructions: Record<string, string>;
+    fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
+  }): void {
+    return ExcelParser.downloadTemplate(templateData);
   },
 }; 

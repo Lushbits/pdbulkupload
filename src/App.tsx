@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Card, ProgressIndicator, PrivacyModal } from './components/ui';
+import { Button, Card, ProgressIndicator, PrivacyModal, VersionModal } from './components/ui';
 import { AuthenticationStep } from './components/auth/AuthenticationStep';
 import { FileUploadStep } from './components/upload/FileUploadStep';
 import MappingStep from './components/mapping/MappingStep';
@@ -58,6 +58,9 @@ function App() {
   
   // Privacy modal state
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  
+  // Version modal state
+  const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
   
   // Planday API integration - centralized hook usage
   const plandayApi = usePlandayApi();
@@ -361,6 +364,28 @@ function App() {
             </button>.
             </p>
             
+            {/* Version Display */}
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="text-sm text-gray-400">
+                <button
+                  onClick={() => setIsVersionModalOpen(true)}
+                  className="hover:text-gray-600 transition-colors underline"
+                >
+                  Version 0.1.1
+                </button>
+                <span className="mx-2">-</span>
+                <span>Made with ❤️ by the </span>
+                <a 
+                  href="https://www.planday.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  Planday
+                </a>
+                <span> Community</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -368,6 +393,12 @@ function App() {
         <PrivacyModal
           isOpen={isPrivacyModalOpen}
           onClose={() => setIsPrivacyModalOpen(false)}
+        />
+
+        {/* Version Modal */}
+        <VersionModal
+          isOpen={isVersionModalOpen}
+          onClose={() => setIsVersionModalOpen(false)}
         />
 
       </div>

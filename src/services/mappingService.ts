@@ -472,6 +472,140 @@ export class MappingService {
       }
     };
   }
+
+  /**
+   * Generate a comprehensive Excel template based on portal fields
+   * Orders fields logically: required first, then optional, then custom
+   */
+  static generatePortalTemplate(): {
+    headers: string[];
+    examples: string[][];
+    instructions: Record<string, string>;
+    fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
+  } {
+    // Get field information from validation service
+    const requiredFields = ValidationService.getRequiredFields();
+    const customFields = ValidationService.getCustomFields();
+    const fieldDefinitionsStatus = ValidationService.getStatus();
+    
+    console.log('🔍 Template Generation Debug:', {
+      requiredFields,
+      customFieldsCount: customFields.length,
+      customFields: customFields.map(cf => ({ name: cf.name, description: cf.description })),
+      fieldDefinitionsStatus
+    });
+    
+    // Define logical field order (most important first)
+    const fieldPriority = [
+      'firstName', 'lastName', 'userName', 'departments', 'employeeGroups',
+      'cellPhone', 'phone', 'email', 'hireDate', 'birthDate', 
+      'street1', 'city', 'zip', 'gender', 'jobTitle', 'employeeId', 
+      'payrollId', 'ssn', 'bankAccount'
+    ];
+    
+    // Build ordered field list
+    const fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }> = [];
+    
+    // Add required fields first (in priority order)
+    fieldPriority.forEach(field => {
+      if (requiredFields.includes(field)) {
+        fieldOrder.push({
+          field,
+          displayName: field.replace(/([A-Z])/g, ' $1').trim(),
+          isRequired: true,
+          isCustom: false
+        });
+      }
+    });
+    
+    // Add remaining optional fields (in priority order)
+    fieldPriority.forEach(field => {
+      if (!requiredFields.includes(field) && !fieldOrder.some(f => f.field === field)) {
+        fieldOrder.push({
+          field,
+          displayName: field.replace(/([A-Z])/g, ' $1').trim(),
+          isRequired: false,
+          isCustom: false
+        });
+      }
+    });
+    
+    // Add custom fields at the end
+    customFields.forEach(customField => {
+      fieldOrder.push({
+        field: customField.name,
+        displayName: customField.description || customField.name,
+        isRequired: ValidationService.isRequired(customField.name),
+        isCustom: true,
+        description: customField.description
+      });
+    });
+    
+    // Generate headers (only include relevant fields)
+    const headers = fieldOrder.map(f => f.displayName);
+    
+    // Get sample data for departments and employee groups
+    const sampleDepartments = mappingService.getAvailableNames('departments').slice(0, 2).join(', ') || 'Kitchen, Bar';
+    const sampleEmployeeGroups = mappingService.getAvailableNames('employeeGroups').slice(0, 2).join(', ') || 'Chef, Manager';
+    
+    // Generate example rows with realistic data
+    const examples = [
+      [
+        'John', 'Smith', 'john.smith@company.com', sampleDepartments, sampleEmployeeGroups,
+        '+1-555-0123', '+1-555-0123', 'john.smith@company.com', '2024-01-15', '1990-03-15',
+        '123 Main St', 'New York', '10001', 'Male', 'Kitchen Manager', 'EMP001',
+        'PAY001', '', '', ...customFields.map(() => 'Sample Value')
+      ].slice(0, headers.length),
+      [
+        'Jane', 'Doe', 'jane.doe@company.com', 'Kitchen', 'Chef',
+        '+1-555-0124', '+1-555-0124', 'jane.doe@company.com', '2024-02-01', '1985-07-22',
+        '456 Oak Ave', 'Los Angeles', '90210', 'Female', 'Senior Chef', 'EMP002',
+        'PAY002', '', '', ...customFields.map(() => 'Sample Value')
+      ].slice(0, headers.length),
+      [
+        'Mike', 'Johnson', 'mike.johnson@company.com', 'Bar', 'Bartender',
+        '+1-555-0125', '+1-555-0125', 'mike.johnson@company.com', '2024-03-10', '1992-11-08',
+        '789 Pine Rd', 'Chicago', '60601', 'Male', 'Head Bartender', 'EMP003',
+        'PAY003', '', '', ...customFields.map(() => 'Sample Value')
+      ].slice(0, headers.length)
+    ];
+    
+    // Generate instructions
+    const instructions: Record<string, string> = {
+      general: 'Fill in employee data. Required fields must be completed. Use the exact department and employee group names from your Planday portal.',
+      firstName: 'Employee\'s first name (required)',
+      lastName: 'Employee\'s last name (required)',
+      userName: 'Email address that will be used for login (required, must be unique)',
+      departments: `Department names from your portal. Use comma-separated names for multiple departments. Available: ${mappingService.getAvailableNames('departments').join(', ')}`,
+      employeeGroups: `Employee group names from your portal. Use comma-separated names for multiple groups. Available: ${mappingService.getAvailableNames('employeeGroups').join(', ')}`,
+      cellPhone: 'Mobile phone number (optional)',
+      phone: 'Work phone number (optional)',
+      email: 'Email address (if different from userName)',
+      hireDate: 'Hire date in YYYY-MM-DD format (e.g., 2024-01-15)',
+      birthDate: 'Birth date in YYYY-MM-DD format (e.g., 1990-03-15)',
+      street1: 'Street address',
+      city: 'City',
+      zip: 'ZIP/Postal code',
+      gender: 'Gender (Male/Female)',
+      jobTitle: 'Job title or position',
+      employeeId: 'Internal employee ID (if applicable)',
+      payrollId: 'Payroll system ID (if applicable)',
+      ssn: 'Social Security Number (if required by your portal)',
+      bankAccount: 'Bank account information (if required by your portal)'
+    };
+    
+    // Add custom field instructions
+    customFields.forEach(customField => {
+      instructions[customField.name] = customField.description || `Custom field: ${customField.name}`;
+    });
+    
+    return {
+      headers,
+      examples,
+      instructions,
+      fieldOrder
+    };
+  }
 }
 
 /**

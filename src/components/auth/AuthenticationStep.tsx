@@ -108,12 +108,14 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button
                 onClick={onNext}
-                className="flex items-center justify-center space-x-2"
+                icon={
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                }
+                iconPosition="right"
               >
-                <span>Continue to File Upload</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
+                Continue to Upload
               </Button>
               <Button
                 variant="secondary"

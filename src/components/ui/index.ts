@@ -10,6 +10,7 @@ export { Button } from './Button';
 export { Input } from './Input';
 export { Card } from './Card';
 export { PrivacyModal } from './PrivacyModal';
+export { VersionModal } from './VersionModal';
 
 // Progress Components
 export { ProgressIndicator } from '../progress/ProgressIndicator';

@@ -174,13 +174,15 @@ const MappingStep: React.FC<MappingStepProps> = ({
   // Get mapping status for visual feedback
   const getMappingStatus = (columnName: string) => {
     const mappedField = columnMappings[columnName];
-    return mappedField ? 'mapped' : 'unmapped';
+    if (!mappedField) return 'unmapped';
+    if (mappedField === '__IGNORE__') return 'ignored';
+    return 'mapped';
   };
 
   // Get unmapped required fields
   const unmappedRequiredFields = useMemo(() => {
     const requiredFields = ValidationService.getRequiredFields();
-    const mappedFields = new Set(Object.values(columnMappings).filter(Boolean));
+    const mappedFields = new Set(Object.values(columnMappings).filter(field => field && field !== '__IGNORE__'));
     const customMappedFields = new Set(Object.keys(customValues).filter(key => customValues[key].trim()));
     return requiredFields.filter(field => !mappedFields.has(field) && !customMappedFields.has(field));
   }, [columnMappings, customValues]);
@@ -256,9 +258,9 @@ const MappingStep: React.FC<MappingStepProps> = ({
         return obj;
       }, {} as any);
 
-      // Map each field from Excel columns
+      // Map each field from Excel columns (skip ignored columns)
       for (const [columnName, fieldName] of Object.entries(mappings)) {
-        if (fieldName && rowObject[columnName] !== undefined) {
+        if (fieldName && fieldName !== '__IGNORE__' && rowObject[columnName] !== undefined) {
           employee[fieldName as keyof Employee] = rowObject[columnName];
         }
       }
@@ -280,7 +282,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   const validateMappings = () => {
     const errors: string[] = [];
     const requiredFields = ValidationService.getRequiredFields();
-    const mappedFields = new Set(Object.values(columnMappings).filter(Boolean));
+    const mappedFields = new Set(Object.values(columnMappings).filter(field => field && field !== '__IGNORE__'));
     const customMappedFields = new Set(Object.keys(customValues).filter(key => customValues[key].trim()));
 
     // Check required fields - they can be satisfied by either Excel mappings OR custom values
@@ -356,7 +358,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
     }
   };
 
-  const mappedFieldsCount = Object.values(columnMappings).filter(Boolean).length;
+  const mappedFieldsCount = Object.values(columnMappings).filter(field => field && field !== '__IGNORE__').length;
   const customValuesCount = Object.entries(customValues).filter(([_, value]) => value.trim()).length;
 
   return (
@@ -436,12 +438,19 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     <div className={`p-3 rounded-lg border-2 ${
                       status === 'mapped' 
                         ? 'bg-green-50 border-green-200' 
+                        : status === 'ignored'
+                        ? 'bg-orange-50 border-orange-200'
                         : 'bg-gray-50 border-gray-200'
                     }`}>
-                      <div className="font-medium text-gray-900 flex items-center">
+                      <div className={`font-medium flex items-center ${
+                        status === 'ignored' ? 'text-gray-500 line-through' : 'text-gray-900'
+                      }`}>
                         {column.name}
                         {status === 'mapped' && (
                           <span className="ml-2 text-green-600">✓</span>
+                        )}
+                        {status === 'ignored' && (
+                          <span className="ml-2 text-orange-600">🚫</span>
                         )}
                       </div>
                       {column.sampleData.length > 0 && (
@@ -458,9 +467,11 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     <div className={`text-2xl font-bold ${
                       status === 'mapped' 
                         ? 'text-green-500' 
+                        : status === 'ignored'
+                        ? 'text-orange-500'
                         : 'text-gray-300'
                     }`}>
-                      →
+                      {status === 'ignored' ? '🚫' : '→'}
                     </div>
                   </div>
 
@@ -473,6 +484,11 @@ const MappingStep: React.FC<MappingStepProps> = ({
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       >
                         <option value="">Select Planday field...</option>
+                        
+                        {/* Ignore Option */}
+                        <optgroup label="🚫 Skip Column">
+                          <option value="__IGNORE__">Ignore this column (don't import)</option>
+                        </optgroup>
                         
                         {/* Required Fields */}
                         <optgroup label="📍 Required Fields">
@@ -532,15 +548,19 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     {/* Field description */}
                     {mappedField && (
                       <div className="text-xs text-gray-500 mt-1">
-                        {(() => {
-                          const field = plandayFields.find(f => f.name === mappedField);
-                          const badges = [];
-                          if (field?.isRequired) badges.push('Required');
-                          if (field?.isUnique) badges.push('Must be unique');
-                          if (field?.isReadOnly) badges.push('Read-only');
-                          if (field?.isCustom) badges.push('Custom field');
-                          return badges.length > 0 ? badges.join(' • ') : '';
-                        })()}
+                        {mappedField === '__IGNORE__' ? (
+                          <span className="text-orange-600 font-medium">Column will be ignored during import</span>
+                        ) : (
+                          (() => {
+                            const field = plandayFields.find(f => f.name === mappedField);
+                            const badges = [];
+                            if (field?.isRequired) badges.push('Required');
+                            if (field?.isUnique) badges.push('Must be unique');
+                            if (field?.isReadOnly) badges.push('Read-only');
+                            if (field?.isCustom) badges.push('Custom field');
+                            return badges.length > 0 ? badges.join(' • ') : '';
+                          })()
+                        )}
                       </div>
                     )}
                   </div>
