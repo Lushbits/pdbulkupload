@@ -187,8 +187,8 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="mt-8">
+      {/* Progress Bar - Temporarily commented out */}
+      {/* <div className="mt-8">
         <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
           <span>Progress</span>
           <span>
@@ -204,7 +204,7 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
             }}
           />
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }; 

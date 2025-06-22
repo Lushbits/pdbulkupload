@@ -115,7 +115,7 @@ function App() {
         </div>
 
         {/* Progress Indicator */}
-        <div className="mb-8 flex justify-center">
+        <div className="mb-16 flex justify-center">
           <ProgressIndicator
             currentStep={currentStep}
             completedSteps={completedSteps}
@@ -352,14 +352,14 @@ function App() {
         <div className="mt-16 pt-8 border-t border-gray-200">
           <div className="text-center">
             <p className="text-sm text-gray-600 mb-2">
-              Your employee data is processed entirely on your device and sent directly to Planday - we never store, access, or process your data on our servers.
-            </p>
-            <button
+              Your employee data is processed entirely on your device and sent directly to Planday - we never store, access, or process your data on our servers. <button
               onClick={() => setIsPrivacyModalOpen(true)}
               className="text-sm text-blue-600 hover:text-blue-800 underline"
             >
               Read more
-            </button>
+            </button>.
+            </p>
+            
           </div>
         </div>
 
