@@ -46,10 +46,14 @@ export interface PlandayEmployeeCreateRequest {
   lastName: string;
   userName: string;
   cellPhone?: string;
+  cellPhoneCountryCode?: string;  // ISO 3166-1 alpha-2 (e.g., "NO", "DK")
+  cellPhoneCountryId?: number;    // Planday internal country ID
   street1?: string;
   zip?: string;
   city?: string;
   phone?: string;
+  phoneCountryCode?: string;      // For landline phones
+  phoneCountryId?: number;
   gender?: 'Male' | 'Female';
   email?: string;
   departments: number[];
@@ -409,4 +413,48 @@ export interface RateLimitConfig {
   delayBetweenBatches: number; // milliseconds
   maxRetries: number;
   exponentialBackoffBase: number; // milliseconds
+}
+
+/**
+ * Planday Portal Information
+ */
+export interface PlandayPortalInfo {
+  id: number;
+  name: string;
+  companyName: string;
+  country: string;          // Portal's country for phone parsing defaults
+  timeZone: string;
+  maxDepartments: number;
+  aliases: string[];
+  portals: Array<{
+    id: number;
+    name: string;
+    aliases: string[];
+  }>;
+}
+
+/**
+ * Phone number parsing result
+ */
+export interface PhoneParseResult {
+  isValid: boolean;
+  phoneNumber?: string;      // Just the number part (e.g., "40055171")
+  countryCode?: string;      // ISO code (e.g., "NO", "DK") 
+  countryId?: number;        // Planday internal ID (if known)
+  dialCode?: string;         // Phone country code (e.g., "47", "45")
+  confidence: number;        // 0-1 confidence score
+  error?: string;           // Error message if invalid
+  originalInput: string;     // Original input for reference
+  assumedCountry?: boolean;  // True if we used portal default country
+}
+
+/**
+ * Country to phone mapping configuration
+ */
+export interface CountryPhoneMapping {
+  countryCode: string;    // ISO 3166-1 alpha-2
+  dialCode: string;       // International dial code
+  minLength: number;      // Min phone number length (without country code)
+  maxLength: number;      // Max phone number length (without country code)
+  countryId?: number;     // Planday internal ID if available
 } 

@@ -125,24 +125,35 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   // Validate all employees on component mount and when data changes
   useEffect(() => {
     console.log('🔄 Re-running validation due to data changes');
-    validateAllEmployees();
+    validateAllEmployees().catch(error => {
+      console.error('❌ Validation failed:', error);
+    });
   }, [employees, existingEmployees]); // Re-validate when existing employees data changes
 
-  // Focus input when editing cell
+  // Focus input when editing cell (only on initial edit start)
   useEffect(() => {
     if (editingCell && inputRef.current) {
       inputRef.current.focus();
-      inputRef.current.select();
+      // Position cursor at end instead of selecting all text
+      // Use setTimeout to ensure the value is set before positioning cursor
+      setTimeout(() => {
+        if (inputRef.current) {
+          const length = inputRef.current.value.length;
+          inputRef.current.setSelectionRange(length, length);
+        }
+      }, 0);
     }
-  }, [editingCell]);
+  }, [editingCell?.rowIndex, editingCell?.field]); // Only trigger when starting to edit a different cell
 
   /**
    * Validate all employees and update error state
    */
-  const validateAllEmployees = useCallback(() => {
+  const validateAllEmployees = useCallback(async () => {
     const newValidationErrors = new Map<string, ValidationError[]>();
 
-    employees.forEach((employee, index) => {
+    // Process employees sequentially to avoid overwhelming the system
+    for (let index = 0; index < employees.length; index++) {
+      const employee = employees[index];
       const errors: ValidationError[] = [];
       const employeeKey = `employee-${index}`;
 
@@ -161,14 +172,26 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         });
       }
 
-      // Phone validation (if provided)
+      // Phone validation with intelligent parsing (if provided)
       if (employee.cellPhone && employee.cellPhone.trim() !== '') {
-        const cleanPhone = employee.cellPhone.replace(VALIDATION_CONFIG.PHONE_CLEANUP_PATTERN, '');
-        if (cleanPhone.length < 10) {
+        const { PhoneParser } = await import('../../utils');
+        const parseResult = PhoneParser.parsePhoneNumber(employee.cellPhone);
+        
+        if (!parseResult.isValid) {
           errors.push({
             field: 'cellPhone',
             value: employee.cellPhone,
-            message: 'Phone number too short',
+            message: parseResult.error || 'Invalid phone number format',
+            rowIndex: index,
+            severity: 'error'
+          });
+        } else if (parseResult.confidence < 0.8) {
+          // Show warning for low confidence parsing (assumed country)
+          const displayCountry = parseResult.countryCode || 'Unknown';
+          errors.push({
+            field: 'cellPhone',
+            value: employee.cellPhone,
+            message: `Phone parsed as ${displayCountry}: ${PhoneParser.formatPhoneNumber(parseResult)}. Verify if correct.`,
             rowIndex: index,
             severity: 'warning'
           });
@@ -195,7 +218,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       if (errors.length > 0) {
         newValidationErrors.set(employeeKey, errors);
       }
-    });
+    }
 
     // Validate unique fields across all employees
     const uniqueFieldErrors = ValidationService.validateUniqueFields(employees);

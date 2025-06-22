@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Card, ProgressIndicator, PrivacyModal, VersionModal, getCurrentVersion } from './components/ui';
+import { Button, Card, ProgressIndicator, PrivacyModal, CookieModal, VersionModal, getCurrentVersion } from './components/ui';
 import { AuthenticationStep } from './components/auth/AuthenticationStep';
 import { FileUploadStep } from './components/upload/FileUploadStep';
 import MappingStep from './components/mapping/MappingStep';
@@ -50,7 +50,7 @@ function App() {
   
   // Enhanced mapping data (will be used in later steps)
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [, setMappedColumns] = useState<ColumnMapping>({});
+  const [mappedColumns, setMappedColumns] = useState<ColumnMapping>({});
   
   // Upload results state for verification step
   const [uploadResults, setUploadResults] = useState<EmployeeUploadResult[]>([]);
@@ -58,6 +58,9 @@ function App() {
   
   // Privacy modal state
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  
+  // Cookie modal state
+  const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
   
   // Version modal state
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
@@ -99,16 +102,42 @@ function App() {
     }
   };
 
+  /**
+   * Cancel upload and start over
+   */
+  const handleCancelUpload = () => {
+    // Reset everything and go back to authentication
+    setCurrentStep(WorkflowStep.Authentication);
+    setCompletedSteps([]);
+    setExcelData(null);
+    setColumnMappings([]);
+    setEmployees([]);
+    setMappedColumns({});
+    setUploadResults([]);
+    setOriginalEmployees([]);
+    
+    // Also clear Planday API state
+    plandayApi.logout();
+  };
 
+  // Determine if we should show the main header (only on step 1)
+  const showMainHeader = currentStep === WorkflowStep.Authentication;
+  
+  // Determine if we should show the cancel button (steps 2-7)
+  const showCancelButton = currentStep !== WorkflowStep.Authentication;
 
   return (
-    <div className="min-h-screen sparkling-background flex items-center justify-center py-8">
+    <div className={`min-h-screen sparkling-background flex justify-center py-8 ${
+      showMainHeader ? 'items-center' : 'items-start'
+    }`}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative" style={{zIndex: 10}}>
         
-
-
-        {/* App Header */}
-        <div className="text-center mb-12">
+        {/* App Header - Only shown on step 1, slides up and disappears on step 2+ */}
+        <div className={`text-center transition-all duration-500 overflow-hidden ${
+          showMainHeader 
+            ? 'mb-12 max-h-40 opacity-100 transform translate-y-0' 
+            : 'mb-0 max-h-0 opacity-0 transform -translate-y-4'
+        }`}>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             {APP_METADATA.NAME}
           </h1>
@@ -117,13 +146,26 @@ function App() {
           </p>
         </div>
 
-        {/* Progress Indicator */}
-        <div className="mb-16 flex justify-center">
+        {/* Progress Indicator - Always visible, with different margins based on header visibility */}
+        <div className={`flex justify-center transition-all duration-500 ${showMainHeader ? 'mb-16' : 'mb-8'}`}>
           <ProgressIndicator
             currentStep={currentStep}
             completedSteps={completedSteps}
           />
         </div>
+
+        {/* Cancel Button - Shown on all steps except step 1 */}
+        {showCancelButton && (
+          <div className="mb-6 transition-all duration-500">
+            <Button
+              variant="outline"
+              onClick={handleCancelUpload}
+              className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+            >
+              ← Cancel upload and start over
+            </Button>
+          </div>
+        )}
 
         {/* Main Application Flow */}
         {currentStep === WorkflowStep.Authentication && (
@@ -153,6 +195,7 @@ function App() {
             isAuthenticated={plandayApi.isAuthenticated}
             departmentCount={departments.length}
             employeeGroupCount={employeeGroups.length}
+            companyName={plandayApi.portalInfo?.companyName}
           />
         )}
 
@@ -161,6 +204,7 @@ function App() {
             employees={excelData.rows}
             headers={excelData.headers}
             initialColumnMappings={columnMappings}
+            savedMappings={Object.keys(mappedColumns).length > 0 ? mappedColumns : undefined}
             onComplete={(mappedEmployees, mappings) => {
               setEmployees(mappedEmployees);
               setMappedColumns(mappings);
@@ -365,13 +409,20 @@ function App() {
             </p>
             
             {/* Version Display */}
-            <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="mt-4">
               <div className="text-sm text-gray-400">
                 <button
                   onClick={() => setIsVersionModalOpen(true)}
                   className="hover:text-gray-600 transition-colors underline"
                 >
                   Version {getCurrentVersion()}
+                </button>
+                <span className="mx-2">-</span>
+                <button
+                  onClick={() => setIsCookieModalOpen(true)}
+                  className="hover:text-gray-600 transition-colors underline"
+                >
+                  Cookie Policy
                 </button>
                 <span className="mx-2">-</span>
                 <span>Made with ❤️ by the </span>
@@ -393,6 +444,12 @@ function App() {
         <PrivacyModal
           isOpen={isPrivacyModalOpen}
           onClose={() => setIsPrivacyModalOpen(false)}
+        />
+
+        {/* Cookie Modal */}
+        <CookieModal
+          isOpen={isCookieModalOpen}
+          onClose={() => setIsCookieModalOpen(false)}
         />
 
         {/* Version Modal */}

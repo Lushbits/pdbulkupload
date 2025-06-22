@@ -43,24 +43,25 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   };
 
   // Pre-validate ALL employees before any upload
-  const validateAllEmployees = (employees: Employee[]): { 
+  const validateAllEmployees = async (employees: Employee[]): Promise<{ 
     isValid: boolean, 
     validatedEmployees: PlandayEmployeeCreateRequest[], 
     errors: Array<{employee: string, errors: string[]}> 
-  } => {
+  }> => {
     addLogEntry(`🔍 Pre-validating all ${employees.length} employees...`);
     
     const validatedEmployees: PlandayEmployeeCreateRequest[] = [];
     const allErrors: Array<{employee: string, errors: string[]}> = [];
     
-    employees.forEach((employee, index) => {
+    for (let index = 0; index < employees.length; index++) {
+      const employee = employees[index];
       const employeeName = `${employee.firstName || 'Unknown'} ${employee.lastName || 'Unknown'} (row ${index + 1})`;
       
       // Use ValidationService for required field validation
       const requiredFieldErrors = ValidationService.validateRequiredFields(employee, index);
       
       // Use MappingUtils for conversion and additional validation
-      const validation = MappingUtils.validateEmployee(employee);
+      const validation = await MappingUtils.validateEmployee(employee);
       
       const allValidationErrors = [...requiredFieldErrors, ...validation.errors];
       
@@ -83,7 +84,11 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           departments: converted.departments || [], // Should be array of IDs
           employeeGroups: converted.employeeGroups || [],
           cellPhone: converted.cellPhone || employee.cellPhone,
+          cellPhoneCountryCode: converted.cellPhoneCountryCode,
+          cellPhoneCountryId: converted.cellPhoneCountryId,
           phone: converted.phone || employee.phone,
+          phoneCountryCode: converted.phoneCountryCode,
+          phoneCountryId: converted.phoneCountryId,
           street1: converted.street1 || employee.street1,
           city: converted.city || employee.city,
           zip: converted.zip || employee.zip,
@@ -96,7 +101,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         validatedEmployees.push(plandayEmployee);
         addLogEntry(`✅ ${employeeName}: Valid`);
       }
-    });
+    }
     
     // Check unique fields across all employees
     const uniqueFieldErrors = ValidationService.validateUniqueFields(employees);
@@ -141,7 +146,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       addLogEntry('🚀 Starting atomic upload process...');
 
       // Validate ALL employees first
-      const validation = validateAllEmployees(employees);
+      const validation = await validateAllEmployees(employees);
       
       if (!validation.isValid) {
         // Validation failed - show errors and stop

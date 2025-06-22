@@ -34,6 +34,7 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
     authError, 
     departments, 
     employeeGroups, 
+    portalInfo,
     authenticate,
     logout 
   } = plandayApi;
@@ -87,7 +88,7 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Successfully Connected to Planday
+                Successfully Connected to Planday{portalInfo?.companyName ? ` portal ${portalInfo.companyName}` : ''}
               </h3>
               <p className="text-gray-600 mb-4">
                 Found {departments.length} departments and {employeeGroups.length} employee groups

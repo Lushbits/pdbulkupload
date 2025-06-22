@@ -359,9 +359,19 @@ const BulkCorrectionStep: React.FC<BulkCorrectionStepProps> = ({
               </div>
             )}
             
-            <Button onClick={handleProceedToValidation} className="bg-green-600 hover:bg-green-700 text-white">
-              Continue to Validation
-            </Button>
+            <div className="flex justify-between items-center w-full">
+              <Button
+                variant="outline"
+                onClick={handleGoBack}
+                className="text-gray-600 hover:bg-gray-50"
+              >
+                ← Back to Mapping
+              </Button>
+              
+              <Button onClick={handleProceedToValidation} className="bg-green-600 hover:bg-green-700 text-white">
+                Continue to Data Validation →
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
@@ -465,7 +475,7 @@ const BulkCorrectionStep: React.FC<BulkCorrectionStepProps> = ({
               {isProcessing 
                 ? 'Processing...' 
                 : canProceed 
-                  ? '✅ Continue to Validation'
+                  ? 'Continue to Data Validation →'
                   : `Fix ${remainingErrors} remaining issues`
               }
             </Button>

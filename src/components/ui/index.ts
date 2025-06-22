@@ -10,6 +10,7 @@ export { Button } from './Button';
 export { Input } from './Input';
 export { Card } from './Card';
 export { PrivacyModal } from './PrivacyModal';
+export { CookieModal } from './CookieModal';
 export { VersionModal, getCurrentVersion } from './VersionModal';
 
 // Progress Components

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Card } from '../ui';
 import type { Employee } from '../../types/planday';
 import { mappingService, ValidationService } from '../../services/mappingService';
@@ -42,39 +42,48 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
   };
 
   // Convert the first employee to show exactly what will be sent to Planday API
-  const convertedEmployee = useMemo(() => {
-    if (employees.length === 0) return null;
+  const [convertedEmployee, setConvertedEmployee] = useState<any>(null);
+  
+  useEffect(() => {
+    const convertFirstEmployee = async () => {
+      if (employees.length === 0) {
+        setConvertedEmployee(null);
+        return;
+      }
+      
+      const result = await mappingService.validateAndConvert(employees[0]);
+      const converted = result.converted;
     
-    const result = mappingService.validateAndConvert(employees[0]);
-    const converted = result.converted;
-    
-    // Create a clean payload by including all non-internal fields from the converted employee
-    const cleanPayload: any = {};
-    
-    // Define internal fields that should be excluded from the API payload
-    const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
-    
-    // Include all fields from the converted employee, excluding internal ones
-    Object.entries(converted).forEach(([key, value]) => {
-      // Skip internal fields and undefined/empty values
-      if (!internalFields.has(key) && value != null && value !== '') {
-        // For array fields, only include if they have elements
-        if (Array.isArray(value)) {
-          if (value.length > 0) {
+      // Create a clean payload by including all non-internal fields from the converted employee
+      const cleanPayload: any = {};
+      
+      // Define internal fields that should be excluded from the API payload
+      const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+      
+      // Include all fields from the converted employee, excluding internal ones
+      Object.entries(converted).forEach(([key, value]) => {
+        // Skip internal fields and undefined/empty values
+        if (!internalFields.has(key) && value != null && value !== '') {
+          // For array fields, only include if they have elements
+          if (Array.isArray(value)) {
+            if (value.length > 0) {
+              cleanPayload[key] = value;
+            }
+          } else {
             cleanPayload[key] = value;
           }
-        } else {
-          cleanPayload[key] = value;
         }
+      });
+      
+      // Ensure required fields have defaults if needed
+      if (!cleanPayload.email && cleanPayload.userName) {
+        cleanPayload.email = cleanPayload.userName;
       }
-    });
-    
-    // Ensure required fields have defaults if needed
-    if (!cleanPayload.email && cleanPayload.userName) {
-      cleanPayload.email = cleanPayload.userName;
-    }
 
-    return cleanPayload;
+      setConvertedEmployee(cleanPayload);
+    };
+    
+    convertFirstEmployee();
   }, [employees]);
 
   // Calculate statistics for the preview
@@ -93,25 +102,32 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
   const displayEmployees = employees.slice(startIndex, endIndex);
 
   // Get all unique field names from all employees to create table columns
-  const allFields = useMemo(() => {
-    const fieldSet = new Set<string>();
-    employees.forEach(emp => {
-      const result = mappingService.validateAndConvert(emp);
-      const converted = result.converted;
-      const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+  const [allFields, setAllFields] = useState<string[]>([]);
+  
+  useEffect(() => {
+    const getAllFieldsAsync = async () => {
+      const fieldSet = new Set<string>();
       
-      Object.keys(converted).forEach(key => {
-        if (!internalFields.has(key) && converted[key] != null && converted[key] !== '') {
-          fieldSet.add(key);
-        }
-      });
-    });
+      for (const emp of employees) {
+        const result = await mappingService.validateAndConvert(emp);
+        const converted = result.converted;
+        const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+        
+        Object.keys(converted).forEach(key => {
+          if (!internalFields.has(key) && converted[key] != null && converted[key] !== '') {
+            fieldSet.add(key);
+          }
+        });
+      }
+      
+      // Sort fields with important ones first
+      const importantFields = ['firstName', 'lastName', 'userName', 'email'];
+      const otherFields = Array.from(fieldSet).filter(field => !importantFields.includes(field)).sort();
+      
+      setAllFields([...importantFields.filter(field => fieldSet.has(field)), ...otherFields]);
+    };
     
-    // Sort fields with important ones first
-    const importantFields = ['firstName', 'lastName', 'userName', 'email'];
-    const otherFields = Array.from(fieldSet).filter(field => !importantFields.includes(field)).sort();
-    
-    return [...importantFields.filter(field => fieldSet.has(field)), ...otherFields];
+    getAllFieldsAsync();
   }, [employees]);
 
   return (
@@ -217,8 +233,9 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {displayEmployees.map((employee, index) => {
-                const result = mappingService.validateAndConvert(employee);
-                const converted = result.converted;
+                // Note: For table display, we'll use basic employee data since async conversion would complicate the rendering
+                // The real conversion happens in the upload step where async is properly handled
+                const converted = employee;
                 // Filter out internal fields that shouldn't be displayed
                 const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
                 

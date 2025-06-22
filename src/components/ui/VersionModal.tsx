@@ -13,8 +13,27 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.1.3',
+    date: '2025-06-22',
+    features: [
+      'Intelligent phone number parsing with automatic country code detection',
+      'Support for 27+ countries with portal-based default country configuration',
+      'Enhanced phone validation with confidence scoring and format suggestions',
+      'Smooth header animations during workflow navigation with slide-up effects',
+      'Improved navigation consistency across all workflow steps',
+      'Preserved mapping state when navigating between steps',
+      'Fixed phone input field cursor behavior and text selection issues',
+      'Added company name display integration throughout authentication flow',
+      'Resolved race conditions in data loading with proper loading states',
+      'Always-available disconnect button as emergency escape hatch',
+      'Optimized layout alignment - centered authentication, top-aligned workflow steps',
+      'Enhanced error handling with detailed phone parsing feedback',
+      'Added cookie policy modal - transparent about not using any cookies'
+    ]
+  },
+  {
     version: '0.1.2',
-    date: new Date().toISOString().split('T')[0],
+    date: '2025-06-22',
     features: [
       'Enhanced duplicate employee detection with real-time validation',
       'Dynamic duplicate banner updates when emails are corrected',
@@ -25,7 +44,7 @@ const versionHistory = [
   },
   {
     version: '0.1.1',
-    date: new Date().toISOString().split('T')[0],
+    date: '2025-06-22',
     features: [
       'Added ignore column functionality for mapping step',
       'Implemented Excel template download with portal-specific fields',
@@ -36,7 +55,7 @@ const versionHistory = [
   },
   {
     version: '0.1.0',
-    date: new Date().toISOString().split('T')[0],
+    date: '2025-06-22',
     title: 'Beta Release',
     features: [
       'Complete Planday API integration with OAuth authentication',

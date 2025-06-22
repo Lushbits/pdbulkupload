@@ -28,6 +28,7 @@ interface FileUploadStepProps extends StepComponentProps {
   isAuthenticated?: boolean;
   departmentCount?: number;
   employeeGroupCount?: number;
+  companyName?: string;
 }
 
 export const FileUploadStep: React.FC<FileUploadStepProps> = ({
@@ -38,6 +39,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
   isAuthenticated = false,
   departmentCount = 0,
   employeeGroupCount = 0,
+  companyName,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -456,7 +458,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
             </div>
             <div className="ml-3">
               <p className="text-sm text-green-800">
-                ✅ Connected to Planday successfully!
+                Connected to Planday portal {companyName ? `${companyName} ` : ''}successfully!
                 <span className="block mt-1">
                   Found {departmentCount} departments and {employeeGroupCount} employee groups
                 </span>

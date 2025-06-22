@@ -18,6 +18,8 @@ interface RateLimitConfig {
   exponentialBackoffBase: number;
 }
 
+import type { CountryPhoneMapping } from '../types/planday';
+
 export const WorkflowStep = {
   Authentication: 'authentication',
   FileUpload: 'upload',
@@ -318,5 +320,109 @@ export const DEV_CONFIG = {
   ENABLE_CONSOLE_LOGS: true,
   SHOW_DEV_TOOLS: false,
 } as const;
+
+/**
+ * Phone Parsing Configuration
+ */
+export const PHONE_PARSING_CONFIG = {
+  // Countries supported by Planday API
+  SUPPORTED_COUNTRIES: ["DK", "UK", "NO", "SE", "DE", "US", "PL", "VN", "FR", "ES", "IT", "NL", "CH", "BE", "AT", "FI", "IS", "AU", "CA", "JP", "KR", "CN", "BR", "MX", "IN", "ZA", "SG"],
+  
+  // Minimum confidence threshold for auto-acceptance
+  MIN_CONFIDENCE_THRESHOLD: 0.8,
+  
+  // Default country if detection fails (Denmark since Planday is Danish)
+  DEFAULT_COUNTRY: 'DK'
+} as const;
+
+/**
+ * Country to Phone Code Mappings
+ * Based on international dialing codes and phone number formats
+ */
+export const COUNTRY_PHONE_MAPPINGS: CountryPhoneMapping[] = [
+  // Nordic countries (most common for Planday)
+  { countryCode: 'DK', dialCode: '45', minLength: 8, maxLength: 8 },    // Denmark
+  { countryCode: 'NO', dialCode: '47', minLength: 8, maxLength: 8 },    // Norway  
+  { countryCode: 'SE', dialCode: '46', minLength: 9, maxLength: 9 },    // Sweden
+  { countryCode: 'FI', dialCode: '358', minLength: 8, maxLength: 9 },   // Finland
+  { countryCode: 'IS', dialCode: '354', minLength: 7, maxLength: 7 },   // Iceland
+  
+  // Other European countries supported by Planday
+  { countryCode: 'UK', dialCode: '44', minLength: 10, maxLength: 11 },  // United Kingdom
+  { countryCode: 'DE', dialCode: '49', minLength: 10, maxLength: 12 },  // Germany
+  { countryCode: 'FR', dialCode: '33', minLength: 9, maxLength: 9 },    // France
+  { countryCode: 'IT', dialCode: '39', minLength: 9, maxLength: 11 },   // Italy
+  { countryCode: 'ES', dialCode: '34', minLength: 9, maxLength: 9 },    // Spain
+  { countryCode: 'NL', dialCode: '31', minLength: 9, maxLength: 9 },    // Netherlands
+  { countryCode: 'CH', dialCode: '41', minLength: 9, maxLength: 9 },    // Switzerland
+  { countryCode: 'BE', dialCode: '32', minLength: 8, maxLength: 9 },    // Belgium
+  { countryCode: 'AT', dialCode: '43', minLength: 10, maxLength: 11 },  // Austria
+  { countryCode: 'PL', dialCode: '48', minLength: 9, maxLength: 9 },    // Poland
+  
+  // Other supported countries
+  { countryCode: 'US', dialCode: '1', minLength: 10, maxLength: 10 },   // United States
+  { countryCode: 'CA', dialCode: '1', minLength: 10, maxLength: 10 },   // Canada
+  { countryCode: 'AU', dialCode: '61', minLength: 9, maxLength: 9 },    // Australia
+  { countryCode: 'JP', dialCode: '81', minLength: 10, maxLength: 11 },  // Japan
+  { countryCode: 'KR', dialCode: '82', minLength: 8, maxLength: 9 },    // South Korea
+  { countryCode: 'CN', dialCode: '86', minLength: 11, maxLength: 11 },  // China
+  { countryCode: 'BR', dialCode: '55', minLength: 10, maxLength: 11 },  // Brazil
+  { countryCode: 'MX', dialCode: '52', minLength: 10, maxLength: 10 },  // Mexico
+  { countryCode: 'IN', dialCode: '91', minLength: 10, maxLength: 10 },  // India
+  { countryCode: 'ZA', dialCode: '27', minLength: 9, maxLength: 9 },    // South Africa
+  { countryCode: 'SG', dialCode: '65', minLength: 8, maxLength: 8 },    // Singapore
+  { countryCode: 'VN', dialCode: '84', minLength: 9, maxLength: 10 },   // Vietnam
+];
+
+/**
+ * Portal Country to Phone Country Mapping
+ * Maps portal country names/codes to standardized phone country codes
+ */
+export const PORTAL_COUNTRY_MAPPING: Record<string, string> = {
+  // Nordic countries
+  'Denmark': 'DK',
+  'Norway': 'NO', 
+  'Sweden': 'SE',
+  'Finland': 'FI',
+  'Iceland': 'IS',
+  
+  // English-speaking
+  'United States': 'US',
+  'United Kingdom': 'UK',
+  'Canada': 'CA',
+  'Australia': 'AU',
+  
+  // Other European
+  'Germany': 'DE',
+  'France': 'FR',
+  'Italy': 'IT',
+  'Spain': 'ES',
+  'Netherlands': 'NL',
+  'Switzerland': 'CH',
+  'Belgium': 'BE',
+  'Austria': 'AT',
+  'Poland': 'PL',
+  
+  // Asian
+  'Japan': 'JP',
+  'South Korea': 'KR',
+  'China': 'CN',
+  'India': 'IN',
+  'Singapore': 'SG',
+  'Vietnam': 'VN',
+  
+  // Others
+  'Brazil': 'BR',
+  'Mexico': 'MX',
+  'South Africa': 'ZA',
+  
+  // ISO codes (in case portal returns these directly)
+  'DK': 'DK', 'NO': 'NO', 'SE': 'SE', 'FI': 'FI', 'IS': 'IS',
+  'US': 'US', 'UK': 'UK', 'CA': 'CA', 'AU': 'AU',
+  'DE': 'DE', 'FR': 'FR', 'IT': 'IT', 'ES': 'ES', 
+  'NL': 'NL', 'CH': 'CH', 'BE': 'BE', 'AT': 'AT', 'PL': 'PL',
+  'JP': 'JP', 'KR': 'KR', 'CN': 'CN', 'IN': 'IN', 
+  'SG': 'SG', 'VN': 'VN', 'BR': 'BR', 'MX': 'MX', 'ZA': 'ZA'
+};
 
 // WorkflowStep is already exported above 

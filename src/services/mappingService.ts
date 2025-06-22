@@ -395,11 +395,11 @@ export class MappingService {
   /**
    * Validate and convert employee data for Planday API
    */
-  validateAndConvert(employee: any): {
+  async validateAndConvert(employee: any): Promise<{
     isValid: boolean;
     converted: any;
     errors: ValidationError[];
-  } {
+  }> {
     const errors: ValidationError[] = [];
     const converted = { ...employee };
 
@@ -431,6 +431,51 @@ export class MappingService {
         });
       }
       converted.employeeGroups = groupResult.ids;
+    }
+
+    // Handle phone numbers with country code extraction
+    if (employee.cellPhone && employee.cellPhone.trim() !== '') {
+      try {
+        const { PhoneParser } = await import('../utils');
+        const parseResult = PhoneParser.parsePhoneNumber(employee.cellPhone);
+        
+        if (parseResult.isValid && parseResult.phoneNumber && parseResult.countryCode) {
+          // Set the parsed phone number and country information
+          converted.cellPhone = parseResult.phoneNumber;
+          converted.cellPhoneCountryCode = parseResult.countryCode;
+          if (parseResult.countryId) {
+            converted.cellPhoneCountryId = parseResult.countryId;
+          }
+        } else {
+          // Keep original value if parsing failed - validation will catch this
+          converted.cellPhone = employee.cellPhone;
+        }
+      } catch (error) {
+        console.warn('⚠️ Error parsing phone number:', error);
+        // Fallback to original value
+        converted.cellPhone = employee.cellPhone;
+      }
+    }
+
+    // Handle landline phone numbers similarly
+    if (employee.phone && employee.phone.trim() !== '') {
+      try {
+        const { PhoneParser } = await import('../utils');
+        const parseResult = PhoneParser.parsePhoneNumber(employee.phone);
+        
+        if (parseResult.isValid && parseResult.phoneNumber && parseResult.countryCode) {
+          converted.phone = parseResult.phoneNumber;
+          converted.phoneCountryCode = parseResult.countryCode;
+          if (parseResult.countryId) {
+            converted.phoneCountryId = parseResult.countryId;
+          }
+        } else {
+          converted.phone = employee.phone;
+        }
+      } catch (error) {
+        console.warn('⚠️ Error parsing landline phone number:', error);
+        converted.phone = employee.phone;
+      }
     }
 
     return {
@@ -648,8 +693,8 @@ export const MappingUtils = {
   /**
    * Validate and convert employee data
    */
-  validateEmployee(employee: any) {
-    return mappingService.validateAndConvert(employee);
+  async validateEmployee(employee: any) {
+    return await mappingService.validateAndConvert(employee);
   },
 
   /**

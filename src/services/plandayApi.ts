@@ -22,6 +22,7 @@ import type {
   EmployeeUploadResult,
   PlandayFieldDefinitionsSchema,
   PlandayFieldDefinitionsResponse,
+  PlandayPortalInfo,
 } from '../types/planday';
 
 import { PlandayErrorCodes } from '../types/planday';
@@ -257,6 +258,27 @@ export class PlandayApiClient {
     } catch (error) {
       console.error('❌ Failed to fetch employee groups:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Fetch portal information including company name and country
+   * Used for phone number parsing defaults and user experience
+   */
+  async fetchPortalInfo(): Promise<PlandayPortalInfo> {
+    try {
+      const response = await this.makeAuthenticatedRequest<{ data: PlandayPortalInfo }>(
+        '/portal/v1.0/info'
+      );
+      
+      console.log(`✅ Fetched portal info: ${response.data.companyName} (${response.data.country})`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to fetch portal info:', error);
+      throw new PlandayApiError(
+        PlandayErrorCodes.ServerError,
+        `Failed to fetch portal information: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -892,6 +914,13 @@ export const PlandayApi = {
    */
   async getEmployeeGroups(): Promise<PlandayEmployeeGroup[]> {
     return plandayApiClient.fetchEmployeeGroups();
+  },
+
+  /**
+   * Fetch portal information
+   */
+  async getPortalInfo(): Promise<PlandayPortalInfo> {
+    return plandayApiClient.fetchPortalInfo();
   },
 
   /**

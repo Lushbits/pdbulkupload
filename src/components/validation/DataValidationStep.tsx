@@ -54,7 +54,8 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
       // Note: MappingService will be used in later phases for more complex validation
       console.log('Validating with:', { departments: departments.length, employeeGroups: employeeGroups.length });
 
-      employees.forEach((employee, index) => {
+      for (let index = 0; index < employees.length; index++) {
+        const employee = employees[index];
         const errors: ValidationError[] = [];
         const employeeKey = `employee-${index}`;
 
@@ -73,14 +74,26 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
           });
         }
 
-        // Phone validation (if provided)
+        // Phone validation with intelligent parsing (if provided)
         if (employee.cellPhone && employee.cellPhone.trim() !== '') {
-          const cleanPhone = employee.cellPhone.replace(VALIDATION_CONFIG.PHONE_CLEANUP_PATTERN, '');
-          if (cleanPhone.length < 10) {
+          const { PhoneParser } = await import('../../utils');
+          const parseResult = PhoneParser.parsePhoneNumber(employee.cellPhone);
+          
+          if (!parseResult.isValid) {
             errors.push({
               field: 'cellPhone',
               value: employee.cellPhone,
-              message: 'Phone number too short',
+              message: parseResult.error || 'Invalid phone number format',
+              rowIndex: index,
+              severity: 'error'
+            });
+          } else if (parseResult.confidence < 0.8) {
+            // Show warning for low confidence parsing (assumed country)
+            const displayCountry = parseResult.countryCode || 'Unknown';
+            errors.push({
+              field: 'cellPhone',
+              value: employee.cellPhone,
+              message: `Phone parsed as ${displayCountry}: ${PhoneParser.formatPhoneNumber(parseResult)}. Verify if correct.`,
               rowIndex: index,
               severity: 'warning'
             });
@@ -140,7 +153,7 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
         if (errors.length > 0) {
           results.set(employeeKey, errors);
         }
-      });
+      }
 
       // Validate unique fields across all employees
       const uniqueFieldErrors = ValidationService.validateUniqueFields(employees);

@@ -19,6 +19,7 @@ interface MappingStepProps {
   employees: any[][]; // Raw Excel rows data
   headers: string[];
   initialColumnMappings?: ExcelColumnMapping[]; // Auto-mappings from Excel parser
+  savedMappings?: ColumnMapping; // Previously saved user mappings (when returning from later steps)
   onComplete: (employees: Employee[], mappings: ColumnMapping) => void;
   onBack: () => void;
   className?: string;
@@ -44,6 +45,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   employees,
   headers,
   initialColumnMappings,
+  savedMappings,
   onComplete,
   onBack,
   className = ''
@@ -128,25 +130,47 @@ const MappingStep: React.FC<MappingStepProps> = ({
     return fields;
   }, []);
 
-  // Initialize column mappings from auto-mapping results
+  // Initialize column mappings from saved mappings (if returning from later step) or auto-mapping results
   useEffect(() => {
-    if (initialColumnMappings && initialColumnMappings.length > 0 && plandayFields.length > 0) {
-      const initialMappings: ColumnMapping = {};
+    if (plandayFields.length > 0) {
       const availableFieldNames = new Set(plandayFields.map(f => f.name));
       
-      initialColumnMappings.forEach(mapping => {
-        if (mapping.isMapped && mapping.plandayField) {
-          // Check if the field exists in our available fields
-          if (availableFieldNames.has(mapping.plandayField as string)) {
-            initialMappings[mapping.excelColumn] = mapping.plandayField as string;
+      // Priority 1: Use saved mappings if available (user returning from later step)
+      if (savedMappings && Object.keys(savedMappings).length > 0) {
+        console.log('🔄 Restoring saved user mappings:', savedMappings);
+        
+        // Filter out any invalid fields that might have been saved
+        const validSavedMappings: ColumnMapping = {};
+        Object.entries(savedMappings).forEach(([excelColumn, plandayField]) => {
+          if (plandayField && (plandayField === '__IGNORE__' || availableFieldNames.has(plandayField))) {
+            validSavedMappings[excelColumn] = plandayField;
           } else {
-            console.warn(`Field "${mapping.plandayField}" not found in available fields. Skipping mapping for "${mapping.excelColumn}"`);
+            console.warn(`Saved field "${plandayField}" no longer available. Removing mapping for "${excelColumn}"`);
           }
-        }
-      });
-      setColumnMappings(initialMappings);
+        });
+        setColumnMappings(validSavedMappings);
+        return;
+      }
+      
+      // Priority 2: Use initial auto-mappings (first time on this step)
+      if (initialColumnMappings && initialColumnMappings.length > 0) {
+        console.log('🤖 Using initial auto-mappings from Excel parser');
+        const initialMappings: ColumnMapping = {};
+        
+        initialColumnMappings.forEach(mapping => {
+          if (mapping.isMapped && mapping.plandayField) {
+            // Check if the field exists in our available fields
+            if (availableFieldNames.has(mapping.plandayField as string)) {
+              initialMappings[mapping.excelColumn] = mapping.plandayField as string;
+            } else {
+              console.warn(`Field "${mapping.plandayField}" not found in available fields. Skipping mapping for "${mapping.excelColumn}"`);
+            }
+          }
+        });
+        setColumnMappings(initialMappings);
+      }
     }
-  }, [initialColumnMappings, plandayFields]);
+  }, [initialColumnMappings, savedMappings, plandayFields]);
 
   // Get available fields for dropdown (excluding already mapped fields)
   const getAvailableFields = (currentColumnName: string): PlandayField[] => {

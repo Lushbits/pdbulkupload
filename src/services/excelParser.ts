@@ -74,6 +74,7 @@ export class ExcelParser {
         type: 'array',
         cellText: false,
         cellDates: true,
+        raw: false, // Force string parsing to prevent scientific notation
       });
 
       onProgress?.(50); // Workbook parsed
@@ -91,13 +92,54 @@ export class ExcelParser {
       
       onProgress?.(70); // Worksheet selected
 
-      // Extract data from worksheet
-  
-      const rawData = XLSX.utils.sheet_to_json(worksheet, {
-        header: 1,
-        raw: false,
-        dateNF: 'yyyy-mm-dd', // Standardize date format
-      }) as any[][];
+      // Extract data from worksheet with special handling for phone numbers
+      
+      // First, try to get raw text values to preserve phone number precision
+      let rawData: any[][];
+      try {
+        // Get the range of the worksheet to read cell by cell
+        const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+        rawData = [];
+        
+        for (let row = range.s.r; row <= range.e.r; row++) {
+          const rowData: any[] = [];
+          for (let col = range.s.c; col <= range.e.c; col++) {
+            const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+            const cell = worksheet[cellAddress];
+            
+            if (!cell) {
+              rowData.push('');
+              continue;
+            }
+            
+            // For cells that might be phone numbers (numeric but should be text)
+            if (cell.t === 'n' && cell.w && (cell.w.includes('E+') || cell.w.includes('e+'))) {
+              // Use the display value (cell.w) instead of the numeric value to preserve precision
+              rowData.push(cell.w);
+              console.log(`📱 Preserved phone number precision: ${cell.v} → ${cell.w}`);
+            } else if (cell.t === 'n' && cell.v && cell.v > 1000000000) {
+              // Large numbers that might be phone numbers - use raw value as string
+              rowData.push(cell.v.toString());
+            } else if (cell.w !== undefined) {
+              // Use formatted/display value
+              rowData.push(cell.w);
+            } else {
+              // Use raw value
+              rowData.push(cell.v || '');
+            }
+          }
+          rawData.push(rowData);
+        }
+      } catch (error) {
+        console.warn('⚠️ Cell-by-cell reading failed, falling back to standard method:', error);
+        // Fallback to standard method
+        rawData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          raw: false, // Prevent scientific notation
+          defval: '', // Default value for empty cells
+          dateNF: 'yyyy-mm-dd', // Standardize date format
+        }) as any[][];
+      }
 
       if (rawData.length === 0) {
         return {
@@ -284,6 +326,36 @@ export class ExcelParser {
     // Handle strings
     if (typeof value === 'string') {
       const trimmed = value.trim();
+      
+      // Handle scientific notation from Excel (common with phone numbers)
+      if (trimmed.includes('E+') || trimmed.includes('e+')) {
+        try {
+          // Use more precise conversion for scientific notation
+          const scientificMatch = trimmed.match(/^(\d+\.?\d*)[eE]\+(\d+)$/);
+          if (scientificMatch) {
+            const [, mantissa, exponent] = scientificMatch;
+            const mantissaNum = parseFloat(mantissa);
+            const exp = parseInt(exponent, 10);
+            
+            if (!isNaN(mantissaNum) && !isNaN(exp) && mantissaNum > 1 && exp >= 6) {
+              // For phone numbers, try to reconstruct the original precision
+              const phoneNumber = (mantissaNum * Math.pow(10, exp)).toFixed(0);
+              console.log(`📱 Excel scientific notation converted: ${trimmed} → ${phoneNumber}`);
+              return phoneNumber;
+            }
+          }
+          
+          // Fallback to regular parsing
+          const numericValue = parseFloat(trimmed);
+          if (!isNaN(numericValue) && numericValue > 1000000) { // Likely a phone number
+            const phoneNumber = Math.round(numericValue).toString();
+            console.log(`📱 Excel scientific notation converted (fallback): ${trimmed} → ${phoneNumber}`);
+            return phoneNumber;
+          }
+        } catch (error) {
+          console.warn(`⚠️ Could not convert scientific notation: ${trimmed}`);
+        }
+      }
       
       // Try to parse as date if it looks like a date
       if (this.isDateString(trimmed)) {

@@ -389,9 +389,21 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
                 <p className="text-gray-600 mb-4">
                   All department and employee group names are valid in Planday.
                 </p>
-                <Button onClick={handleProceedToIndividualCorrections}>
-                  Continue to Data Validation →
-                </Button>
+                
+                {/* Navigation buttons - consistent with other phases */}
+                <div className="flex justify-between items-center">
+                  <Button
+                    variant="outline"
+                    onClick={onBack}
+                    className="text-gray-600 hover:bg-gray-50"
+                  >
+                    ← Back to Mapping
+                  </Button>
+                  
+                  <Button onClick={handleProceedToIndividualCorrections} className="bg-green-600 hover:bg-green-700 text-white">
+                    Continue to Data Validation →
+                  </Button>
+                </div>
               </div>
             ) : (
               <>

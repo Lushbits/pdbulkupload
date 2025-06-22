@@ -20,6 +20,7 @@ import type {
   EmployeeUploadResult,
   BulkUploadProgress,
   PlandayFieldDefinitionsSchema,
+  PlandayPortalInfo,
 } from '../types/planday';
 
 interface PlandayApiState {
@@ -27,6 +28,11 @@ interface PlandayApiState {
   isAuthenticated: boolean;
   isAuthenticating: boolean;
   authError: string | null;
+  
+
+  
+  // Portal information
+  portalInfo: PlandayPortalInfo | null;
   
   // Department state
   departments: PlandayDepartment[];
@@ -58,6 +64,7 @@ interface PlandayApiActions {
   refreshDepartments: () => Promise<void>;
   refreshEmployeeGroups: () => Promise<void>;
   refreshFieldDefinitions: () => Promise<void>;
+  refreshPortalInfo: () => Promise<void>;
   refreshPlandayData: () => Promise<void>;
   
   // Upload actions
@@ -112,6 +119,11 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     isAuthenticated: false,
     isAuthenticating: false,
     authError: null,
+    
+
+    
+    // Portal information
+    portalInfo: null,
     
     // Department state
     departments: [],
@@ -169,6 +181,23 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       // Initialize API client
       await PlandayApi.init(refreshToken);
       
+      // Fetch portal information and set up phone parsing
+      let portalInfo = null;
+      try {
+        console.log('🏢 Fetching portal information...');
+        portalInfo = await PlandayApi.getPortalInfo();
+        console.log(`🏢 Portal: ${portalInfo.companyName} (${portalInfo.country})`);
+        
+        // Set up phone parser with portal country
+        const { PhoneParser } = await import('../utils');
+        PhoneParser.setPortalCountry(portalInfo.country);
+        
+        console.log(`📱 Phone parsing configured for country: ${portalInfo.country}`);
+      } catch (portalError) {
+        console.warn('⚠️ Could not fetch portal info, using default phone parsing:', portalError);
+        // Continue with authentication even if portal info fails
+      }
+      
       // Test connection and fetch initial data
       const [departments, employeeGroups, fieldDefinitions] = await Promise.all([
         PlandayApi.getDepartments(),
@@ -183,6 +212,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       updateState({
         isAuthenticated: true,
         isAuthenticating: false,
+        portalInfo,
         departments,
         employeeGroups,
         fieldDefinitions,
@@ -197,6 +227,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         isAuthenticated: false,
         isAuthenticating: false,
         authError: errorMessage,
+        portalInfo: null,
         departments: [],
         employeeGroups: [],
       });
@@ -211,11 +242,14 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   const logout = useCallback(() => {
     PlandayApi.cleanup();
     
-    setState({
+          setState({
       // Reset authentication state
       isAuthenticated: false,
       isAuthenticating: false,
       authError: null,
+      
+      // Reset portal information
+      portalInfo: null,
       
       // Reset department state
       departments: [],
@@ -363,7 +397,35 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   }, [state.isAuthenticated, updateState, handleError]);
 
   /**
-   * Refresh all Planday data (departments, employee groups, field definitions)
+   * Refresh portal information from Planday
+   */
+  const refreshPortalInfo = useCallback(async (): Promise<void> => {
+    if (!state.isAuthenticated) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      // Fetch portal information
+      const portalInfo = await PlandayApi.getPortalInfo();
+      
+      updateState({
+        portalInfo,
+      });
+
+      // Set up phone parser with portal country
+      const { PhoneParser } = await import('../utils');
+      PhoneParser.setPortalCountry(portalInfo.country);
+
+      console.log(`✅ Refreshed portal info: ${portalInfo.companyName} (${portalInfo.country})`);
+
+    } catch (error) {
+      console.warn('⚠️ Could not refresh portal info, phone parsing will use defaults:', error);
+      // Don't throw error as portal info is not critical for basic functionality
+    }
+  }, [state.isAuthenticated, updateState]);
+
+  /**
+   * Refresh all Planday data (departments, employee groups, field definitions, portal info)
    */
   const refreshPlandayData = useCallback(async (): Promise<void> => {
     if (!state.isAuthenticated) {
@@ -376,6 +438,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         refreshDepartments(),
         refreshEmployeeGroups(),
         refreshFieldDefinitions(),
+        refreshPortalInfo(),
       ]);
       
       console.log('✅ All Planday data refreshed successfully');
@@ -383,7 +446,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       console.error('❌ Failed to refresh some Planday data:', error);
       throw error;
     }
-  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshFieldDefinitions]);
+  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshFieldDefinitions, refreshPortalInfo]);
 
   /**
    * Upload employees to Planday
@@ -634,34 +697,81 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
    * Refresh data when authentication is restored
    */
   useEffect(() => {
-    // Only run if we're authenticated but don't have data
-    if (state.isAuthenticated && (state.departments.length === 0 || state.employeeGroups.length === 0)) {
-      // Add a small delay to ensure state has settled
-      const timeoutId = setTimeout(() => {
+    // Only run if we're authenticated and don't have complete data
+    const needsData = state.isAuthenticated && 
+                     (state.departments.length === 0 || state.employeeGroups.length === 0);
+                     
+    if (!needsData) return;
+    
+    const restoreData = async () => {
+      try {
+        console.log('🔄 Starting data restoration...');
+        
         // First, try to restore data from MappingService (faster than API call)
         if (MappingUtils.isInitialized()) {
           const cachedDepartments = MappingUtils.getDepartments();
           const cachedEmployeeGroups = MappingUtils.getEmployeeGroups();
           
-          updateState({
-            departments: cachedDepartments,
-            employeeGroups: cachedEmployeeGroups
+          console.log('📦 Cached data check:', {
+            departments: cachedDepartments.length,
+            employeeGroups: cachedEmployeeGroups.length
           });
-        } else {
-          refreshPlandayData().catch((error) => {
-            console.error('Failed to restore Planday data:', error);
-            // Reset authentication state if data fetch fails
-            updateState({ 
-              isAuthenticated: false,
-              authError: 'Failed to restore session data. Please re-authenticate.'
+          
+          // Only update if we have both cached data sets
+          if (cachedDepartments.length > 0 && cachedEmployeeGroups.length > 0) {
+            console.log('✅ Using cached data');
+            updateState({
+              departments: cachedDepartments,
+              employeeGroups: cachedEmployeeGroups
             });
-          });
+            return;
+          }
         }
-      }, 100); // Small delay to let state settle
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [state.isAuthenticated, state.departments.length, state.employeeGroups.length, refreshPlandayData, updateState]);
+        
+        // If no cached data or incomplete data, fetch from API
+        console.log('🌐 Fetching fresh data from API...');
+        
+        const [departments, employeeGroups, fieldDefinitions] = await Promise.all([
+          PlandayApi.getDepartments(),
+          PlandayApi.getEmployeeGroups(),
+          PlandayApi.getFieldDefinitions()
+        ]);
+        
+        // Fetch portal info separately (non-critical)
+        let portalInfo = null;
+        try {
+          portalInfo = await PlandayApi.getPortalInfo();
+          const { PhoneParser } = await import('../utils');
+          PhoneParser.setPortalCountry(portalInfo.country);
+        } catch (portalError) {
+          console.warn('⚠️ Could not fetch portal info during restoration:', portalError);
+        }
+        
+        // Initialize services
+        MappingUtils.initialize(departments, employeeGroups);
+        ValidationService.initialize(fieldDefinitions);
+        
+        updateState({
+          departments,
+          employeeGroups,
+          fieldDefinitions,
+          portalInfo
+        });
+        
+        console.log('✅ Data restoration completed successfully');
+        
+      } catch (error) {
+        console.error('❌ Failed to restore Planday data:', error);
+        updateState({ 
+          isAuthenticated: false,
+          authError: `Failed to restore session data: ${error instanceof Error ? error.message : 'Unknown error'}. Please re-authenticate.`
+        });
+      }
+    };
+    
+    restoreData();
+    
+  }, [state.isAuthenticated, state.departments.length, state.employeeGroups.length, updateState]);
 
   /**
    * Cleanup on unmount
@@ -683,6 +793,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     refreshDepartments,
     refreshEmployeeGroups,
     refreshFieldDefinitions,
+    refreshPortalInfo,
     refreshPlandayData,
     uploadEmployees,
     atomicUploadEmployees,
