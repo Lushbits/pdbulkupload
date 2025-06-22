@@ -1,0 +1,502 @@
+/**
+ * File Upload Step Component
+ * Handles Excel file upload with drag & drop functionality
+ * Features:
+ * - Drag & drop file upload
+ * - File validation and error handling
+ * - Progress tracking during parsing
+ * - Data preview with sample rows
+ * - Auto-mapping preview
+ * - File format validation
+ */
+
+import React, { useState, useRef, useCallback } from 'react';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { ExcelUtils, type ExcelParseResult } from '../../services/excelParser';
+import { ValidationService } from '../../services/mappingService';
+import type { 
+  StepComponentProps, 
+  ParsedExcelData, 
+  ExcelColumnMapping,
+  ValidationError 
+} from '../../types/planday';
+
+interface FileUploadStepProps extends StepComponentProps {
+  onFileProcessed?: (data: ParsedExcelData, mappings: ExcelColumnMapping[]) => void;
+  // Authentication success props
+  isAuthenticated?: boolean;
+  departmentCount?: number;
+  employeeGroupCount?: number;
+}
+
+export const FileUploadStep: React.FC<FileUploadStepProps> = ({
+  onNext,
+  onPrevious,
+  onFileProcessed,
+  isLoading = false,
+  isAuthenticated = false,
+  departmentCount = 0,
+  employeeGroupCount = 0,
+}) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [parseResult, setParseResult] = useState<ExcelParseResult | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Handle file selection (both drag & drop and click)
+   */
+  const handleFileSelect = useCallback(async (file: File) => {
+    setUploadError(null);
+    setParseResult(null);
+    setValidationErrors([]);
+    setProgress(0);
+
+    // Validate file format first
+    if (!ExcelUtils.isValidExcelFile(file)) {
+      setUploadError('Please upload a valid Excel file (.xlsx or .xls)');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      console.log(`📁 Processing file: ${file.name} (${ExcelUtils.formatFileSize(file.size)})`);
+
+      // Parse the Excel file with custom fields for better auto-mapping
+      const result = await ExcelUtils.parseFile(file, {
+        onProgress: (progressValue) => {
+          setProgress(progressValue);
+        },
+        customFields: ValidationService.getCustomFields(),
+      });
+
+      if (result.success && result.data && result.columnMappings) {
+        setParseResult(result);
+        
+        // Validate the parsed data
+        const errors = ExcelUtils.validateData(result.data);
+        setValidationErrors(errors);
+
+        // Notify parent component
+        if (onFileProcessed) {
+          onFileProcessed(result.data, result.columnMappings);
+        }
+
+        console.log('✅ File processing completed successfully');
+      } else {
+        setUploadError(result.error || 'Failed to process the Excel file');
+      }
+
+    } catch (error) {
+      console.error('❌ File processing failed:', error);
+      setUploadError(
+        error instanceof Error 
+          ? error.message 
+          : 'An unexpected error occurred while processing the file'
+      );
+    } finally {
+      setIsProcessing(false);
+      setProgress(0);
+    }
+  }, [onFileProcessed]);
+
+  /**
+   * Handle drag events
+   */
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  }, [handleFileSelect]);
+
+  /**
+   * Handle file input change
+   */
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  }, [handleFileSelect]);
+
+  /**
+   * Reset file upload
+   */
+  const handleReset = useCallback(() => {
+    setParseResult(null);
+    setUploadError(null);
+    setValidationErrors([]);
+    setProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
+  /**
+   * Render file upload area
+   */
+  const renderUploadArea = () => (
+    <Card
+      className={`relative border-2 border-dashed transition-colors cursor-pointer ${
+        isDragOver
+          ? 'border-blue-400 bg-blue-50'
+          : 'border-gray-300 hover:border-gray-400'
+      }`}
+      onClick={() => fileInputRef.current?.click()}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <div className="text-center py-12">
+        <div className="mb-4">
+          {isProcessing ? (
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : (
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400"
+              stroke="currentColor"
+              fill="none"
+              viewBox="0 0 48 48"
+            >
+              <path
+                d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </div>
+        
+        <div className="space-y-2">
+          {isProcessing ? (
+            <>
+              <p className="text-lg font-medium text-gray-900">
+                Processing Excel file...
+              </p>
+              <div className="w-full bg-gray-200 rounded-full h-2 max-w-xs mx-auto">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-500">
+                {progress}% complete
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-medium text-gray-900">
+                Upload your Excel file
+              </p>
+              <p className="text-gray-500">
+                Drag and drop your file here, or click to browse
+              </p>
+              <p className="text-sm text-gray-400">
+                Supports .xlsx and .xls files up to 10MB
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+      
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={handleFileInputChange}
+        className="hidden"
+        disabled={isProcessing}
+      />
+    </Card>
+  );
+
+  /**
+   * Render parsing results
+   */
+  const renderResults = () => {
+    if (!parseResult?.data) return null;
+
+    const { data, columnMappings } = parseResult;
+    const sampleData = ExcelUtils.getSample(data, 3);
+    const mappedCount = columnMappings?.filter(m => m.isMapped).length || 0;
+
+    return (
+      <div className="space-y-6">
+        {/* File Info */}
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                📁 {data.fileName}
+              </h3>
+              <p className="text-sm text-gray-600">
+                {data.totalRows} rows • {data.headers.length} columns • {ExcelUtils.formatFileSize(data.fileSize)}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleReset}>
+              Upload Different File
+            </Button>
+          </div>
+        </Card>
+
+        {/* Validation Errors/Warnings */}
+        {validationErrors.length > 0 && (
+          <Card>
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">
+              ⚠️ Data Issues Found
+            </h4>
+            <div className="space-y-2">
+              {validationErrors.map((error, index) => (
+                <div
+                  key={index}
+                  className={`p-3 rounded-md border ${
+                    error.severity === 'error'
+                      ? 'bg-red-50 border-red-200 text-red-800'
+                      : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                  }`}
+                >
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      {error.severity === 'error' ? (
+                        <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium">
+                        {error.message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Auto-mapping Results */}
+        <Card>
+          <h4 className="text-lg font-semibold text-gray-900 mb-4">
+            🎯 Auto-mapping Results
+          </h4>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-gray-600">
+              Automatically mapped {mappedCount} out of {data.headers.length} columns
+            </p>
+            <div className="flex items-center">
+              <div className="w-32 bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-green-600 h-2 rounded-full"
+                  style={{ width: `${(mappedCount / data.headers.length) * 100}%` }}
+                ></div>
+              </div>
+              <span className="ml-2 text-sm text-gray-500">
+                {Math.round((mappedCount / data.headers.length) * 100)}%
+              </span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {columnMappings?.slice(0, 8).map((mapping, index) => (
+              <div
+                key={index}
+                className={`flex items-center justify-between p-3 rounded-md border ${
+                  mapping.isMapped
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+              >
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">
+                    {mapping.excelColumn}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {mapping.isMapped ? `→ ${mapping.plandayFieldDisplayName || mapping.plandayField}` : 'Not mapped'}
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  {mapping.isMapped ? (
+                    <svg className="h-5 w-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {(columnMappings?.length || 0) > 8 && (
+            <p className="text-sm text-gray-500 mt-4">
+              And {(columnMappings?.length || 0) - 8} more columns...
+            </p>
+          )}
+        </Card>
+
+        {/* Data Preview */}
+        <Card>
+          <h4 className="text-lg font-semibold text-gray-900 mb-4">
+            👀 Data Preview (First 3 Rows)
+          </h4>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {data.headers.map((header, index) => (
+                    <th
+                      key={index}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {sampleData.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {row.map((cell, cellIndex) => (
+                      <td
+                        key={cellIndex}
+                        className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate"
+                        title={cell?.toString() || ''}
+                      >
+                        {cell?.toString() || '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="text-center space-y-2">
+        <h2 className="text-2xl font-bold text-gray-900">
+          Upload Employee Data
+        </h2>
+        <p className="text-gray-600">
+          Upload an Excel file containing your employee information
+        </p>
+      </div>
+
+      {/* Authentication Success Message */}
+      {isAuthenticated && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-green-800">
+                ✅ Connected to Planday successfully!
+                <span className="block mt-1">
+                  Found {departmentCount} departments and {employeeGroupCount} employee groups
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Area or Results */}
+      {!parseResult?.data ? (
+        <>
+          {renderUploadArea()}
+          
+          {/* Error Display */}
+          {uploadError && (
+            <Card>
+              <div className="flex items-center p-4 bg-red-50 border border-red-200 rounded-md">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-red-800">{uploadError}</p>
+                </div>
+              </div>
+            </Card>
+          )}
+        </>
+      ) : (
+        renderResults()
+      )}
+
+      {/* Action Buttons */}
+      <div className="flex justify-between">
+        <Button
+          variant="secondary"
+          onClick={onPrevious}
+          disabled={isLoading || isProcessing}
+        >
+          ← Back to Authentication
+        </Button>
+        
+        <Button
+          onClick={onNext}
+          disabled={isLoading || isProcessing || !parseResult?.data}
+        >
+          Continue to Column Mapping →
+        </Button>
+      </div>
+
+      {/* Instructions */}
+      <Card variant="outline">
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold text-gray-900">
+            📋 Excel File Requirements:
+          </h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+            <li>First row should contain column headers</li>
+            <li>Each row represents one employee</li>
+            <li>Include columns for: First Name, Last Name, Email, Department</li>
+            <li>Dates should be in recognizable format (YYYY-MM-DD, MM/DD/YYYY, etc.)</li>
+            <li>File size limit: 10MB</li>
+            <li>Maximum 1,000 employees per upload</li>
+          </ul>
+        </div>
+      </Card>
+    </div>
+  );
+}; 
