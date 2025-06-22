@@ -100,12 +100,18 @@
     @apply bg-white border-gray-300 text-gray-500;
   }
 
-  /* Sparkling background styles */
+  /* Sparkling background styles - Static position with smooth color transitions */
   .sparkling-background {
     position: relative;
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%, #f8fafc 100%);
+    background: linear-gradient(135deg, 
+      #e1e5eb 0%,    /* Lighter cold gray - top left */
+      #e2e6e4 25%,   /* Lighter transition color */
+      #e3e3e6 50%,   /* Lighter middle transition */
+      #e5e3e4 75%,   /* Lighter transition color */
+      #f8fafc 100%  /* Very light cold gray - bottom right */
+    );
     background-size: 400% 400%;
-    animation: gradient-shift 20s ease infinite;
+    animation: smooth-color-shifts 90s ease-in-out infinite;
     overflow: hidden; /* Prevent layout shifts */
   }
 
@@ -179,6 +185,13 @@
     display: inline-block;
     animation: heartbeat 8s ease-in-out infinite;
   }
+
+  /* Dynamic header text that follows background color shifts */
+  .dynamic-header {
+    animation: dark-icy-text-flow 90s ease-in-out infinite;
+  }
+
+
 }
 
 /* SPARKLE ANIMATION KEYFRAMES - COMMENTED OUT FOR NOW, CAN BE RESTORED IF NEEDED */
@@ -235,6 +248,47 @@
 }
 */
 
+/* Smooth background position animation - creates seamless color transitions */
+@keyframes smooth-color-shifts {
+  0% {
+    background-position: 0% 0%;
+  }
+  25% {
+    background-position: 25% 25%;
+  }
+  50% {
+    background-position: 50% 50%;
+  }
+  75% {
+    background-position: 75% 75%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
+}
+
+/* Header text colors perfectly synchronized with background */
+@keyframes dark-icy-text-flow {
+  0% {
+    color: #374151; /* Dark blue-gray - matches background blue phase */
+  }
+  25% {
+    color: #1f2937; /* Dark green-gray - matches background green phase */
+  }
+  50% {
+    color: #3f3f46; /* Dark purple-gray - matches background purple phase */
+  }
+  75% {
+    color: #44403c; /* Dark pink-brown - matches background pink phase */
+  }
+  100% {
+    color: #374151; /* Back to dark blue-gray */
+  }
+}
+
+
+
+/* Keep the original for backwards compatibility if needed */
 @keyframes gradient-shift {
   0% {
     background-position: 0% 50%;

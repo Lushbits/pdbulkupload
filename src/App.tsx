@@ -138,7 +138,7 @@ function App() {
             ? 'mb-12 max-h-40 opacity-100 transform translate-y-0' 
             : 'mb-0 max-h-0 opacity-0 transform -translate-y-4'
         }`}>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4 dynamic-header">
             {APP_METADATA.NAME}
           </h1>
           <p className="text-xl text-gray-600">
@@ -397,9 +397,9 @@ function App() {
         )}
 
         {/* Privacy Notice Footer */}
-        <div className="mt-16 pt-8 border-t border-gray-200">
+        <div className="mt-16 pt-8">
           <div className="text-center">
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="text-sm text-gray-800 mb-2">
               Your employee data is processed entirely on your device and sent directly to Planday - we never store, access, or process your data on our servers. <button
               onClick={() => setIsPrivacyModalOpen(true)}
               className="text-sm text-blue-600 hover:text-blue-800 underline"
@@ -410,17 +410,17 @@ function App() {
             
             {/* Version Display */}
             <div className="mt-4">
-              <div className="text-sm text-gray-400">
+              <div className="text-sm text-gray-600">
                 <button
                   onClick={() => setIsVersionModalOpen(true)}
-                  className="hover:text-gray-600 transition-colors underline"
+                  className="hover:text-gray-800 transition-colors underline"
                 >
                   Version {getCurrentVersion()}
                 </button>
                 <span className="mx-2">-</span>
                 <button
                   onClick={() => setIsCookieModalOpen(true)}
-                  className="hover:text-gray-600 transition-colors underline"
+                  className="hover:text-gray-800 transition-colors underline"
                 >
                   Cookie Policy
                 </button>
@@ -430,7 +430,7 @@ function App() {
                   href="https://www.planday.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="hover:text-gray-600 transition-colors underline"
+                  className="hover:text-gray-800 transition-colors underline"
                 >
                   Planday
                 </a>
