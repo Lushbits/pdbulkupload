@@ -425,7 +425,7 @@ function App() {
                   Cookie Policy
                 </button>
                 <span className="mx-2">-</span>
-                <span>Made with ❤️ by the </span>
+                <span>Made with <span className="heartbeat">❤️</span> by the </span>
                 <a 
                   href="https://www.planday.com" 
                   target="_blank" 
