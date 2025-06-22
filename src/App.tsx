@@ -430,7 +430,7 @@ function App() {
                   href="https://www.planday.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                  className="hover:text-gray-600 transition-colors underline"
                 >
                   Planday
                 </a>
