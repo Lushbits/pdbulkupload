@@ -570,13 +570,30 @@ export class ValidationService {
 
   /**
    * Get required fields for the current portal
+   * Note: userName and departments are always required for ALL portals to create employees,
+   * even if the API field definitions don't mark them as required
    */
   static getRequiredFields(): string[] {
     if (!this.fieldDefinitions) {
       console.warn('⚠️ Field definitions not loaded, using fallback required fields');
-      return ['firstName', 'lastName']; // Safe fallback
+      return ['firstName', 'lastName', 'userName', 'departments']; // Safe fallback with business-critical fields
     }
-    return this.fieldDefinitions.required;
+    
+    // Start with fields marked as required by the API
+    const apiRequiredFields = [...this.fieldDefinitions.required];
+    
+    // Always ensure userName and departments are marked as required
+    // These are business-critical for creating employees in ANY Planday portal
+    const businessCriticalFields = ['userName', 'departments'];
+    
+    for (const field of businessCriticalFields) {
+      if (!apiRequiredFields.includes(field)) {
+        console.log(`🔒 Force-marking '${field}' as required (business-critical field)`);
+        apiRequiredFields.push(field);
+      }
+    }
+    
+    return apiRequiredFields;
   }
 
   /**
