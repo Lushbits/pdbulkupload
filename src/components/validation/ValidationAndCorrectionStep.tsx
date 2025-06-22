@@ -8,6 +8,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button } from '../ui';
 import { MappingUtils, type ErrorPattern, type BulkCorrectionSummary } from '../../services/mappingService';
 import { DataCorrectionStep } from './DataCorrectionStep';
+import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
 
 interface ValidationAndCorrectionStepProps {
   employees: any[];
@@ -15,6 +16,7 @@ interface ValidationAndCorrectionStepProps {
   employeeGroups: any[];
   onComplete: (correctedEmployees: any[]) => void;
   onBack: () => void;
+  plandayApi: UsePlandayApiReturn;
   className?: string;
 }
 
@@ -223,6 +225,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   employeeGroups,
   onComplete,
   onBack,
+  plandayApi,
   className = ''
 }) => {
   const [currentPhase, setCurrentPhase] = useState<'bulk-correction' | 'individual-correction' | 'complete'>('bulk-correction');
@@ -463,6 +466,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
         employees={currentEmployees}
         departments={departments}
         employeeGroups={employeeGroups}
+        plandayApi={plandayApi}
         onComplete={(correctedEmployees) => {
           setCurrentEmployees(correctedEmployees);
           console.log('✅ Individual corrections complete, proceeding with', correctedEmployees.length, 'corrected employees');

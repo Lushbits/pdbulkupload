@@ -272,6 +272,7 @@ export interface Employee {
   cellPhone?: string;
   hireDate?: string;
   rowIndex: number;
+  _skipUpload?: boolean; // Flag to mark employee for skipping during upload
   [key: string]: any; // Allow additional fields from Excel
 }
 

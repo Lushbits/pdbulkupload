@@ -85,6 +85,11 @@ interface PlandayApiActions {
     employeeIds: number[]
   ) => Promise<PlandayEmployeeResponse[]>;
   
+  // Duplicate checking for validation
+  checkExistingEmployeesByEmail: (
+    emailAddresses: string[]
+  ) => Promise<Map<string, PlandayEmployeeResponse>>;
+  
   // Utility actions
   testConnection: () => Promise<boolean>;
   clearErrors: () => void;
@@ -580,6 +585,28 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   }, [state.isAuthenticated, updateState]);
 
   /**
+   * Check if employees with specific email addresses already exist in Planday
+   */
+  const checkExistingEmployeesByEmail = useCallback(async (
+    emailAddresses: string[]
+  ): Promise<Map<string, PlandayEmployeeResponse>> => {
+    if (!state.isAuthenticated) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+
+    try {
+      const existingEmployees = await PlandayApi.checkExistingEmployeesByEmail(emailAddresses);
+      console.log(`✅ Checked ${emailAddresses.length} emails, found ${existingEmployees.size} existing employees`);
+      
+      return existingEmployees;
+    } catch (error) {
+      console.error('❌ Failed to check existing employees by email:', error);
+      const errorMessage = handleError(error);
+      throw new Error(errorMessage);
+    }
+  }, [state.isAuthenticated, handleError]);
+
+  /**
    * Clear all error states
    */
   const clearErrors = useCallback(() => {
@@ -661,6 +688,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     atomicUploadEmployees,
     fetchEmployees,
     fetchEmployeesByIds,
+    checkExistingEmployeesByEmail,
     testConnection,
     clearErrors,
   };

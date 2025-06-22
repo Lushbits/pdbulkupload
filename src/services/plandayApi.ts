@@ -304,6 +304,51 @@ export class PlandayApiClient {
   }
 
   /**
+   * Check if employees with specific email addresses already exist in Planday
+   * Returns a map of email -> existing employee data
+   */
+  async checkExistingEmployeesByEmail(emailAddresses: string[]): Promise<Map<string, PlandayEmployeeResponse>> {
+    const existingEmployees = new Map<string, PlandayEmployeeResponse>();
+    
+    try {
+      console.log(`🔍 Checking for existing employees with ${emailAddresses.length} email addresses...`);
+      
+      // Fetch all employees in batches to check for duplicates
+      // Note: Planday API doesn't have a direct "search by email" endpoint,
+      // so we need to fetch employees and filter locally
+      let offset = 0;
+      const limit = 100;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const result = await this.fetchEmployees(limit, offset);
+        
+        // Check each employee's email against our list
+        for (const employee of result.employees) {
+          if (employee.userName && emailAddresses.includes(employee.userName.toLowerCase())) {
+            existingEmployees.set(employee.userName.toLowerCase(), employee);
+          }
+        }
+        
+        hasMore = result.hasMore;
+        offset += limit;
+        
+        // Add a small delay between batches to respect rate limits
+        if (hasMore) {
+          await this.delay(200);
+        }
+      }
+      
+      console.log(`✅ Found ${existingEmployees.size} existing employees out of ${emailAddresses.length} checked`);
+      return existingEmployees;
+      
+    } catch (error) {
+      console.error('❌ Failed to check existing employees by email:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Fetch specific employees by IDs for verification
    * More efficient when we know exactly which employees to verify
    */
@@ -906,5 +951,13 @@ export const PlandayApi = {
    */
   cleanup(): void {
     plandayApiClient.cleanup();
+  },
+
+  /**
+   * Check if employees with specific email addresses already exist in Planday
+   * Returns a map of email -> existing employee data
+   */
+  async checkExistingEmployeesByEmail(emailAddresses: string[]): Promise<Map<string, PlandayEmployeeResponse>> {
+    return plandayApiClient.checkExistingEmployeesByEmail(emailAddresses);
   },
 }; 

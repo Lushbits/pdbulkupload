@@ -717,6 +717,36 @@ export class ValidationService {
   }
 
   /**
+   * Validate employees against existing Planday employees to check for duplicates
+   */
+  static validateExistingEmployees(
+    employees: any[], 
+    existingEmployees: Map<string, any>
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    
+    employees.forEach((employee, index) => {
+      const email = employee.userName;
+      if (email && email.trim() !== '') {
+        const normalizedEmail = email.toLowerCase().trim();
+        const existingEmployee = existingEmployees.get(normalizedEmail);
+        
+        if (existingEmployee) {
+          errors.push({
+            field: 'userName',
+            value: email,
+            message: `Employee with email "${email}" already exists in Planday (ID: ${existingEmployee.id}, Name: ${existingEmployee.firstName} ${existingEmployee.lastName})`,
+            rowIndex: index,
+            severity: 'error'
+          });
+        }
+      }
+    });
+    
+    return errors;
+  }
+
+  /**
    * Get field definitions status
    */
   static getStatus(): {

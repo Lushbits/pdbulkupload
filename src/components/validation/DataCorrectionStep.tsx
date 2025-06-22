@@ -14,17 +14,21 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Button, Input, Card } from '../ui';
 import { ValidationService } from '../../services/mappingService';
 import { VALIDATION_CONFIG } from '../../constants';
+
 import type { 
   Employee, 
   ValidationError, 
   PlandayDepartment,
-  PlandayEmployeeGroup
+  PlandayEmployeeGroup,
+  PlandayEmployeeResponse
 } from '../../types/planday';
+import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
 
 interface DataCorrectionStepProps {
   employees: Employee[];
   departments: PlandayDepartment[];
   employeeGroups: PlandayEmployeeGroup[];
+  plandayApi: UsePlandayApiReturn;
   onComplete: (correctedEmployees: Employee[]) => void;
   onBack: () => void;
   className?: string;
@@ -45,6 +49,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   employees: initialEmployees,
   departments,
   employeeGroups,
+  plandayApi,
   onComplete,
   onBack,
   className = ''
@@ -58,6 +63,10 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   const [searchFilter, setSearchFilter] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
+  // New state for duplicate checking
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [existingEmployees, setExistingEmployees] = useState<Map<string, PlandayEmployeeResponse>>(new Map());
+  
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Initialize mapping service with department and employee group data
@@ -70,10 +79,54 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     });
   }, [departments, employeeGroups]);
 
+  // Check for existing employees with duplicate emails on component initialization
+  useEffect(() => {
+    const checkForExistingEmployees = async () => {
+      try {
+        setIsCheckingDuplicates(true);
+        console.log('🔍 Checking for existing employees with duplicate emails...');
+        
+        // Extract email addresses from employees
+        const emailAddresses = employees
+          .map(emp => emp.userName)
+          .filter(email => email && email.trim() !== '')
+          .map(email => email!.toLowerCase().trim());
+        
+        if (emailAddresses.length === 0) {
+          console.log('⚠️ No email addresses found to check for duplicates');
+          setIsCheckingDuplicates(false);
+          return;
+        }
+        
+        // Check for existing employees
+        const existingEmps = await plandayApi.checkExistingEmployeesByEmail(emailAddresses);
+        setExistingEmployees(existingEmps);
+        
+        if (existingEmps.size > 0) {
+          console.log(`⚠️ Found ${existingEmps.size} existing employees with matching emails`);
+        } else {
+          console.log('✅ No existing employees found with matching emails');
+        }
+        
+      } catch (error) {
+        console.error('❌ Failed to check for existing employees:', error);
+        // Don't block validation if duplicate check fails - just log and continue
+      } finally {
+        setIsCheckingDuplicates(false);
+      }
+    };
+
+    // Only check if we have authentication and employees
+    if (plandayApi.isAuthenticated && employees.length > 0) {
+      checkForExistingEmployees();
+    }
+  }, [employees.length]); // Only run when employees change, not on every re-render
+
   // Validate all employees on component mount and when data changes
   useEffect(() => {
+    console.log('🔄 Re-running validation due to data changes');
     validateAllEmployees();
-  }, [employees]);
+  }, [employees, existingEmployees]); // Re-validate when existing employees data changes
 
   // Focus input when editing cell
   useEffect(() => {
@@ -153,8 +206,23 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       newValidationErrors.set(employeeKey, existingErrors);
     });
 
+    // Validate against existing employees in Planday (duplicate checking)
+    if (existingEmployees.size > 0) {
+      console.log('🔍 Running duplicate validation against', existingEmployees.size, 'existing employees');
+      const existingEmployeeErrors = ValidationService.validateExistingEmployees(employees, existingEmployees);
+      console.log('🔍 Found', existingEmployeeErrors.length, 'duplicate validation errors');
+      
+      existingEmployeeErrors.forEach(error => {
+        const employeeKey = `employee-${error.rowIndex}`;
+        const existingErrors = newValidationErrors.get(employeeKey) || [];
+        existingErrors.push(error);
+        newValidationErrors.set(employeeKey, existingErrors);
+        console.log('🔍 Added duplicate error for', employeeKey, ':', error.message);
+      });
+    }
+
     setValidationErrors(newValidationErrors);
-  }, [employees]);
+  }, [employees, existingEmployees]);
 
   /**
    * Handle cell click to start editing
@@ -261,6 +329,26 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   };
 
   /**
+   * Mark duplicate employees to be skipped (excluded from upload)
+   */
+  const handleSkipDuplicates = useCallback(() => {
+    const duplicateEmails = new Set(Array.from(existingEmployees.keys()));
+    const updatedEmployees = employees.map(emp => {
+      const email = emp.userName?.toLowerCase().trim();
+      if (email && duplicateEmails.has(email)) {
+        return { ...emp, _skipUpload: true }; // Add flag to skip this employee
+      }
+      return emp;
+    });
+    
+    console.log(`⏭️ Marking ${Array.from(duplicateEmails).length} employees to be skipped`);
+    setEmployees(updatedEmployees);
+    
+    // Clear existing employees state since duplicates are now marked to skip
+    setExistingEmployees(new Map());
+  }, [employees, existingEmployees]);
+
+  /**
    * Apply bulk edit to selected rows
    */
   const applyBulkEdit = async () => {
@@ -319,7 +407,40 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     (sum, errors) => sum + errors.filter(e => e.severity === 'warning').length, 
     0
   );
-  const validEmployees = employees.length - validationErrors.size;
+  
+  // Calculate employees with no errors (not just no validation entries)
+  const employeesWithErrors = new Set<number>();
+  const skippedEmployees = new Set<number>();
+  
+  employees.forEach((emp, index) => {
+    if (emp._skipUpload) {
+      skippedEmployees.add(index);
+    }
+  });
+  
+  validationErrors.forEach((errors, employeeKey) => {
+    if (errors.some(e => e.severity === 'error')) {
+      const rowIndex = parseInt(employeeKey.split('-')[1]);
+      employeesWithErrors.add(rowIndex);
+    }
+  });
+  
+  const validEmployees = employees.length - employeesWithErrors.size - skippedEmployees.size;
+  const willBeUploaded = employees.length - skippedEmployees.size;
+
+  // Debug logging
+  console.log('🔍 Validation Debug:', {
+    totalEmployees: employees.length,
+    validationErrorsMapSize: validationErrors.size,
+    totalErrors,
+    totalWarnings,
+    validEmployees,
+    employeesWithErrors: Array.from(employeesWithErrors),
+    existingEmployeesCount: existingEmployees.size,
+    isCheckingDuplicates,
+    validationErrorsMap: Object.fromEntries(validationErrors.entries()),
+    existingEmployees: Array.from(existingEmployees.entries())
+  });
 
   // Get all fields that actually have data (dynamically determined from employee data)
   const editableFields = useMemo(() => {
@@ -389,6 +510,12 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
               <span className="font-medium text-green-600">{validEmployees}</span> valid • 
               <span className="font-medium text-red-600 ml-1">{totalErrors}</span> errors • 
               <span className="font-medium text-yellow-600 ml-1">{totalWarnings}</span> warnings
+              {skippedEmployees.size > 0 && (
+                <>
+                  {' • '}
+                  <span className="font-medium text-blue-600">{skippedEmployees.size}</span> skipped
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -397,6 +524,72 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
           Review and edit individual employee records. Click any cell to edit inline. 
           All errors must be resolved before proceeding to upload.
         </p>
+
+        {/* Duplicate Checking Status */}
+        {isCheckingDuplicates && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span className="text-blue-800 font-medium">
+                🔍 Checking for existing employees in Planday...
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Duplicate Check Results */}
+        {!isCheckingDuplicates && existingEmployees.size > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <span className="text-yellow-600 text-lg mr-2">⚠️</span>
+                <span className="text-yellow-800 font-medium">
+                  Found {existingEmployees.size} employees that already exist in Planday
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSkipDuplicates}
+                className="text-blue-700 border-blue-300 hover:bg-blue-50"
+              >
+                ⏭️ Skip Duplicates
+              </Button>
+            </div>
+            <p className="text-yellow-700 text-sm mt-2">
+              Click <strong>Skip Duplicates</strong> to exclude them from upload while keeping them visible for review.
+            </p>
+          </div>
+        )}
+
+        {/* Show skipped employees status */}
+        {skippedEmployees.size > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center">
+              <span className="text-blue-600 text-lg mr-2">ℹ️</span>
+              <span className="text-blue-800 font-medium">
+                {skippedEmployees.size} employees marked to skip upload
+              </span>
+            </div>
+            <p className="text-blue-700 text-sm mt-1">
+              These employees are visible below with blue highlighting but will not be uploaded to Planday.
+            </p>
+          </div>
+        )}
+
+        {!isCheckingDuplicates && existingEmployees.size === 0 && employees.length > 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center">
+              <span className="text-green-600 text-lg mr-2">✅</span>
+              <span className="text-green-800 font-medium">
+                No duplicate employees found in Planday
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Search and Filter */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -500,19 +693,22 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-                             {filteredEmployees.map((employee) => {
-                 const originalIndex = employees.indexOf(employee);
-                 const employeeKey = `employee-${originalIndex}`;
-                 const errors = validationErrors.get(employeeKey) || [];
-                 const hasErrors = errors.some(e => e.severity === 'error');
-                 const hasWarnings = errors.some(e => e.severity === 'warning');
+                                           {filteredEmployees.map((employee) => {
+                const originalIndex = employees.indexOf(employee);
+                const employeeKey = `employee-${originalIndex}`;
+                const errors = validationErrors.get(employeeKey) || [];
+                const hasErrors = errors.some(e => e.severity === 'error');
+                const hasWarnings = errors.some(e => e.severity === 'warning');
+                const isSkipped = employee._skipUpload;
 
                 return (
                   <tr 
                     key={originalIndex} 
                     className={`hover:bg-gray-50 ${
-                      hasErrors ? 'bg-red-50' : hasWarnings ? 'bg-yellow-50' : ''
-                    } ${selectedRows.has(originalIndex) ? 'bg-blue-50' : ''}`}
+                      isSkipped ? 'bg-blue-50 opacity-75 border-l-4 border-blue-400' : 
+                      hasErrors ? 'bg-red-50' : 
+                      hasWarnings ? 'bg-yellow-50' : ''
+                    } ${selectedRows.has(originalIndex) ? 'ring-2 ring-blue-500' : ''}`}
                   >
                     <td className="px-4 py-3 whitespace-nowrap">
                       <input
@@ -523,7 +719,14 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                       />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {originalIndex + 1}
+                      <div className="flex items-center gap-2">
+                        <span>{originalIndex + 1}</span>
+                        {isSkipped && (
+                          <span className="text-blue-600 font-medium text-xs bg-blue-100 px-2 py-1 rounded" title="This employee will be skipped during upload">
+                            SKIP
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {editableFields.map(field => (
                       <td key={field} className="px-4 py-3 whitespace-nowrap relative">
@@ -623,11 +826,20 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
             </div>
             
             <Button
-              onClick={() => onComplete(employees)}
-              disabled={totalErrors > 0}
-              className={totalErrors === 0 ? 'bg-green-600 hover:bg-green-700' : ''}
+              onClick={() => {
+                // Filter out employees marked to skip
+                const employeesToUpload = employees.filter(emp => !emp._skipUpload);
+                onComplete(employeesToUpload);
+              }}
+              disabled={totalErrors > 0 || willBeUploaded === 0}
+              className={totalErrors === 0 && willBeUploaded > 0 ? 'bg-green-600 hover:bg-green-700' : ''}
             >
-              {totalErrors === 0 ? '✅ Proceed to Upload Preview' : `Fix ${totalErrors} errors first`}
+              {willBeUploaded === 0 ? 
+                '❌ No employees to upload' : 
+                totalErrors === 0 ? 
+                  `✅ Proceed with ${willBeUploaded} employees` : 
+                  `Fix ${totalErrors} errors first`
+              }
             </Button>
           </div>
         </div>

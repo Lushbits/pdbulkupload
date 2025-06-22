@@ -183,6 +183,7 @@ function App() {
               setCurrentStep(WorkflowStep.ColumnMapping);
               setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
             }}
+            plandayApi={plandayApi}
           />
         )}
 
