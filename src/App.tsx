@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Card, ProgressIndicator, PrivacyModal, VersionModal } from './components/ui';
+import { Button, Card, ProgressIndicator, PrivacyModal, VersionModal, getCurrentVersion } from './components/ui';
 import { AuthenticationStep } from './components/auth/AuthenticationStep';
 import { FileUploadStep } from './components/upload/FileUploadStep';
 import MappingStep from './components/mapping/MappingStep';
@@ -371,7 +371,7 @@ function App() {
                   onClick={() => setIsVersionModalOpen(true)}
                   className="hover:text-gray-600 transition-colors underline"
                 >
-                  Version 0.1.1
+                  Version {getCurrentVersion()}
                 </button>
                 <span className="mx-2">-</span>
                 <span>Made with ❤️ by the </span>

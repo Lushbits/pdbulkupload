@@ -10,50 +10,52 @@ interface VersionModalProps {
   onClose: () => void;
 }
 
+// Version history data - single source of truth for all versions
+const versionHistory = [
+  {
+    version: '0.1.2',
+    date: new Date().toISOString().split('T')[0],
+    features: [
+      'Enhanced duplicate employee detection with real-time validation',
+      'Dynamic duplicate banner updates when emails are corrected',
+      'Improved username field editing with immediate duplicate checking',
+      'Excluded username/email fields from bulk editing for data integrity',
+      'Fixed duplicate validation state management and UI responsiveness'
+    ]
+  },
+  {
+    version: '0.1.1',
+    date: new Date().toISOString().split('T')[0],
+    features: [
+      'Added ignore column functionality for mapping step',
+      'Implemented Excel template download with portal-specific fields',
+      'Enhanced column mapping with visual field indicators',
+      'Improved user interface consistency and visual hierarchy',
+      'Fixed template generation with proper field ordering'
+    ]
+  },
+  {
+    version: '0.1.0',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Beta Release',
+    features: [
+      'Complete Planday API integration with OAuth authentication',
+      'Excel file upload and parsing with auto-mapping capabilities',
+      'Dynamic column mapping with portal-specific field definitions',
+      'Data validation and error correction workflows',
+      'Bulk employee upload with real-time progress tracking',
+      'Department and employee group name resolution',
+      'Comprehensive error handling and user feedback',
+      'Responsive design with modern UI components'
+    ]
+  }
+];
+
+// Export the current version for use in other components
+export const getCurrentVersion = () => versionHistory[0].version;
+
 export const VersionModal: React.FC<VersionModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
-
-  const today = new Date().toISOString().split('T')[0];
-
-  const versionHistory = [
-    {
-      version: '0.1.2',
-      date: today,
-      features: [
-        'Enhanced duplicate employee detection with real-time validation',
-        'Dynamic duplicate banner updates when emails are corrected',
-        'Improved username field editing with immediate duplicate checking',
-        'Excluded username/email fields from bulk editing for data integrity',
-        'Fixed duplicate validation state management and UI responsiveness'
-      ]
-    },
-    {
-      version: '0.1.1',
-      date: today,
-      features: [
-        'Added ignore column functionality for mapping step',
-        'Implemented Excel template download with portal-specific fields',
-        'Enhanced column mapping with visual field indicators',
-        'Improved user interface consistency and visual hierarchy',
-        'Fixed template generation with proper field ordering'
-      ]
-    },
-    {
-      version: '0.1.0',
-      date: today,
-      title: 'Beta Release',
-      features: [
-        'Complete Planday API integration with OAuth authentication',
-        'Excel file upload and parsing with auto-mapping capabilities',
-        'Dynamic column mapping with portal-specific field definitions',
-        'Data validation and error correction workflows',
-        'Bulk employee upload with real-time progress tracking',
-        'Department and employee group name resolution',
-        'Comprehensive error handling and user feedback',
-        'Responsive design with modern UI components'
-      ]
-    }
-  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
