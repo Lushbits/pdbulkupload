@@ -17,6 +17,17 @@ export const VersionModal: React.FC<VersionModalProps> = ({ isOpen, onClose }) =
 
   const versionHistory = [
     {
+      version: '0.1.2',
+      date: today,
+      features: [
+        'Enhanced duplicate employee detection with real-time validation',
+        'Dynamic duplicate banner updates when emails are corrected',
+        'Improved username field editing with immediate duplicate checking',
+        'Excluded username/email fields from bulk editing for data integrity',
+        'Fixed duplicate validation state management and UI responsiveness'
+      ]
+    },
+    {
       version: '0.1.1',
       date: today,
       features: [

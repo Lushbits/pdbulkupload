@@ -249,12 +249,49 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   };
 
   /**
+   * Re-check duplicates for specific email addresses
+   */
+  const recheckDuplicatesForEmails = useCallback(async (emailAddresses: string[]) => {
+    if (!plandayApi.isAuthenticated || emailAddresses.length === 0) return;
+
+    try {
+      console.log('🔍 Re-checking duplicates for modified email addresses:', emailAddresses);
+      
+      // Check only the specific emails that were modified
+      const existingEmps = await plandayApi.checkExistingEmployeesByEmail(emailAddresses);
+      
+      // Merge with existing results, but update/remove entries for the checked emails
+      setExistingEmployees(prev => {
+        const updated = new Map(prev);
+        
+        // Remove old entries for the checked emails
+        emailAddresses.forEach(email => {
+          const normalizedEmail = email.toLowerCase().trim();
+          updated.delete(normalizedEmail);
+        });
+        
+        // Add new entries if duplicates were found
+        existingEmps.forEach((employee, email) => {
+          updated.set(email, employee);
+        });
+        
+        return updated;
+      });
+      
+      console.log(`✅ Re-check complete: found ${existingEmps.size} duplicates among ${emailAddresses.length} checked emails`);
+    } catch (error) {
+      console.error('❌ Failed to re-check duplicates:', error);
+    }
+  }, [plandayApi]);
+
+  /**
    * Commit cell edit
    */
   const commitCellEdit = useCallback(() => {
     if (!editingCell) return;
 
     const { rowIndex, field, value } = editingCell;
+    const oldValue = employees[rowIndex]?.[field];
     
     setEmployees(prev => {
       const updated = [...prev];
@@ -265,8 +302,30 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       return updated;
     });
 
+    // If userName field was modified, re-check duplicates for the new email
+    if (field === 'userName' && value !== oldValue) {
+      // Remove the old email from existingEmployees if it was there
+      if (oldValue && oldValue.trim() !== '') {
+        const oldNormalizedEmail = oldValue.toLowerCase().trim();
+        setExistingEmployees(prev => {
+          const updated = new Map(prev);
+          updated.delete(oldNormalizedEmail);
+          return updated;
+        });
+      }
+      
+      // Check the new email for duplicates if it's valid
+      if (value && value.trim() !== '') {
+        const normalizedEmail = value.toLowerCase().trim();
+        // Only check if it looks like a valid email format
+        if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(normalizedEmail)) {
+          recheckDuplicatesForEmails([normalizedEmail]);
+        }
+      }
+    }
+
     setEditingCell(null);
-  }, [editingCell]);
+  }, [editingCell, employees, recheckDuplicatesForEmails]);
 
   /**
    * Cancel cell edit
@@ -463,6 +522,11 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     return [...importantFields.filter(field => fieldSet.has(field)), ...otherFields] as (keyof Employee)[];
   }, [employees]);
 
+  // Get fields that can be bulk edited (exclude userName since emails must be unique)
+  const bulkEditableFields = useMemo(() => {
+    return editableFields.filter(field => field !== 'userName');
+  }, [editableFields]);
+
   // Helper function to get display name for field
   const getFieldDisplayName = (fieldName: string): string => {
     // Check if it's a custom field
@@ -626,6 +690,9 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
             <h4 className="text-sm font-medium text-blue-900 mb-3">
               Bulk Edit ({selectedRows.size} rows selected)
             </h4>
+            <p className="text-xs text-blue-700 mb-3">
+              📧 Email addresses (userName) cannot be bulk edited since each employee needs a unique email.
+            </p>
             <div className="flex flex-col md:flex-row gap-3">
               <select
                 value={bulkEditField}
@@ -633,7 +700,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                 className="px-3 py-2 border border-blue-300 rounded-md text-sm"
               >
                 <option value="">Select field...</option>
-                                 {editableFields.map(field => (
+                                 {bulkEditableFields.map(field => (
                    <option key={field} value={field}>
                      {getFieldDisplayName(field.toString())}
                    </option>
