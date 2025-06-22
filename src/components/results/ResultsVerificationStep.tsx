@@ -355,7 +355,7 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
 
   const renderEmployeeRow = (result: VerificationResult, index: number) => {
     const globalIndex = startIndex + index + 1;
-    const statusColor = result.verified ? 'text-green-600' : 'text-red-600';
+    // const statusColor = result.verified ? 'text-green-600' : 'text-red-600';
     const statusIcon = result.verified ? '✅' : '❌';
     
     return (

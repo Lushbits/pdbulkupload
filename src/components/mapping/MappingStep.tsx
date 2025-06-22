@@ -137,8 +137,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
       initialColumnMappings.forEach(mapping => {
         if (mapping.isMapped && mapping.plandayField) {
           // Check if the field exists in our available fields
-          if (availableFieldNames.has(mapping.plandayField)) {
-            initialMappings[mapping.excelColumn] = mapping.plandayField;
+          if (availableFieldNames.has(mapping.plandayField as string)) {
+            initialMappings[mapping.excelColumn] = mapping.plandayField as string;
           } else {
             console.warn(`Field "${mapping.plandayField}" not found in available fields. Skipping mapping for "${mapping.excelColumn}"`);
           }

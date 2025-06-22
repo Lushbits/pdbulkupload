@@ -8,7 +8,7 @@
  * - Automatic token management
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
@@ -23,7 +23,6 @@ interface AuthenticationStepProps extends StepComponentProps {
 export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
   onNext,
   onAuthenticated,
-  isLoading = false,
   plandayApi,
 }) => {
   const [refreshToken, setRefreshToken] = useState('');

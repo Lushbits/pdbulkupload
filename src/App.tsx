@@ -50,7 +50,7 @@ function App() {
   
   // Enhanced mapping data (will be used in later steps)
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [mappedColumns, setMappedColumns] = useState<ColumnMapping>({});
+  const [, setMappedColumns] = useState<ColumnMapping>({});
   
   // Upload results state for verification step
   const [uploadResults, setUploadResults] = useState<EmployeeUploadResult[]>([]);

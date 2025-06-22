@@ -485,11 +485,11 @@ export class PlandayApiClient {
         batchResults.push({
           employee,
           success: true,
-          plandayId: response.data?.id || response.id, // Handle both wrapped and unwrapped responses
+          plandayId: response.data?.id || (response as any).id, // Handle both wrapped and unwrapped responses
           rowIndex,
         });
 
-        console.log(`✅ Created employee: ${employee.firstName} ${employee.lastName} (ID: ${response.data?.id || response.id})`);
+        console.log(`✅ Created employee: ${employee.firstName} ${employee.lastName} (ID: ${response.data?.id || (response as any).id})`);
 
       } catch (error) {
         let errorMessage = 'Unknown error';
@@ -637,11 +637,11 @@ export class PlandayApiClient {
         batchResults.push({
           employee,
           success: true,
-          plandayId: response.data?.id || response.id, // Handle both wrapped and unwrapped responses
+          plandayId: response.data?.id || (response as any).id, // Handle both wrapped and unwrapped responses
           rowIndex,
         });
 
-        console.log(`✅ Created employee: ${employee.firstName} ${employee.lastName} (ID: ${response.data?.id || response.id})`);
+        console.log(`✅ Created employee: ${employee.firstName} ${employee.lastName} (ID: ${response.data?.id || (response as any).id})`);
 
       } catch (error) {
         const errorMessage = error instanceof PlandayApiError 
