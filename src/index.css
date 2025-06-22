@@ -99,6 +99,59 @@
   .progress-step-pending {
     @apply bg-white border-gray-300 text-gray-500;
   }
+
+  /* Sparkling background styles */
+  .sparkling-background {
+    position: relative;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%, #f8fafc 100%);
+    background-size: 400% 400%;
+    animation: gradient-shift 20s ease infinite;
+    overflow: hidden; /* Prevent layout shifts */
+  }
+
+  /* SPARKLE DOTS - COMMENTED OUT FOR NOW, CAN BE RESTORED IF NEEDED */
+  /*
+  .sparkling-background::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      radial-gradient(circle, rgba(255, 255, 255, 0.9) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.7) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.8) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.6) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.9) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+    background-size: 150px 180px, 220px 200px, 180px 250px, 300px 180px, 250px 300px, 350px 220px;
+    background-position: 0 0, 80px 60px, 30px 120px, 150px 40px, 200px 160px, 120px 200px;
+    animation: sparkle-rare 12s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .sparkling-background::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      radial-gradient(circle, rgba(255, 255, 255, 0.8) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.6) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.7) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.9) 1px, transparent 1px),
+      radial-gradient(circle, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+    background-size: 280px 200px, 320px 280px, 200px 320px, 380px 250px, 180px 380px;
+    background-position: 60px 30px, 180px 100px, 40px 180px, 220px 80px, 280px 200px;
+    animation: sparkle-very-rare 18s ease-in-out infinite 6s;
+    pointer-events: none;
+    z-index: 1;
+  }
+  */
 }
 
 @layer utilities {
@@ -119,5 +172,77 @@
   
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* SPARKLE ANIMATION KEYFRAMES - COMMENTED OUT FOR NOW, CAN BE RESTORED IF NEEDED */
+/*
+@keyframes sparkle-rare {
+  0% {
+    opacity: 1;
+  }
+  5% {
+    opacity: 0.3;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes sparkle-very-rare {
+  0% {
+    opacity: 1;
+  }
+  3% {
+    opacity: 0.1;
+  }
+  6% {
+    opacity: 0.8;
+  }
+  9% {
+    opacity: 0.3;
+  }
+  12% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 0.4;
+  }
+  91% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+*/
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  25% {
+    background-position: 100% 50%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  75% {
+    background-position: 0% 100%;
+  }
+  100% {
+    background-position: 0% 50%;
   }
 }

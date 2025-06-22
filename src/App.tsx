@@ -102,8 +102,8 @@ function App() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+    <div className="min-h-screen sparkling-background flex items-center justify-center py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative" style={{zIndex: 10}}>
         
 
 
