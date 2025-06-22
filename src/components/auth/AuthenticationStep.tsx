@@ -75,16 +75,6 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold text-gray-900">
-          Connect to Planday
-        </h2>
-        <p className="text-gray-600">
-          Enter your Planday refresh token to start the bulk upload process
-        </p>
-      </div>
-
       {/* Authentication Form and Instructions - Side by Side */}
       {isAuthenticated ? (
         /* Already Authenticated State */
@@ -129,14 +119,23 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
         </Card>
       ) : (
         /* Not Authenticated State - Side by Side Layout */
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6 items-stretch">
           {/* Authentication Form */}
-          <Card>
-            <div className="space-y-4">
-              <div>
-                              <label htmlFor="refreshToken" className="block text-lg font-semibold text-gray-700 mb-2">
-                Refresh Token
-              </label>
+          <Card padding="none">
+            <div className="h-full p-6">
+              <div className="w-full space-y-6">
+                {/* Header */}
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    Connect to Planday
+                  </h2>
+                  <p className="text-gray-600">
+                    Enter your Planday refresh token to start the bulk upload process:
+                  </p>
+                </div>
+                
+                {/* Token Input */}
+                <div>
                 <Input
                   id="refreshToken"
                   type="password"
@@ -147,9 +146,6 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
                   error={authError || undefined}
                   className="font-mono text-sm"
                 />
-                <p className="mt-2 text-xs text-gray-500">
-                  Get your token from Planday Settings → API Access
-                </p>
               </div>
 
               {/* Error Display */}
@@ -178,11 +174,12 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
                   {isAuthenticating ? 'Connecting...' : 'Connect to Planday'}
                 </Button>
               </div>
+              </div>
             </div>
           </Card>
 
           {/* Instructions */}
-          <Card variant="outline">
+          <Card>
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-gray-900">
                 How to get your refresh token:
@@ -190,18 +187,21 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
               <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600">
                 <li>Log in to your Planday portal</li>
                 <li>Go to Settings → API Access</li>
-                <li>Click "Connect APP" and connect to app: <code className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">a1cf1063-3590-4edd-b8bf-80b32481f77a</code> <button
-                      onClick={() => navigator.clipboard.writeText('a1cf1063-3590-4edd-b8bf-80b32481f77a')}
-                      className="inline-flex items-center justify-center w-4 h-4 ml-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                      title="Copy app ID to clipboard"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </button></li>
+                <li>Click "Connect APP" and connect to app: <br/>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="bg-gray-100 px-2 py-1 rounded text-xs font-mono">a1cf1063-3590-4edd-b8bf-80b32481f77a</code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText('a1cf1063-3590-4edd-b8bf-80b32481f77a')}
+                        className="inline-flex items-center justify-center w-6 h-6 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border border-gray-200 hover:border-gray-300 transition-all duration-200"
+                        title="Copy app ID to clipboard"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div></li>
                 <li>Authorize the app when prompted</li>
                 <li>Copy the "Token" value</li>
-                <li>Paste it into the field on this page</li>
               </ol>
             </div>
           </Card>
