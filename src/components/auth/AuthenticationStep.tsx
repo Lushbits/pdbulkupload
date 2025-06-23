@@ -139,7 +139,7 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
                 <div>
                 <Input
                   id="refreshToken"
-                  type="text"
+                  type="password"
                   value={refreshToken}
                   onChange={(e) => setRefreshToken(e.target.value)}
                   placeholder="Enter your Planday refresh token"
