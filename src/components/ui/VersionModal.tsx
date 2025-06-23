@@ -28,8 +28,9 @@ const versionHistory = [
       'Improved API pagination for better handling of large employee datasets',
       'Added intelligent field mapping with better custom field detection',
       'Improved upload process reliability with better error recovery',
-      'Enhanced data correction workflow with streamlined validation feedback'
-     ]
+      'Enhanced data correction workflow with streamlined validation feedback',
+      'Added automatic detection and ignoring of empty columns in Excel files'
+    ]
   },
   {
     version: '0.1.4',
