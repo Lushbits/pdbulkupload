@@ -16,20 +16,14 @@ const versionHistory = [
     version: '0.1.5',
     date: '2025-01-23',
     features: [
-      'Enhanced employee type validation with comprehensive mapping and suggestions',
-      'Improved phone number validation with better country code detection and formatting',
-      'Expanded existing employee duplicate detection to handle more than 50 employees',
-      'Added email normalization for more accurate duplicate checking across large datasets',
-      'Implemented centralized ValidationService for consistent validation logic',
-      'Enhanced bulk correction features with improved pattern detection',
-      'Optimized console logging - reduced noise while preserving critical error information',
-      'Fixed validation statistics to exclude errors from employees marked to skip upload',
-      'Added comprehensive country code validation with smart suggestions (27+ countries)',
-      'Improved API pagination for better handling of large employee datasets',
-      'Added intelligent field mapping with better custom field detection',
-      'Improved upload process reliability with better error recovery',
-      'Enhanced data correction workflow with streamlined validation feedback',
-      'Added automatic detection and ignoring of empty columns in Excel files'
+      'Fixed critical bug: duplicate detection now works for portals with more than 50 employees',
+      'Enhanced phone number validation with automatic country code detection for 27+ countries',
+      'Improved employee type mapping with smart suggestions for invalid entries',
+      'Added automatic detection and skipping of empty columns in Excel files',
+      'Fixed validation errors no longer blocking upload for employees marked to skip',
+      'Cleaner console output - reduced technical noise while preserving important errors',
+      'Better email normalization prevents false duplicate detection',
+      'Enhanced bulk correction suggestions for common data entry mistakes'
     ]
   },
   {
