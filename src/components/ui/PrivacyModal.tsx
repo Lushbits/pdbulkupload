@@ -123,11 +123,6 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
                 <li><strong>Automatic cleanup</strong>: All processed data is cleared from browser memory when you close the application</li>
               </ul>
 
-              <h3 className="text-base font-semibold text-gray-900 mb-2">Contact Information</h3>
-              <p className="text-sm mb-4">
-                If you have questions about this privacy statement or our data handling practices, please contact us through our official support channels.
-              </p>
-
               <h3 className="text-base font-semibold text-gray-900 mb-2">Changes to This Statement</h3>
               <p className="text-sm mb-4">
                 We will notify users of any material changes to this privacy statement. The current version is always available within the application.
