@@ -643,9 +643,6 @@ export class MappingService {
     examples: string[][];
     instructions: Record<string, string>;
   } {
-    const deptNames = this.getAvailableNames('departments').slice(0, 3).join(',');
-    const groupNames = this.getAvailableNames('employeeGroups').slice(0, 2).join(',');
-
     return {
       headers: [
         'firstName',
@@ -656,10 +653,7 @@ export class MappingService {
         'cellPhone',
         'hireDate'
       ],
-      examples: [
-        ['John', 'Smith', 'john.smith@company.com', deptNames, groupNames, '+1234567890', '2024-01-15'],
-        ['Jane', 'Doe', 'jane.doe@company.com', 'Kitchen', 'Chef', '+1234567891', '2024-02-01']
-      ],
+      examples: [],
       instructions: {
         departments: `Available departments: ${this.getAvailableNames('departments').join(', ')}`,
         employeeGroups: `Available employee groups: ${this.getAvailableNames('employeeGroups').join(', ')}`,
@@ -725,45 +719,25 @@ export class MappingService {
       }
     });
     
-    // Add custom fields at the end
+    // Add custom fields at the end (but skip any that already exist as standard fields)
     customFields.forEach(customField => {
-      fieldOrder.push({
-        field: customField.name,
-        displayName: customField.description || customField.name,
-        isRequired: ValidationService.isRequired(customField.name),
-        isCustom: true,
-        description: customField.description
-      });
+      // Skip custom fields that already exist as standard fields to avoid duplicates
+      if (!fieldOrder.some(f => f.field === customField.name)) {
+        fieldOrder.push({
+          field: customField.name,
+          displayName: customField.description || customField.name,
+          isRequired: ValidationService.isRequired(customField.name),
+          isCustom: true,
+          description: customField.description
+        });
+      }
     });
     
     // Generate headers (only include relevant fields)
     const headers = fieldOrder.map(f => f.displayName);
     
-    // Get sample data for departments and employee groups
-    const sampleDepartments = mappingService.getAvailableNames('departments').slice(0, 2).join(', ') || 'Kitchen, Bar';
-    const sampleEmployeeGroups = mappingService.getAvailableNames('employeeGroups').slice(0, 2).join(', ') || 'Chef, Manager';
-    
-    // Generate example rows with realistic data
-    const examples = [
-      [
-        'John', 'Smith', 'john.smith@company.com', sampleDepartments, sampleEmployeeGroups,
-        '+1-555-0123', '+1-555-0123', 'john.smith@company.com', '2024-01-15', '1990-03-15',
-        '123 Main St', 'New York', '10001', 'Male', 'Kitchen Manager', 'EMP001',
-        'PAY001', '', '', ...customFields.map(() => 'Sample Value')
-      ].slice(0, headers.length),
-      [
-        'Jane', 'Doe', 'jane.doe@company.com', 'Kitchen', 'Chef',
-        '+1-555-0124', '+1-555-0124', 'jane.doe@company.com', '2024-02-01', '1985-07-22',
-        '456 Oak Ave', 'Los Angeles', '90210', 'Female', 'Senior Chef', 'EMP002',
-        'PAY002', '', '', ...customFields.map(() => 'Sample Value')
-      ].slice(0, headers.length),
-      [
-        'Mike', 'Johnson', 'mike.johnson@company.com', 'Bar', 'Bartender',
-        '+1-555-0125', '+1-555-0125', 'mike.johnson@company.com', '2024-03-10', '1992-11-08',
-        '789 Pine Rd', 'Chicago', '60601', 'Male', 'Head Bartender', 'EMP003',
-        'PAY003', '', '', ...customFields.map(() => 'Sample Value')
-      ].slice(0, headers.length)
-    ];
+    // Create empty template with just headers - no sample data
+    const examples: string[][] = [];
     
     // Generate instructions
     const instructions: Record<string, string> = {
