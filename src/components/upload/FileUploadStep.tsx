@@ -90,7 +90,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
           onFileProcessed(result.data, result.columnMappings);
         }
 
-        console.log('✅ File processing completed successfully');
+        // File processing completed successfully
       } else {
         setUploadError(result.error || 'Failed to process the Excel file');
       }
@@ -214,7 +214,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
           ) : (
             <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
               <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
           )}
@@ -239,13 +239,13 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
           ) : (
             <>
               <p className="text-lg font-medium text-gray-900">
-                Upload your Excel file
+                Load your Excel file
               </p>
               <p className="text-gray-500">
                 Drag and drop your file here, or click to browse
               </p>
               <p className="text-sm text-gray-400">
-                Supports .xlsx and .xls files up to 10MB
+                Supports .xlsx and .xls files up to 10MB • Processed locally on your device
               </p>
             </>
           )}
@@ -287,7 +287,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={handleReset}>
-              Upload Different File
+              Load Different File
             </Button>
           </div>
         </Card>
@@ -394,6 +394,42 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
           )}
         </Card>
 
+        {/* Discarded Empty Columns */}
+        {data.discardedColumns && data.discardedColumns.length > 0 && (
+          <Card>
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">
+              🗑️ Empty Columns Discarded
+            </h4>
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-blue-500 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-gray-700 mb-3">
+                  The following Excel columns contained headers but no actual data, so they were automatically excluded from the mapping process:
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                  <div className="flex flex-wrap gap-2">
+                    {data.discardedColumns.map((column, index) => (
+                      <span 
+                        key={index}
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-300"
+                      >
+                        {column}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  ✨ <strong>Smart filtering:</strong> This helps keep your mapping interface clean by only showing columns with actual data.
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Data Preview */}
         <Card>
           <h4 className="text-lg font-semibold text-gray-900 mb-4">
@@ -440,10 +476,10 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       {/* Header */}
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold text-gray-900">
-          Upload Employee Data
+          Load Employee Data
         </h2>
         <p className="text-gray-600">
-          Upload an Excel file containing your employee information
+          Load an Excel file for local processing on your device
         </p>
       </div>
 
@@ -485,7 +521,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
                   <div className="mb-4">
                     <div className="mx-auto w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
                       <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
                       </svg>
                     </div>
                   </div>
@@ -563,7 +599,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
             <li>Include columns for: First Name, Last Name, Email, Department</li>
             <li>Dates should be in recognizable format (YYYY-MM-DD, MM/DD/YYYY, etc.)</li>
             <li>File size limit: 10MB</li>
-            <li>Maximum 1,000 employees per upload</li>
+            <li>Maximum 1,000 employees per file</li>
           </ul>
         </div>
       </Card>

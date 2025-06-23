@@ -15,6 +15,7 @@ import { MappingUtils, ValidationService } from '../services/mappingService';
 import type {
   PlandayDepartment,
   PlandayEmployeeGroup,
+  PlandayEmployeeType,
   PlandayEmployeeResponse,
   PlandayEmployeeCreateRequest,
   EmployeeUploadResult,
@@ -44,6 +45,11 @@ interface PlandayApiState {
   isEmployeeGroupsLoading: boolean;
   employeeGroupsError: string | null;
   
+  // Employee type state
+  employeeTypes: PlandayEmployeeType[];
+  isEmployeeTypesLoading: boolean;
+  employeeTypesError: string | null;
+  
   // Field definitions state
   fieldDefinitions: PlandayFieldDefinitionsSchema | null;
   isFieldDefinitionsLoading: boolean;
@@ -63,6 +69,7 @@ interface PlandayApiActions {
   // Data fetching actions
   refreshDepartments: () => Promise<void>;
   refreshEmployeeGroups: () => Promise<void>;
+  refreshEmployeeTypes: () => Promise<void>;
   refreshFieldDefinitions: () => Promise<void>;
   refreshPortalInfo: () => Promise<void>;
   refreshPlandayData: () => Promise<void>;
@@ -135,6 +142,11 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     isEmployeeGroupsLoading: false,
     employeeGroupsError: null,
     
+    // Employee type state
+    employeeTypes: [],
+    isEmployeeTypesLoading: false,
+    employeeTypesError: null,
+    
     // Field definitions state
     fieldDefinitions: null,
     isFieldDefinitionsLoading: false,
@@ -184,29 +196,26 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       // Fetch portal information and set up phone parsing
       let portalInfo = null;
       try {
-        console.log('🏢 Fetching portal information...');
         portalInfo = await PlandayApi.getPortalInfo();
-        console.log(`🏢 Portal: ${portalInfo.companyName} (${portalInfo.country})`);
         
         // Set up phone parser with portal country
         const { PhoneParser } = await import('../utils');
         PhoneParser.setPortalCountry(portalInfo.country);
-        
-        console.log(`📱 Phone parsing configured for country: ${portalInfo.country}`);
       } catch (portalError) {
         console.warn('⚠️ Could not fetch portal info, using default phone parsing:', portalError);
         // Continue with authentication even if portal info fails
       }
       
       // Test connection and fetch initial data
-      const [departments, employeeGroups, fieldDefinitions] = await Promise.all([
+      const [departments, employeeGroups, employeeTypes, fieldDefinitions] = await Promise.all([
         PlandayApi.getDepartments(),
         PlandayApi.getEmployeeGroups(),
+        PlandayApi.getEmployeeTypes(),
         PlandayApi.getFieldDefinitions()
       ]);
       
       // Initialize services with fetched data
-      MappingUtils.initialize(departments, employeeGroups);
+      MappingUtils.initialize(departments, employeeGroups, employeeTypes);
       ValidationService.initialize(fieldDefinitions);
       
       updateState({
@@ -215,6 +224,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         portalInfo,
         departments,
         employeeGroups,
+        employeeTypes,
         fieldDefinitions,
         authError: null,
       });
@@ -230,6 +240,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         portalInfo: null,
         departments: [],
         employeeGroups: [],
+        employeeTypes: [],
       });
       
       return false;
@@ -260,6 +271,11 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       employeeGroups: [],
       isEmployeeGroupsLoading: false,
       employeeGroupsError: null,
+      
+      // Reset employee type state
+      employeeTypes: [],
+      isEmployeeTypesLoading: false,
+      employeeTypesError: null,
       
       // Reset field definitions state
       fieldDefinitions: null,
@@ -298,9 +314,9 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         departmentsError: null,
       });
 
-      // Initialize mapping service if we have employee groups too
-      if (state.employeeGroups.length > 0) {
-        MappingUtils.initialize(departments, state.employeeGroups);
+      // Initialize mapping service if we have employee groups and employee types too
+      if (state.employeeGroups && state.employeeGroups.length > 0 && state.employeeTypes) {
+        MappingUtils.initialize(departments, state.employeeGroups, state.employeeTypes);
       }
 
       console.log(`✅ Refreshed ${departments.length} departments`);
@@ -339,9 +355,9 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         employeeGroupsError: null,
       });
 
-      // Initialize mapping service if we have departments too
-      if (state.departments.length > 0) {
-        MappingUtils.initialize(state.departments, employeeGroups);
+      // Initialize mapping service if we have departments and employee types too
+      if (state.departments && state.departments.length > 0 && state.employeeTypes) {
+        MappingUtils.initialize(state.departments, employeeGroups, state.employeeTypes);
       }
 
       console.log(`✅ Refreshed ${employeeGroups.length} employee groups`);
@@ -356,6 +372,47 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       throw error;
     }
   }, [state.isAuthenticated, state.departments, updateState, handleError]);
+
+  /**
+   * Refresh employee types from Planday
+   */
+  const refreshEmployeeTypes = useCallback(async (): Promise<void> => {
+    if (!state.isAuthenticated) {
+      throw new Error('Not authenticated');
+    }
+
+    updateState({ 
+      isEmployeeTypesLoading: true,
+      employeeTypesError: null
+    });
+
+    try {
+      // Fetch employee types
+      const employeeTypes = await PlandayApi.getEmployeeTypes();
+      
+      updateState({
+        employeeTypes,
+        isEmployeeTypesLoading: false,
+        employeeTypesError: null,
+      });
+
+      // Initialize mapping service if we have departments and employee groups too
+      if (state.departments && state.departments.length > 0 && state.employeeGroups && state.employeeGroups.length > 0) {
+        MappingUtils.initialize(state.departments, state.employeeGroups, employeeTypes);
+      }
+
+      console.log(`✅ Refreshed ${employeeTypes.length} employee types`);
+
+    } catch (error) {
+      const errorMessage = handleError(error);
+      updateState({
+        isEmployeeTypesLoading: false,
+        employeeTypesError: errorMessage,
+      });
+      
+      throw error;
+    }
+  }, [state.isAuthenticated, state.departments, state.employeeGroups, updateState, handleError]);
 
   /**
    * Refresh field definitions from Planday
@@ -437,6 +494,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       await Promise.all([
         refreshDepartments(),
         refreshEmployeeGroups(),
+        refreshEmployeeTypes(),
         refreshFieldDefinitions(),
         refreshPortalInfo(),
       ]);
@@ -446,7 +504,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       console.error('❌ Failed to refresh some Planday data:', error);
       throw error;
     }
-  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshFieldDefinitions, refreshPortalInfo]);
+  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshEmployeeTypes, refreshFieldDefinitions, refreshPortalInfo]);
 
   /**
    * Upload employees to Planday
@@ -659,7 +717,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
 
     try {
       const existingEmployees = await PlandayApi.checkExistingEmployeesByEmail(emailAddresses);
-      console.log(`✅ Checked ${emailAddresses.length} emails, found ${existingEmployees.size} existing employees`);
+      // Email duplicate check completed
       
       return existingEmployees;
     } catch (error) {
@@ -677,6 +735,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       authError: null,
       departmentsError: null,
       employeeGroupsError: null,
+      employeeTypesError: null,
       uploadError: null,
     });
   }, [updateState]);
@@ -691,7 +750,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       // Restore authentication state FIRST
       updateState({ isAuthenticated: true });
     }
-  }, [state.isAuthenticated, updateState, state.departments.length, state.employeeGroups.length]);
+  }, [state.isAuthenticated, updateState, state.departments?.length, state.employeeGroups?.length]);
 
   /**
    * Refresh data when authentication is restored
@@ -699,7 +758,9 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   useEffect(() => {
     // Only run if we're authenticated and don't have complete data
     const needsData = state.isAuthenticated && 
-                     (state.departments.length === 0 || state.employeeGroups.length === 0);
+                     ((!state.departments || state.departments.length === 0) || 
+                      (!state.employeeGroups || state.employeeGroups.length === 0) || 
+                      (!state.employeeTypes || state.employeeTypes.length === 0));
                      
     if (!needsData) return;
     
@@ -711,18 +772,21 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         if (MappingUtils.isInitialized()) {
           const cachedDepartments = MappingUtils.getDepartments();
           const cachedEmployeeGroups = MappingUtils.getEmployeeGroups();
+          const cachedEmployeeTypes = MappingUtils.getEmployeeTypes();
           
           console.log('📦 Cached data check:', {
             departments: cachedDepartments.length,
-            employeeGroups: cachedEmployeeGroups.length
+            employeeGroups: cachedEmployeeGroups.length,
+            employeeTypes: cachedEmployeeTypes.length
           });
           
-          // Only update if we have both cached data sets
-          if (cachedDepartments.length > 0 && cachedEmployeeGroups.length > 0) {
+          // Only update if we have all cached data sets
+          if (cachedDepartments.length > 0 && cachedEmployeeGroups.length > 0 && cachedEmployeeTypes.length > 0) {
             console.log('✅ Using cached data');
             updateState({
               departments: cachedDepartments,
-              employeeGroups: cachedEmployeeGroups
+              employeeGroups: cachedEmployeeGroups,
+              employeeTypes: cachedEmployeeTypes
             });
             return;
           }
@@ -731,9 +795,10 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         // If no cached data or incomplete data, fetch from API
         console.log('🌐 Fetching fresh data from API...');
         
-        const [departments, employeeGroups, fieldDefinitions] = await Promise.all([
+        const [departments, employeeGroups, employeeTypes, fieldDefinitions] = await Promise.all([
           PlandayApi.getDepartments(),
           PlandayApi.getEmployeeGroups(),
+          PlandayApi.getEmployeeTypes(),
           PlandayApi.getFieldDefinitions()
         ]);
         
@@ -748,12 +813,13 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         }
         
         // Initialize services
-        MappingUtils.initialize(departments, employeeGroups);
+        MappingUtils.initialize(departments, employeeGroups, employeeTypes);
         ValidationService.initialize(fieldDefinitions);
         
         updateState({
           departments,
           employeeGroups,
+          employeeTypes,
           fieldDefinitions,
           portalInfo
         });
@@ -771,7 +837,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     
     restoreData();
     
-  }, [state.isAuthenticated, state.departments.length, state.employeeGroups.length, updateState]);
+  }, [state.isAuthenticated, state.departments?.length, state.employeeGroups?.length, state.employeeTypes?.length, updateState]);
 
   /**
    * Cleanup on unmount
@@ -792,6 +858,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     logout,
     refreshDepartments,
     refreshEmployeeGroups,
+    refreshEmployeeTypes,
     refreshFieldDefinitions,
     refreshPortalInfo,
     refreshPlandayData,

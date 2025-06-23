@@ -13,6 +13,7 @@
 import type {
   PlandayDepartment,
   PlandayEmployeeGroup,
+  PlandayEmployeeType,
   ValidationError,
   PlandayFieldDefinitionsSchema
 } from '../types/planday';
@@ -25,7 +26,7 @@ export interface MappingResult {
 }
 
 export interface ErrorPattern {
-  field: 'departments' | 'employeeGroups';
+  field: 'departments' | 'employeeGroups' | 'employeeTypes';
   invalidName: string;
   count: number;
   rows: number[];
@@ -49,26 +50,32 @@ export class MappingService {
   private departmentsById: Map<number, string> = new Map();
   private employeeGroupsByName: Map<string, number> = new Map();
   private employeeGroupsById: Map<number, string> = new Map();
+  private employeeTypesByName: Map<string, number> = new Map();
+  private employeeTypesById: Map<number, string> = new Map();
 
   // Original data for reference (public for utility functions)
   public departments: PlandayDepartment[] = [];
   public employeeGroups: PlandayEmployeeGroup[] = [];
+  public employeeTypes: PlandayEmployeeType[] = [];
 
   constructor() {}
 
   /**
-   * Initialize the service with Planday department and employee group data
+   * Initialize the service with Planday department, employee group, and employee type data
    */
-  initialize(departments: PlandayDepartment[], employeeGroups: PlandayEmployeeGroup[]): void {
+  initialize(departments: PlandayDepartment[], employeeGroups: PlandayEmployeeGroup[], employeeTypes: PlandayEmployeeType[] = []): void {
     // Store the original data
     this.departments = departments;
     this.employeeGroups = employeeGroups;
+    this.employeeTypes = employeeTypes;
 
     // Clear previous data
     this.departmentsByName.clear();
     this.departmentsById.clear();
     this.employeeGroupsByName.clear();
     this.employeeGroupsById.clear();
+    this.employeeTypesByName.clear();
+    this.employeeTypesById.clear();
 
     // Build lookup maps for departments
     departments.forEach(dept => {
@@ -87,6 +94,15 @@ export class MappingService {
         this.employeeGroupsById.set(group.id, group.name);
       }
     });
+
+    // Build lookup maps for employee types
+    employeeTypes.forEach(type => {
+      if (type && type.name) {
+        const normalizedName = this.normalizeName(type.name);
+        this.employeeTypesByName.set(normalizedName, type.id);
+        this.employeeTypesById.set(type.id, type.name);
+      }
+    });
   }
 
   /**
@@ -102,6 +118,55 @@ export class MappingService {
       // Remove special characters but keep spaces
       .replace(/[^\w\s]/g, '')
       .trim();
+  }
+
+  /**
+   * Resolve single employee type name to ID (no comma separation)
+   */
+  resolveEmployeeType(input: string): MappingResult {
+    const result: MappingResult = {
+      ids: [],
+      errors: [],
+      warnings: [],
+      suggestions: []
+    };
+
+    if (!input || input.trim() === '') {
+      return result;
+    }
+
+    // Employee types are single values only - no comma splitting
+    const name = input.trim();
+    const normalizedName = this.normalizeName(name);
+    const availableNames = Array.from(this.employeeTypesByName.keys());
+
+    // 1. Try exact match (case-insensitive)
+    const id = this.employeeTypesByName.get(normalizedName);
+    if (id) {
+      result.ids.push(id);
+      return result;
+    }
+
+    // 2. Try numeric ID as fallback
+    const numericId = parseInt(name);
+    if (!isNaN(numericId) && this.employeeTypesById.has(numericId)) {
+      result.ids.push(numericId);
+      result.warnings.push(`Using numeric ID ${numericId} for "${name}"`);
+      return result;
+    }
+
+    // 3. Try fuzzy matching for typos
+    const suggestion = this.findBestMatch(normalizedName, availableNames);
+    if (suggestion.match && suggestion.confidence > 0.7) {
+      result.errors.push(`"${name}" not found. Did you mean "${this.getOriginalEmployeeTypeName(suggestion.match)}"?`);
+      result.suggestions.push(suggestion.match);
+    } else if (suggestion.match && suggestion.confidence > 0.4) {
+      result.errors.push(`"${name}" not found. Possible matches: ${this.getTopMatches(normalizedName, availableNames, 3).map(m => this.getOriginalEmployeeTypeName(m)).join(', ')}`);
+    } else {
+      result.errors.push(`"${name}" not found in available employee types`);
+    }
+
+    return result;
   }
 
   /**
@@ -178,6 +243,17 @@ export class MappingService {
     return type === 'departments' 
       ? this.departmentsById.has(id)
       : this.employeeGroupsById.has(id);
+  }
+
+  /**
+   * Get original employee type name from normalized name
+   */
+  private getOriginalEmployeeTypeName(normalizedName: string): string {
+    const id = this.employeeTypesByName.get(normalizedName);
+    if (id) {
+      return this.employeeTypesById.get(id) || normalizedName;
+    }
+    return normalizedName;
   }
 
   /**
@@ -272,8 +348,9 @@ export class MappingService {
     let affectedRows = 0;
 
     employees.forEach((employee, rowIndex) => {
-      const fields: Array<'departments' | 'employeeGroups'> = ['departments', 'employeeGroups'];
-      fields.forEach((field) => {
+      // Handle departments and employee groups (comma-separated)
+      const commaFields: Array<'departments' | 'employeeGroups'> = ['departments', 'employeeGroups'];
+      commaFields.forEach((field) => {
         if (!employee[field]) return;
 
         const result = this.resolveNames(employee[field], field);
@@ -291,7 +368,7 @@ export class MappingService {
 
             if (!mapping.has(normalizedName) && !this.isValidId(parseInt(name), field)) {
               const key = `${field}:${normalizedName}`;
-              const pattern = errorPatterns.get(key) || {
+              const pattern: ErrorPattern = errorPatterns.get(key) || {
                 field,
                 invalidName: name,
                 count: 0,
@@ -315,6 +392,42 @@ export class MappingService {
           });
         }
       });
+
+      // Handle employee type (single value, no comma separation)
+      if (employee.employeeTypeId) {
+        const result = this.resolveEmployeeType(employee.employeeTypeId);
+        if (result.errors.length > 0) {
+          affectedRows++;
+          totalErrors += result.errors.length;
+
+          const name = employee.employeeTypeId.trim();
+          const normalizedName = this.normalizeName(name);
+
+          if (!this.employeeTypesByName.has(normalizedName) && !this.employeeTypesById.has(parseInt(name))) {
+            const key = `employeeTypes:${normalizedName}`;
+            const pattern: ErrorPattern = errorPatterns.get(key) || {
+              field: 'employeeTypes' as const,
+              invalidName: name,
+              count: 0,
+              rows: [],
+              confidence: 0
+            };
+
+            pattern.count++;
+            pattern.rows.push(rowIndex + 1); // 1-based row numbers
+
+            // Get fuzzy match suggestion
+            const availableNames = Array.from(this.employeeTypesByName.keys());
+            const suggestion = this.findBestMatch(normalizedName, availableNames);
+            if (suggestion.match && suggestion.confidence > 0.4) {
+              pattern.suggestion = this.getOriginalEmployeeTypeName(suggestion.match);
+              pattern.confidence = suggestion.confidence;
+            }
+
+            errorPatterns.set(key, pattern);
+          }
+        }
+      }
     });
 
     const patterns = Array.from(errorPatterns.values())
@@ -341,26 +454,37 @@ export class MappingService {
     newValue: string
   ): any[] {
     return employees.map(employee => {
-      const fieldValue = employee[pattern.field];
+      // Map the pattern field to the actual employee field name
+      const actualFieldName = pattern.field === 'employeeTypes' ? 'employeeTypeId' : pattern.field;
+      const fieldValue = employee[actualFieldName];
+      
       if (!fieldValue || !fieldValue.includes(pattern.invalidName)) {
         return employee;
       }
 
-      // Handle comma-separated values properly
-      const updatedValue = fieldValue
-        .split(',')
-        .map((item: string) => item.trim())
-        .map((item: string) => 
-          item.toLowerCase() === pattern.invalidName.toLowerCase() ? newValue : item
-        )
-        .join(', ');
+      let updatedValue: string;
+
+      // Handle employee types (single value) vs departments/employee groups (comma-separated)
+      if (pattern.field === 'employeeTypes') {
+        // Employee types are single values - direct replacement
+        updatedValue = fieldValue.toLowerCase() === pattern.invalidName.toLowerCase() ? newValue : fieldValue;
+      } else {
+        // Handle comma-separated values for departments and employee groups
+        updatedValue = fieldValue
+          .split(',')
+          .map((item: string) => item.trim())
+          .map((item: string) => 
+            item.toLowerCase() === pattern.invalidName.toLowerCase() ? newValue : item
+          )
+          .join(', ');
+      }
 
       return {
         ...employee,
-        [pattern.field]: updatedValue,
+        [actualFieldName]: updatedValue,
         _bulkCorrected: {
           ...employee._bulkCorrected,
-          [pattern.field]: [...(employee._bulkCorrected?.[pattern.field] || []), {
+          [actualFieldName]: [...(employee._bulkCorrected?.[actualFieldName] || []), {
             from: pattern.invalidName,
             to: newValue,
             timestamp: new Date()
@@ -382,13 +506,17 @@ export class MappingService {
   /**
    * Get available options with IDs for reference
    */
-  getAvailableOptions(type: 'departments' | 'employeeGroups'): Array<{id: number, name: string}> {
-    const result = type === 'departments'
-      ? this.departments.map(d => ({id: d.id, name: d.name}))
-      : this.employeeGroups.map(g => ({id: g.id, name: g.name}));
+  getAvailableOptions(type: 'departments' | 'employeeGroups' | 'employeeTypes'): Array<{id: number, name: string}> {
+    let result: Array<{id: number, name: string}>;
     
+    if (type === 'departments') {
+      result = this.departments.map(d => ({id: d.id, name: d.name}));
+    } else if (type === 'employeeGroups') {
+      result = this.employeeGroups.map(g => ({id: g.id, name: g.name}));
+    } else {
+      result = this.employeeTypes.map(t => ({id: t.id, name: t.name}));
+    }
 
-    
     return result;
   }
 
@@ -433,11 +561,31 @@ export class MappingService {
       converted.employeeGroups = groupResult.ids;
     }
 
+    // Handle employee type (single value)
+    if (employee.employeeTypeId) {
+      const typeResult = this.resolveEmployeeType(employee.employeeTypeId);
+      if (typeResult.errors.length > 0) {
+        errors.push({
+          field: 'employeeTypeId',
+          value: employee.employeeTypeId,
+          message: typeResult.errors.join(', '),
+          rowIndex: employee.rowIndex || 0,
+          severity: 'error'
+        });
+      }
+      // Set the ID if we found a match
+      if (typeResult.ids.length > 0) {
+        converted.employeeTypeId = typeResult.ids[0];
+      }
+    }
+
     // Handle phone numbers with country code extraction
-    if (employee.cellPhone && employee.cellPhone.trim() !== '') {
+    // Convert cellPhone to string and check if it's not empty
+    const cellPhoneStr = employee.cellPhone?.toString()?.trim() || '';
+    if (cellPhoneStr !== '') {
       try {
         const { PhoneParser } = await import('../utils');
-        const parseResult = PhoneParser.parsePhoneNumber(employee.cellPhone);
+        const parseResult = PhoneParser.parsePhoneNumber(cellPhoneStr);
         
         if (parseResult.isValid && parseResult.phoneNumber && parseResult.countryCode) {
           // Set the parsed phone number and country information
@@ -448,20 +596,22 @@ export class MappingService {
           }
         } else {
           // Keep original value if parsing failed - validation will catch this
-          converted.cellPhone = employee.cellPhone;
+          converted.cellPhone = cellPhoneStr;
         }
       } catch (error) {
         console.warn('⚠️ Error parsing phone number:', error);
         // Fallback to original value
-        converted.cellPhone = employee.cellPhone;
+        converted.cellPhone = cellPhoneStr;
       }
     }
 
     // Handle landline phone numbers similarly
-    if (employee.phone && employee.phone.trim() !== '') {
+    // Convert phone to string and check if it's not empty
+    const phoneStr = employee.phone?.toString()?.trim() || '';
+    if (phoneStr !== '') {
       try {
         const { PhoneParser } = await import('../utils');
-        const parseResult = PhoneParser.parsePhoneNumber(employee.phone);
+        const parseResult = PhoneParser.parsePhoneNumber(phoneStr);
         
         if (parseResult.isValid && parseResult.phoneNumber && parseResult.countryCode) {
           converted.phone = parseResult.phoneNumber;
@@ -470,11 +620,11 @@ export class MappingService {
             converted.phoneCountryId = parseResult.countryId;
           }
         } else {
-          converted.phone = employee.phone;
+          converted.phone = phoneStr;
         }
       } catch (error) {
         console.warn('⚠️ Error parsing landline phone number:', error);
-        converted.phone = employee.phone;
+        converted.phone = phoneStr;
       }
     }
 
@@ -665,8 +815,8 @@ export const MappingUtils = {
   /**
    * Initialize with Planday data
    */
-  initialize(departments: PlandayDepartment[], employeeGroups: PlandayEmployeeGroup[]): void {
-    mappingService.initialize(departments, employeeGroups);
+  initialize(departments: PlandayDepartment[], employeeGroups: PlandayEmployeeGroup[], employeeTypes: PlandayEmployeeType[] = []): void {
+    mappingService.initialize(departments, employeeGroups, employeeTypes);
   },
 
   /**
@@ -700,7 +850,7 @@ export const MappingUtils = {
   /**
    * Get available options for dropdowns
    */
-  getAvailableOptions(type: 'departments' | 'employeeGroups') {
+  getAvailableOptions(type: 'departments' | 'employeeGroups' | 'employeeTypes') {
     return mappingService.getAvailableOptions(type);
   },
 
@@ -716,6 +866,13 @@ export const MappingUtils = {
    */
   getEmployeeGroups(): PlandayEmployeeGroup[] {
     return [...mappingService.employeeGroups];
+  },
+
+  /**
+   * Get stored employee types data
+   */
+  getEmployeeTypes(): PlandayEmployeeType[] {
+    return [...mappingService.employeeTypes];
   },
 
   /**
@@ -739,6 +896,7 @@ export const MappingUtils = {
  */
 export class ValidationService {
   private static fieldDefinitions: PlandayFieldDefinitionsSchema | null = null;
+  private static hasLoggedRequiredFields: boolean = false;
 
   /**
    * Initialize with field definitions from Planday API
@@ -767,9 +925,13 @@ export class ValidationService {
     
     for (const field of businessCriticalFields) {
       if (!apiRequiredFields.includes(field)) {
-        console.log(`🔒 Force-marking '${field}' as required (business-critical field)`);
+        // Force-marking business-critical field as required
         apiRequiredFields.push(field);
       }
+    }
+    
+    if (!this.hasLoggedRequiredFields) {
+      this.hasLoggedRequiredFields = true;
     }
     
     return apiRequiredFields;
@@ -837,7 +999,7 @@ export class ValidationService {
     for (const [fieldName, fieldConfig] of Object.entries(this.fieldDefinitions.properties)) {
       // Consider any field that's not in our standard list as custom
       if (!standardFields.has(fieldName)) {
-        console.log(`✨ Found custom field: ${fieldName} -> "${fieldConfig.description || fieldName}"`);
+        // Individual custom field logging removed to reduce noise
         customFields.push({
           name: fieldName,
           description: fieldConfig.description || fieldName
@@ -845,7 +1007,8 @@ export class ValidationService {
       }
     }
 
-    console.log(`✅ Found ${customFields.length} custom fields:`, customFields.map(f => f.name));
+    // Mark as logged to prevent repeat logging
+    // this.hasLoggedCustomFields = true;
     return customFields;
   }
 
@@ -939,6 +1102,118 @@ export class ValidationService {
       }
     });
     
+    return errors;
+  }
+
+  /**
+   * Validate country code and suggest correct ISO codes
+   */
+  static validateCountryCode(input: string): { isValidCountryCode: boolean; suggestedCode?: string } {
+    const normalizedInput = input.toUpperCase().trim();
+    
+    // Common ISO 3166-1 alpha-2 country codes
+    const validCodes = new Set([
+      'DK', 'SE', 'NO', 'FI', 'IS', // Nordic countries
+      'UK', 'GB', 'IE', 'FR', 'DE', 'IT', 'ES', 'PT', 'NL', 'BE', 'LU', 'AT', 'CH', // Western Europe
+      'PL', 'CZ', 'SK', 'HU', 'RO', 'BG', 'HR', 'SI', 'EE', 'LV', 'LT', // Eastern Europe
+      'US', 'CA', 'MX', 'BR', 'AR', 'CL', 'PE', 'CO', 'VE', // Americas
+      'AU', 'NZ', 'JP', 'CN', 'IN', 'KR', 'SG', 'MY', 'TH', 'VN', 'PH', 'ID', // Asia-Pacific
+      'ZA', 'EG', 'MA', 'NG', 'KE', 'GH', 'TN', // Africa
+      'RU', 'TR', 'UA', 'BY', 'MD', 'GE', 'AM', 'AZ', // Eastern Europe/Asia
+    ]);
+    
+    // If it's already a valid code, return true
+    if (validCodes.has(normalizedInput)) {
+      return { isValidCountryCode: true };
+    }
+    
+    // Country name to ISO code mapping
+    const countryNameMapping: Record<string, string> = {
+      // Nordic countries
+      'DENMARK': 'DK', 'SWEDEN': 'SE', 'NORWAY': 'NO', 'FINLAND': 'FI', 'ICELAND': 'IS',
+      
+      // Common European countries
+      'UNITED KINGDOM': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB',
+      'IRELAND': 'IE', 'FRANCE': 'FR', 'GERMANY': 'DE', 'ITALY': 'IT', 'SPAIN': 'ES',
+      'PORTUGAL': 'PT', 'NETHERLANDS': 'NL', 'HOLLAND': 'NL', 'BELGIUM': 'BE',
+      'AUSTRIA': 'AT', 'SWITZERLAND': 'CH',
+      
+      // Other common countries
+      'UNITED STATES': 'US', 'USA': 'US', 'AMERICA': 'US', 'CANADA': 'CA',
+      'AUSTRALIA': 'AU', 'NEW ZEALAND': 'NZ', 'JAPAN': 'JP', 'CHINA': 'CN',
+      'INDIA': 'IN', 'SOUTH KOREA': 'KR', 'KOREA': 'KR', 'RUSSIA': 'RU', 'TURKEY': 'TR',
+      'POLAND': 'PL', 'CZECH REPUBLIC': 'CZ', 'HUNGARY': 'HU', 'ROMANIA': 'RO',
+      'BULGARIA': 'BG', 'CROATIA': 'HR', 'SLOVENIA': 'SI', 'ESTONIA': 'EE',
+      'LATVIA': 'LV', 'LITHUANIA': 'LT',
+    };
+    
+    // Try to find a suggestion
+    const suggestedCode = countryNameMapping[normalizedInput];
+    
+    return {
+      isValidCountryCode: false,
+      suggestedCode
+    };
+  }
+
+  /**
+   * Validate country code fields for an employee
+   */
+  static validateCountryCodeFields(employee: any, rowIndex: number = 0): ValidationError[] {
+    const errors: ValidationError[] = [];
+    
+    // Validate phoneCountryCode field
+    const phoneCountryCodeStr = employee.phoneCountryCode?.toString()?.trim() || '';
+    if (phoneCountryCodeStr !== '') {
+      const { isValidCountryCode, suggestedCode } = this.validateCountryCode(phoneCountryCodeStr);
+      
+      if (!isValidCountryCode) {
+        if (suggestedCode) {
+          errors.push({
+            field: 'phoneCountryCode',
+            value: phoneCountryCodeStr,
+            message: `"${phoneCountryCodeStr}" should be ISO country code "${suggestedCode}" (e.g. DK, SE, NO, UK)`,
+            rowIndex,
+            severity: 'error'
+          });
+        } else {
+          errors.push({
+            field: 'phoneCountryCode',
+            value: phoneCountryCodeStr,
+            message: `"${phoneCountryCodeStr}" is not a valid ISO country code (use DK, SE, NO, UK, etc.)`,
+            rowIndex,
+            severity: 'error'
+          });
+        }
+      }
+    }
+
+    // Validate cellPhoneCountryCode field  
+    const cellPhoneCountryCodeStr = employee.cellPhoneCountryCode?.toString()?.trim() || '';
+    if (cellPhoneCountryCodeStr !== '') {
+      const { isValidCountryCode, suggestedCode } = this.validateCountryCode(cellPhoneCountryCodeStr);
+      
+      if (!isValidCountryCode) {
+        if (suggestedCode) {
+          errors.push({
+            field: 'cellPhoneCountryCode',
+            value: cellPhoneCountryCodeStr,
+            message: `"${cellPhoneCountryCodeStr}" should be ISO country code "${suggestedCode}" (e.g. DK, SE, NO, UK)`,
+            rowIndex,
+            severity: 'error'
+          });
+        } else {
+          errors.push({
+            field: 'cellPhoneCountryCode',
+            value: cellPhoneCountryCodeStr,
+            message: `"${cellPhoneCountryCodeStr}" is not a valid ISO country code (use DK, SE, NO, UK, etc.)`,
+            rowIndex,
+            severity: 'error'
+          });
+        }
+      }
+    }
+
     return errors;
   }
 

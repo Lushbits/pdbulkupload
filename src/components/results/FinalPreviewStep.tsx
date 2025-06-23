@@ -27,6 +27,13 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const employeesPerPage = 100;
 
+  // Debug: Log what employees data we receive
+  useEffect(() => {
+    console.log('🔍 FinalPreviewStep received employees:', employees.length);
+    console.log('🔍 First employee:', employees[0]);
+    console.log('🔍 All employees:', employees);
+  }, [employees]);
+
   // Helper function to get display name for field
   const getFieldDisplayName = (fieldName: string): string => {
     // Check if it's a custom field
@@ -214,17 +221,17 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
         </div>
 
         {/* Table with horizontal scroll */}
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <div className="overflow-auto max-h-96 border border-gray-200 rounded-lg">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-20">
               <tr>
-                <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200">
+                <th className="sticky left-0 z-30 bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200">
                   #
                 </th>
                 {allFields.filter(field => !['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected'].includes(field)).map(field => (
                   <th
                     key={field}
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
+                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50 sticky top-0 z-20"
                   >
                     {getFieldDisplayName(field)}
                   </th>

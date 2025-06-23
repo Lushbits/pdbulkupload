@@ -62,6 +62,7 @@ export interface PlandayEmployeeCreateRequest {
   birthDate?: string;
   ssn?: string;
   bankAccount?: string;
+  employeeTypeId?: number;
   [key: string]: any; // For custom fields
 }
 
@@ -100,6 +101,25 @@ export interface PlandayEmployeeGroupsResponse {
     total: number;
   };
   data: PlandayEmployeeGroup[];
+}
+
+/**
+ * Planday Employee Type Types
+ * Based on actual API: https://openapi.planday.com/hr/v1.0/employeetypes
+ */
+export interface PlandayEmployeeType {
+  id: number;
+  name: string;
+  description: string;
+}
+
+export interface PlandayEmployeeTypesResponse {
+  paging: {
+    offset: number;
+    limit: number;
+    total: number;
+  };
+  data: PlandayEmployeeType[];
 }
 
 /**
@@ -236,6 +256,16 @@ export interface ParsedExcelData {
   totalRows: number;
   fileName: string;
   fileSize: number;
+  columnAnalysis?: Array<{
+    index: number;
+    header: string;
+    totalValues: number;
+    nonEmptyValues: number;
+    dataPercentage: number;
+    isEmpty: boolean;
+    sampleData: any[];
+  }>;
+  discardedColumns?: string[];
 }
 
 export interface ValidationResult {
@@ -273,6 +303,7 @@ export interface Employee {
   userName?: string;
   departments?: string; // Can be names or IDs, comma-separated
   employeeGroups?: string; // Can be names or IDs, comma-separated
+  employeeTypeId?: string; // Can be name or ID, single value only
   cellPhone?: string;
   hireDate?: string;
   rowIndex: number;

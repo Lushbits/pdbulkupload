@@ -22,21 +22,21 @@ interface AuthenticationStepProps extends StepComponentProps {
 
 export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
   onNext,
+  onCancel,
   onAuthenticated,
   plandayApi,
 }) => {
   const [refreshToken, setRefreshToken] = useState('');
   
   // Use the passed Planday API hook data (no longer calling hook directly)
-  const { 
-    isAuthenticated, 
-    isAuthenticating, 
-    authError, 
-    departments, 
-    employeeGroups, 
-    portalInfo,
+  const {
     authenticate,
-    logout 
+    isAuthenticated,
+    isAuthenticating,
+    authError
+    // departments,
+    // employeeGroups,
+    // portalInfo
   } = plandayApi;
 
 
@@ -68,10 +68,10 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
   };
 
   /**
-   * Reset authentication state
+   * Complete reset - same as "Cancel upload and start over"
    */
-  const handleReset = () => {
-    logout();
+  const handleCompleteReset = () => {
+    onCancel(); // This will trigger the same complete reset as "Cancel upload and start over"
   };
 
   return (
@@ -88,11 +88,8 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Successfully Connected to Planday{portalInfo?.companyName ? ` portal ${portalInfo.companyName}` : ''}
+                Successfully Connected to Planday
               </h3>
-              <p className="text-gray-600 mb-4">
-                Found {departments.length} departments and {employeeGroups.length} employee groups
-              </p>
             </div>
             
             {/* Action Buttons */}
@@ -110,7 +107,7 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
               </Button>
               <Button
                 variant="secondary"
-                onClick={handleReset}
+                onClick={handleCompleteReset}
                 className="text-red-600 hover:bg-red-50"
               >
                 Disconnect & Use Different Token

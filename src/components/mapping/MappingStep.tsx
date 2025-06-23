@@ -13,11 +13,12 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { AUTO_MAPPING_RULES } from '../../constants';
 import { ValidationService } from '../../services/mappingService';
-import type { Employee, ColumnMapping, ExcelColumnMapping } from '../../types/planday';
+import type { Employee, ColumnMapping, ExcelColumnMapping, ParsedExcelData } from '../../types/planday';
 
 interface MappingStepProps {
   employees: any[][]; // Raw Excel rows data
   headers: string[];
+  excelData?: ParsedExcelData; // Full Excel data including discarded columns info
   initialColumnMappings?: ExcelColumnMapping[]; // Auto-mappings from Excel parser
   savedMappings?: ColumnMapping; // Previously saved user mappings (when returning from later steps)
   onComplete: (employees: Employee[], mappings: ColumnMapping) => void;
@@ -44,6 +45,7 @@ interface PlandayField {
 const MappingStep: React.FC<MappingStepProps> = ({
   employees,
   headers,
+  // excelData, // Not currently used - reserved for future features
   initialColumnMappings,
   savedMappings,
   onComplete,
@@ -69,11 +71,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
     const customFields = ValidationService.getCustomFields();
     const optionalFieldsList = ['departments', 'employeeGroups', 'cellPhone', 'phone', 'hireDate', 'birthDate', 'street1', 'city', 'zip', 'gender', 'ssn', 'employeeId', 'payrollId', 'jobTitle'];
 
-    console.log('🏗️ Building Planday fields for mapping:', {
-      requiredFields,
-      customFields,
-      totalCustomFields: customFields.length
-    });
+    // Building Planday fields for mapping
 
     const fields: PlandayField[] = [];
     const processedFields = new Set<string>();
@@ -111,7 +109,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
     // Add custom fields
     customFields.forEach(customField => {
       if (!processedFields.has(customField.name)) {
-        console.log(`➕ Adding custom field: ${customField.name} -> "${customField.description}"`);
+        // Adding custom field
         fields.push({
           name: customField.name,
           displayName: customField.description || customField.name,
@@ -137,7 +135,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
       
       // Priority 1: Use saved mappings if available (user returning from later step)
       if (savedMappings && Object.keys(savedMappings).length > 0) {
-        console.log('🔄 Restoring saved user mappings:', savedMappings);
+        // Restoring saved user mappings
         
         // Filter out any invalid fields that might have been saved
         const validSavedMappings: ColumnMapping = {};
@@ -154,7 +152,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
       
       // Priority 2: Use initial auto-mappings (first time on this step)
       if (initialColumnMappings && initialColumnMappings.length > 0) {
-        console.log('🤖 Using initial auto-mappings from Excel parser');
+        // Using initial auto-mappings from Excel parser
         const initialMappings: ColumnMapping = {};
         
         initialColumnMappings.forEach(mapping => {

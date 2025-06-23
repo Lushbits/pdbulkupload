@@ -533,23 +533,44 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
           
           <Button 
             onClick={() => {
-              // Clear all stored tokens and reset the process
-              sessionStorage.removeItem('planday_refresh_token');
-              sessionStorage.removeItem('planday_access_token');
-              sessionStorage.removeItem('planday_token_expiry');
-              localStorage.removeItem('planday_refresh_token');
-              localStorage.removeItem('planday_access_token');
-              localStorage.removeItem('planday_token_expiry');
+              // Complete storage cleanup - match the handleCancelUpload functionality exactly
+              try {
+                // sessionStorage cleanup
+                sessionStorage.removeItem('planday_refresh_token');
+                sessionStorage.removeItem('planday_access_token');
+                sessionStorage.removeItem('planday_token_expiry');
+                
+                // localStorage cleanup
+                localStorage.removeItem('planday_refresh_token');
+                localStorage.removeItem('planday_access_token');
+                localStorage.removeItem('planday_token_expiry');
+                
+                // Clear any other potential app state that might be cached
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                  const key = localStorage.key(i);
+                  if (key && key.startsWith('planday_')) {
+                    keysToRemove.push(key);
+                  }
+                }
+                keysToRemove.forEach(key => localStorage.removeItem(key));
+                
+                console.log('🧹 Complete storage cleanup completed');
+              } catch (error) {
+                console.warn('⚠️ Storage cleanup had issues:', error);
+                // Don't throw - cleanup failures shouldn't break the operation
+              }
               
               // Call logout to clear hook state
               plandayApi.logout();
               
               console.log('🔄 Process completed - all tokens cleared, going back to start');
               
-              // Reset the entire process or call the reset callback
+              // Reset the entire process using onReset callback (same as "cancel upload and start over")
               if (onReset) {
                 onReset();
               } else {
+                // Fallback to onComplete if onReset is not available
                 onComplete();
               }
             }}

@@ -63,7 +63,7 @@ export class ExcelParser {
       onProgress?.(10); // File validation complete
 
       // Read file as array buffer
-      console.log('📖 Reading Excel file...');
+      // File reading in progress
       const arrayBuffer = await this.readFileAsArrayBuffer(file);
       
       onProgress?.(30); // File read complete
@@ -116,7 +116,7 @@ export class ExcelParser {
             if (cell.t === 'n' && cell.w && (cell.w.includes('E+') || cell.w.includes('e+'))) {
               // Use the display value (cell.w) instead of the numeric value to preserve precision
               rowData.push(cell.w);
-              console.log(`📱 Preserved phone number precision: ${cell.v} → ${cell.w}`);
+              // Preserved phone number precision
             } else if (cell.t === 'n' && cell.v && cell.v > 1000000000) {
               // Large numbers that might be phone numbers - use raw value as string
               rowData.push(cell.v.toString());
@@ -160,7 +160,7 @@ export class ExcelParser {
 
       onProgress?.(100); // Complete
 
-      console.log(`✅ Excel parsing complete: ${processedData.totalRows} rows, ${processedData.headers.length} columns`);
+      // Excel parsing complete
 
       return {
         success: true,
@@ -237,7 +237,7 @@ export class ExcelParser {
     file: File
   ): ParsedExcelData {
     // Extract headers (first row)
-    const headers = rawData[0]?.map((header, index) => {
+    const originalHeaders = rawData[0]?.map((header, index) => {
       // Handle empty or undefined headers
       if (!header || header.toString().trim() === '') {
         return `Column ${index + 1}`;
@@ -253,7 +253,7 @@ export class ExcelParser {
 
     // Clean and normalize data
     const cleanedRows = limitedRows.map((row) => {
-      return headers.map((_, colIndex) => {
+      return originalHeaders.map((_, colIndex) => {
         const cellValue = row[colIndex];
         return this.normalizeCellValue(cellValue);
       });
@@ -264,15 +264,52 @@ export class ExcelParser {
       row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== '')
     );
 
-    console.log(`📋 Processed ${nonEmptyRows.length} non-empty rows from ${dataRows.length} total rows`);
+    // Analyze column data density to identify empty columns
+    const columnAnalysis = originalHeaders.map((header, colIndex) => {
+      const columnData = nonEmptyRows.map(row => row[colIndex]);
+      const nonEmptyValues = columnData.filter(cell => 
+        cell !== null && cell !== undefined && cell.toString().trim() !== ''
+      );
+      
+      return {
+        index: colIndex,
+        header,
+        totalValues: columnData.length,
+        nonEmptyValues: nonEmptyValues.length,
+        dataPercentage: columnData.length > 0 ? (nonEmptyValues.length / columnData.length) * 100 : 0,
+        isEmpty: nonEmptyValues.length === 0,
+        sampleData: nonEmptyValues.slice(0, 3)
+      };
+    });
 
-    return {
+    // Filter out completely empty columns
+    const columnsWithData = columnAnalysis.filter(col => !col.isEmpty);
+    const emptyColumns = columnAnalysis.filter(col => col.isEmpty);
+    
+    // Only log if there are empty columns to discard
+    if (emptyColumns.length > 0) {
+      console.log(`🗑️ Discarded ${emptyColumns.length} empty columns: ${emptyColumns.map(col => col.header).join(', ')}`);
+    }
+
+    // Keep only headers and data for columns that have actual data
+    const headers = columnsWithData.map(col => col.header);
+    const filteredRows = nonEmptyRows.map(row => 
+      columnsWithData.map(col => row[col.index])
+    );
+
+    const result = {
       headers,
-      rows: nonEmptyRows,
-      totalRows: nonEmptyRows.length,
+      rows: filteredRows,
+      totalRows: filteredRows.length,
       fileName: file.name,
       fileSize: file.size,
+      columnAnalysis, // Include analysis for debugging/info
+      discardedColumns: emptyColumns.map(col => col.header)
     };
+
+    // Data processing complete
+
+    return result;
   }
 
   /**
@@ -340,7 +377,7 @@ export class ExcelParser {
             if (!isNaN(mantissaNum) && !isNaN(exp) && mantissaNum > 1 && exp >= 6) {
               // For phone numbers, try to reconstruct the original precision
               const phoneNumber = (mantissaNum * Math.pow(10, exp)).toFixed(0);
-              console.log(`📱 Excel scientific notation converted: ${trimmed} → ${phoneNumber}`);
+              // Excel scientific notation converted
               return phoneNumber;
             }
           }
@@ -349,7 +386,7 @@ export class ExcelParser {
           const numericValue = parseFloat(trimmed);
           if (!isNaN(numericValue) && numericValue > 1000000) { // Likely a phone number
             const phoneNumber = Math.round(numericValue).toString();
-            console.log(`📱 Excel scientific notation converted (fallback): ${trimmed} → ${phoneNumber}`);
+            // Excel scientific notation converted (fallback)
             return phoneNumber;
           }
         } catch (error) {
@@ -421,7 +458,6 @@ export class ExcelParser {
           if (normalizedHeader === normalizedCustomFieldName) {
             plandayField = customField.name;
             plandayFieldDisplayName = customField.description; // Use description as display name
-            console.log(`🎯 Auto-mapped custom field: "${header}" → "${customField.description}" (${customField.name})`);
             break;
           }
           
@@ -429,7 +465,6 @@ export class ExcelParser {
           if (normalizedHeader === normalizedCustomFieldDescription) {
             plandayField = customField.name;
             plandayFieldDisplayName = customField.description;
-            console.log(`🎯 Auto-mapped custom field: "${header}" → "${customField.description}" (${customField.name})`);
             break;
           }
           
@@ -437,7 +472,6 @@ export class ExcelParser {
           if (normalizedHeader.includes(normalizedCustomFieldName) || normalizedCustomFieldName.includes(normalizedHeader)) {
             plandayField = customField.name;
             plandayFieldDisplayName = customField.description;
-            console.log(`🎯 Auto-mapped custom field: "${header}" → "${customField.description}" (${customField.name})`);
             break;
           }
         }
@@ -456,11 +490,6 @@ export class ExcelParser {
         isMapped: !!plandayField,
       });
     });
-
-    const mappedCount = mappings.filter(m => m.isMapped).length;
-    const customFieldMappedCount = mappings.filter(m => m.isMapped && customFields?.some(cf => cf.name === m.plandayField)).length;
-    
-    console.log(`🎯 Auto-mapped ${mappedCount}/${headers.length} columns (${customFieldMappedCount} custom fields)`);
 
     return mappings;
   }

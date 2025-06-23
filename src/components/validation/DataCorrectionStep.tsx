@@ -15,19 +15,23 @@ import { Button, Input, Card } from '../ui';
 import { ValidationService } from '../../services/mappingService';
 import { VALIDATION_CONFIG } from '../../constants';
 
-import type { 
+import type {
   Employee, 
   ValidationError, 
   PlandayDepartment,
   PlandayEmployeeGroup,
+  PlandayEmployeeType,
   PlandayEmployeeResponse
 } from '../../types/planday';
 import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
+
+
 
 interface DataCorrectionStepProps {
   employees: Employee[];
   departments: PlandayDepartment[];
   employeeGroups: PlandayEmployeeGroup[];
+  employeeTypes: PlandayEmployeeType[];
   plandayApi: UsePlandayApiReturn;
   onComplete: (correctedEmployees: Employee[]) => void;
   onBack: () => void;
@@ -49,6 +53,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   employees: initialEmployees,
   departments,
   employeeGroups,
+  employeeTypes,
   plandayApi,
   onComplete,
   onBack,
@@ -60,6 +65,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [bulkEditField, setBulkEditField] = useState<keyof Employee | ''>('');
   const [bulkEditValue, setBulkEditValue] = useState('');
+  const [bulkEditMode, setBulkEditMode] = useState<'replace' | 'prepend' | 'append'>('replace');
   const [searchFilter, setSearchFilter] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
@@ -69,22 +75,19 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize mapping service with department and employee group data
+  // Initialize mapping service with department, employee group, and employee type data
   useEffect(() => {
     // Note: MappingService doesn't have setDepartments/setEmployeeGroups methods
     // This will be handled directly in validation
-    console.log('DataCorrectionStep initialized with:', { 
-      departments: departments.length, 
-      employeeGroups: employeeGroups.length 
-    });
-  }, [departments, employeeGroups]);
+    // DataCorrectionStep initialized with provided data
+  }, [departments, employeeGroups, employeeTypes]);
 
   // Check for existing employees with duplicate emails on component initialization
   useEffect(() => {
     const checkForExistingEmployees = async () => {
       try {
         setIsCheckingDuplicates(true);
-        console.log('🔍 Checking for existing employees with duplicate emails...');
+        // Checking for existing employees with duplicate emails
         
         // Extract email addresses from employees
         const emailAddresses = employees
@@ -102,11 +105,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         const existingEmps = await plandayApi.checkExistingEmployeesByEmail(emailAddresses);
         setExistingEmployees(existingEmps);
         
-        if (existingEmps.size > 0) {
-          console.log(`⚠️ Found ${existingEmps.size} existing employees with matching emails`);
-        } else {
-          console.log('✅ No existing employees found with matching emails');
-        }
+        // Existing employees check completed
         
       } catch (error) {
         console.error('❌ Failed to check for existing employees:', error);
@@ -124,7 +123,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
   // Validate all employees on component mount and when data changes
   useEffect(() => {
-    console.log('🔄 Re-running validation due to data changes');
+    // Re-running validation due to data changes
     validateAllEmployees().catch(error => {
       console.error('❌ Validation failed:', error);
     });
@@ -173,25 +172,30 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       }
 
       // Phone validation with intelligent parsing (if provided)
-      if (employee.cellPhone && employee.cellPhone.trim() !== '') {
+      // Convert cellPhone to string and check if it's not empty
+      const cellPhoneStr = employee.cellPhone?.toString()?.trim() || '';
+      if (cellPhoneStr !== '') {
         const { PhoneParser } = await import('../../utils');
-        const parseResult = PhoneParser.parsePhoneNumber(employee.cellPhone);
+        const parseResult = PhoneParser.parsePhoneNumber(cellPhoneStr);
         
         if (!parseResult.isValid) {
-          errors.push({
-            field: 'cellPhone',
-            value: employee.cellPhone,
-            message: parseResult.error || 'Invalid phone number format',
-            rowIndex: index,
-            severity: 'error'
-          });
-        } else if (parseResult.confidence < 0.8) {
-          // Show warning for low confidence parsing (assumed country)
+          // Only show errors for clearly invalid formats, not local numbers
+          if (parseResult.error && !parseResult.error.includes('No valid country code detected')) {
+            errors.push({
+              field: 'cellPhone',
+              value: cellPhoneStr,
+              message: parseResult.error,
+              rowIndex: index,
+              severity: 'error'
+            });
+          }
+        } else if (parseResult.confidence < 0.8 && parseResult.assumedCountry) {
+          // Show warning for numbers where we assumed a country
           const displayCountry = parseResult.countryCode || 'Unknown';
           errors.push({
             field: 'cellPhone',
-            value: employee.cellPhone,
-            message: `Phone parsed as ${displayCountry}: ${PhoneParser.formatPhoneNumber(parseResult)}. Verify if correct.`,
+            value: cellPhoneStr,
+            message: `Phone number assumed to be ${displayCountry} format: ${PhoneParser.formatPhoneNumber(parseResult)}. Verify if correct.`,
             rowIndex: index,
             severity: 'warning'
           });
@@ -199,18 +203,24 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       }
 
       // Date validation (if provided)
-      if (employee.hireDate && employee.hireDate.trim() !== '') {
+      // Convert hireDate to string and check if it's not empty
+      const hireDateStr = employee.hireDate?.toString()?.trim() || '';
+      if (hireDateStr !== '') {
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(employee.hireDate)) {
+        if (!dateRegex.test(hireDateStr)) {
           errors.push({
             field: 'hireDate',
-            value: employee.hireDate,
+            value: hireDateStr,
             message: 'Date must be in YYYY-MM-DD format',
             rowIndex: index,
             severity: 'error'
           });
         }
       }
+
+      // Country code validation using centralized ValidationService
+      const countryCodeErrors = ValidationService.validateCountryCodeFields(employee, index);
+      errors.push(...countryCodeErrors);
 
       // NOTE: Department/employee group validation is handled in the bulk correction phase
       // Individual validation should only check format/field-level issues, not name-to-ID mapping
@@ -231,16 +241,15 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
     // Validate against existing employees in Planday (duplicate checking)
     if (existingEmployees.size > 0) {
-      console.log('🔍 Running duplicate validation against', existingEmployees.size, 'existing employees');
       const existingEmployeeErrors = ValidationService.validateExistingEmployees(employees, existingEmployees);
-      console.log('🔍 Found', existingEmployeeErrors.length, 'duplicate validation errors');
+      
+      // Duplicate employee validation completed
       
       existingEmployeeErrors.forEach(error => {
         const employeeKey = `employee-${error.rowIndex}`;
         const existingErrors = newValidationErrors.get(employeeKey) || [];
         existingErrors.push(error);
         newValidationErrors.set(employeeKey, existingErrors);
-        console.log('🔍 Added duplicate error for', employeeKey, ':', error.message);
       });
     }
 
@@ -278,7 +287,10 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     if (!plandayApi.isAuthenticated || emailAddresses.length === 0) return;
 
     try {
-      console.log('🔍 Re-checking duplicates for modified email addresses:', emailAddresses);
+      // Only log if multiple emails to reduce noise
+      if (emailAddresses.length > 1) {
+        console.log('🔍 Re-checking duplicates for modified email addresses:', emailAddresses);
+      }
       
       // Check only the specific emails that were modified
       const existingEmps = await plandayApi.checkExistingEmployeesByEmail(emailAddresses);
@@ -301,7 +313,10 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         return updated;
       });
       
-      console.log(`✅ Re-check complete: found ${existingEmps.size} duplicates among ${emailAddresses.length} checked emails`);
+      // Only log results summary to reduce noise
+      if (existingEmps.size > 0) {
+        console.log(`✅ Re-check found ${existingEmps.size} duplicates among ${emailAddresses.length} checked emails`);
+      }
     } catch (error) {
       console.error('❌ Failed to re-check duplicates:', error);
     }
@@ -442,9 +457,26 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       setEmployees(prev => {
         const updated = [...prev];
         selectedRows.forEach(rowIndex => {
+          const currentValue = updated[rowIndex][bulkEditField]?.toString() || '';
+          let newValue: string;
+          
+          // Apply the selected bulk edit mode
+          switch (bulkEditMode) {
+            case 'prepend':
+              newValue = bulkEditValue + currentValue;
+              break;
+            case 'append':
+              newValue = currentValue + bulkEditValue;
+              break;
+            case 'replace':
+            default:
+              newValue = bulkEditValue;
+              break;
+          }
+          
           updated[rowIndex] = {
             ...updated[rowIndex],
-            [bulkEditField]: bulkEditValue
+            [bulkEditField]: newValue
           };
         });
         return updated;
@@ -453,9 +485,10 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       // Clear bulk edit form
       setBulkEditField('');
       setBulkEditValue('');
+      setBulkEditMode('replace');
       clearSelection();
 
-      console.log(`✅ Applied bulk edit to ${selectedRows.size} rows`);
+      console.log(`✅ Applied bulk ${bulkEditMode} to ${selectedRows.size} rows`);
     } catch (error) {
       console.error('Error applying bulk edit:', error);
     } finally {
@@ -476,17 +509,34 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       employee.lastName?.toLowerCase().includes(searchLower) ||
       employee.userName?.toLowerCase().includes(searchLower) ||
       employee.departments?.toLowerCase().includes(searchLower) ||
-      employee.employeeGroups?.toLowerCase().includes(searchLower)
+      employee.employeeGroups?.toLowerCase().includes(searchLower) ||
+      employee.employeeTypeId?.toLowerCase().includes(searchLower)
     );
   });
 
-  // Calculate validation statistics
-  const totalErrors = Array.from(validationErrors.values()).reduce(
-    (sum, errors) => sum + errors.filter(e => e.severity === 'error').length, 
+  // Calculate validation statistics (excluding skipped employees)
+  const totalErrors = Array.from(validationErrors.entries()).reduce(
+    (sum, [employeeKey, errors]) => {
+      const rowIndex = parseInt(employeeKey.split('-')[1]);
+      const employee = employees[rowIndex];
+      // Only count errors for employees that will be uploaded
+      if (!employee?._skipUpload) {
+        return sum + errors.filter(e => e.severity === 'error').length;
+      }
+      return sum;
+    }, 
     0
   );
-  const totalWarnings = Array.from(validationErrors.values()).reduce(
-    (sum, errors) => sum + errors.filter(e => e.severity === 'warning').length, 
+  const totalWarnings = Array.from(validationErrors.entries()).reduce(
+    (sum, [employeeKey, errors]) => {
+      const rowIndex = parseInt(employeeKey.split('-')[1]);
+      const employee = employees[rowIndex];
+      // Only count warnings for employees that will be uploaded
+      if (!employee?._skipUpload) {
+        return sum + errors.filter(e => e.severity === 'warning').length;
+      }
+      return sum;
+    }, 
     0
   );
   
@@ -503,26 +553,18 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   validationErrors.forEach((errors, employeeKey) => {
     if (errors.some(e => e.severity === 'error')) {
       const rowIndex = parseInt(employeeKey.split('-')[1]);
-      employeesWithErrors.add(rowIndex);
+      const employee = employees[rowIndex];
+      // Only count errors for employees that will be uploaded
+      if (!employee?._skipUpload) {
+        employeesWithErrors.add(rowIndex);
+      }
     }
   });
   
   const validEmployees = employees.length - employeesWithErrors.size - skippedEmployees.size;
   const willBeUploaded = employees.length - skippedEmployees.size;
 
-  // Debug logging
-  console.log('🔍 Validation Debug:', {
-    totalEmployees: employees.length,
-    validationErrorsMapSize: validationErrors.size,
-    totalErrors,
-    totalWarnings,
-    validEmployees,
-    employeesWithErrors: Array.from(employeesWithErrors),
-    existingEmployeesCount: existingEmployees.size,
-    isCheckingDuplicates,
-    validationErrorsMap: Object.fromEntries(validationErrors.entries()),
-    existingEmployees: Array.from(existingEmployees.entries())
-  });
+  // Validation summary calculated
 
   // Get all fields that actually have data (dynamically determined from employee data)
   const editableFields = useMemo(() => {
@@ -729,8 +771,22 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                    </option>
                  ))}
               </select>
+              <select
+                value={bulkEditMode}
+                onChange={(e) => setBulkEditMode(e.target.value as 'replace' | 'prepend' | 'append')}
+                className="px-3 py-2 border border-blue-300 rounded-md text-sm min-w-24"
+                title="Choose how to apply the value"
+              >
+                <option value="replace">Replace</option>
+                <option value="prepend">Add to start</option>
+                <option value="append">Add to end</option>
+              </select>
               <Input
-                placeholder="Enter new value..."
+                placeholder={
+                  bulkEditMode === 'replace' ? "Enter new value..." :
+                  bulkEditMode === 'prepend' ? "Enter prefix to add..." :
+                  "Enter suffix to add..."
+                }
                 value={bulkEditValue}
                 onChange={(e) => setBulkEditValue(e.target.value)}
                 size="sm"
@@ -742,8 +798,16 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                 size="sm"
                 loading={isProcessing}
               >
-                Apply to Selected
+                {bulkEditMode === 'replace' ? 'Replace' : 
+                 bulkEditMode === 'prepend' ? 'Add to Start' : 
+                 'Add to End'}
               </Button>
+            </div>
+            {/* Mode explanation */}
+            <div className="mt-2 text-xs text-blue-600">
+              {bulkEditMode === 'replace' && "💡 Replace: Completely replace the existing value with your input"}
+              {bulkEditMode === 'prepend' && "💡 Add to start: Add your input to the beginning of existing values (e.g., add '45' to phone numbers)"}
+              {bulkEditMode === 'append' && "💡 Add to end: Add your input to the end of existing values (e.g., add '@company.com' to usernames)"}
             </div>
           </div>
         )}
@@ -753,9 +817,9 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       <Card className="overflow-hidden">
         <div className="overflow-x-auto max-h-96">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50 sticky top-0">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 sticky top-0 z-10">
                   <input
                     type="checkbox"
                     onChange={(e) => e.target.checked ? selectAllRows() : clearSelection()}
@@ -763,11 +827,11 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                     className="rounded border-gray-300"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 sticky top-0 z-10">
                   Row
                 </th>
                                                  {editableFields.map(field => (
-                  <th key={field} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32">
+                  <th key={field} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32 bg-gray-50 sticky top-0 z-10">
                     {getFieldDisplayName(field.toString())}
                     {ValidationService.isRequired(field.toString()) && (
                       <span className="text-red-500 ml-1">*</span>
@@ -859,32 +923,39 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
             ⚠️ Validation Issues
           </h3>
           <div className="space-y-2">
-            {Array.from(validationErrors.entries()).map(([employeeKey, errors]) => {
-              const rowIndex = parseInt(employeeKey.split('-')[1]);
-              const employee = employees[rowIndex];
-              
-              return (
-                <div key={employeeKey} className="border rounded-lg p-3">
-                  <div className="font-medium text-sm text-gray-900 mb-2">
-                    Row {rowIndex + 1}: {employee.firstName} {employee.lastName}
+            {Array.from(validationErrors.entries())
+              .filter(([employeeKey]) => {
+                // Only show validation errors for employees that will be uploaded
+                const rowIndex = parseInt(employeeKey.split('-')[1]);
+                const employee = employees[rowIndex];
+                return !employee?._skipUpload;
+              })
+              .map(([employeeKey, errors]) => {
+                const rowIndex = parseInt(employeeKey.split('-')[1]);
+                const employee = employees[rowIndex];
+                
+                return (
+                  <div key={employeeKey} className="border rounded-lg p-3">
+                    <div className="font-medium text-sm text-gray-900 mb-2">
+                      Row {rowIndex + 1}: {employee.firstName} {employee.lastName}
+                    </div>
+                    <div className="space-y-1">
+                      {errors.map((error, errorIndex) => (
+                        <div
+                          key={errorIndex}
+                          className={`text-sm px-2 py-1 rounded ${
+                            error.severity === 'error'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
+                          <strong>{error.field}:</strong> {error.message}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {errors.map((error, errorIndex) => (
-                      <div
-                        key={errorIndex}
-                        className={`text-sm px-2 py-1 rounded ${
-                          error.severity === 'error'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}
-                      >
-                        <strong>{error.field}:</strong> {error.message}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </Card>
       )}

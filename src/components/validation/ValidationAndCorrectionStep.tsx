@@ -14,6 +14,9 @@ interface ValidationAndCorrectionStepProps {
   employees: any[];
   departments: any[];
   employeeGroups: any[];
+  employeeTypes: any[];
+  resolvedPatterns?: Set<string>;
+  onPatternsResolved?: (patterns: Set<string>) => void;
   onComplete: (correctedEmployees: any[]) => void;
   onBack: () => void;
   plandayApi: UsePlandayApiReturn;
@@ -50,7 +53,7 @@ const CorrectionCard: React.FC<CorrectionCardProps> = ({
     console.log('🚨 SELECT CHANGE EVENT TRIGGERED:', value);
     // Set pending selection - don't apply immediately
     if (value) {
-      console.log(`✅ Set pending selection: "${value}"`);
+      // Pending selection set
       onPendingCorrection(pattern, value);
       setSelectedOption(value);
     }
@@ -126,7 +129,8 @@ const CorrectionCard: React.FC<CorrectionCardProps> = ({
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm font-medium text-gray-600 capitalize">
-                {pattern.field === 'employeeGroups' ? 'Employee Groups' : 'Departments'}
+                {pattern.field === 'employeeGroups' ? 'Employee Groups' : 
+                 pattern.field === 'employeeTypes' ? 'Employee Types' : 'Departments'}
               </span>
               <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
                 Must be corrected
@@ -168,12 +172,18 @@ const CorrectionCard: React.FC<CorrectionCardProps> = ({
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {pattern.suggestion ? 'Or choose a different' : 'Choose a'} {pattern.field === 'employeeGroups' ? 'employee group' : 'department'}:
+              {pattern.suggestion ? 'Or choose a different' : 'Choose a'} {
+                pattern.field === 'employeeGroups' ? 'employee group' : 
+                pattern.field === 'employeeTypes' ? 'employee type' : 'department'
+              }:
             </label>
             {/* Debug info for empty dropdown */}
             {validOptions.length === 0 && (
               <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-                ⚠️ No valid {pattern.field === 'employeeGroups' ? 'employee groups' : 'departments'} available.
+                ⚠️ No valid {
+                  pattern.field === 'employeeGroups' ? 'employee groups' : 
+                  pattern.field === 'employeeTypes' ? 'employee types' : 'departments'
+                } available.
                 Check console for debugging info.
               </div>
             )}
@@ -223,6 +233,9 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   employees,
   departments,
   employeeGroups,
+  employeeTypes,
+  resolvedPatterns: initialResolvedPatterns,
+  onPatternsResolved,
   onComplete,
   onBack,
   plandayApi,
@@ -230,35 +243,57 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 }) => {
   const [currentPhase, setCurrentPhase] = useState<'bulk-correction' | 'individual-correction' | 'complete'>('bulk-correction');
   const [correctionSummary, setCorrectionSummary] = useState<BulkCorrectionSummary | null>(null);
-  const [resolvedPatterns, setResolvedPatterns] = useState<Set<string>>(new Set());
+  const [resolvedPatterns, setResolvedPatterns] = useState<Set<string>>(initialResolvedPatterns || new Set());
   const [currentEmployees, setCurrentEmployees] = useState(employees);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingCorrections, setPendingCorrections] = useState<Map<string, string>>(new Map());
 
   // Initialize and detect bulk correction patterns
   useEffect(() => {
-    console.log('🔧 ValidationAndCorrectionStep: Initializing with', departments.length, 'departments and', employeeGroups.length, 'employee groups');
-    console.log('🏢 Departments received:', departments);
-    console.log('👥 Employee Groups received:', employeeGroups);
-    console.log('📊 ValidationAndCorrectionStep: Processing', currentEmployees.length, 'employees');
+    // ValidationAndCorrectionStep: Initializing with provided data
     
     // Additional debugging: test getAvailableOptions directly
-    MappingUtils.initialize(departments, employeeGroups);
+    MappingUtils.initialize(departments, employeeGroups, employeeTypes);
     
-    console.log('🧪 Testing getAvailableOptions directly:');
-    const testDepartments = MappingUtils.getAvailableOptions('departments');
-    const testEmployeeGroups = MappingUtils.getAvailableOptions('employeeGroups');
-    console.log('🧪 Direct call - departments:', testDepartments);
-    console.log('🧪 Direct call - employeeGroups:', testEmployeeGroups);
+    // Initialize mapping utils with provided data
+    // const testDepartments = MappingUtils.getAvailableOptions('departments');
+    // const testEmployeeGroups = MappingUtils.getAvailableOptions('employeeGroups');
     
     const summary = MappingUtils.detectCommonErrors(currentEmployees);
-    console.log('🔍 ValidationAndCorrectionStep: Detected', summary.totalErrors, 'errors in', summary.patterns.length, 'patterns');
+    // Detecting error patterns for bulk correction
     
-    const unresolvedPatterns = summary.patterns.filter(
-      pattern => !resolvedPatterns.has(`${pattern.field}:${pattern.invalidName}`)
-    );
+    // Filter out patterns that are already resolved (either in state or not present in current data)
+    const unresolvedPatterns = summary.patterns.filter(pattern => {
+      const patternKey = `${pattern.field}:${pattern.invalidName}`;
+      const isInResolvedState = resolvedPatterns.has(patternKey);
+      
+      // If it's already in resolved state, skip it
+      if (isInResolvedState) {
+        // Pattern already resolved
+        return false;
+      }
+      
+      return true;
+    });
     
-    console.log('⚠️ ValidationAndCorrectionStep: Showing', unresolvedPatterns.length, 'unresolved patterns');
+    // Update resolved patterns based on what's actually missing from the data
+    // This ensures that if corrections were applied previously, they stay resolved
+    const updatedResolvedPatterns = new Set(resolvedPatterns);
+    summary.patterns.forEach(pattern => {
+      const patternKey = `${pattern.field}:${pattern.invalidName}`;
+      // If the pattern was detected but the count is now 0 or very low, mark as resolved
+      if (pattern.count === 0) {
+        updatedResolvedPatterns.add(patternKey);
+        // Auto-marking as resolved (no occurrences)
+      }
+    });
+    
+    if (updatedResolvedPatterns.size !== resolvedPatterns.size) {
+      setResolvedPatterns(updatedResolvedPatterns);
+      onPatternsResolved?.(updatedResolvedPatterns);
+    }
+    
+    // Processing unresolved patterns for correction
     
     setCorrectionSummary({
       ...summary,
@@ -269,17 +304,17 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     if (unresolvedPatterns.length === 0) {
       setCurrentPhase('individual-correction');
     }
-  }, [currentEmployees, resolvedPatterns, departments, employeeGroups]);
+  }, [currentEmployees, resolvedPatterns, departments, employeeGroups, employeeTypes]);
 
   // Handle pending correction selection
   const handlePendingCorrection = (pattern: ErrorPattern, newValue: string) => {
     const patternKey = `${pattern.field}:${pattern.invalidName}`;
     
     if (newValue) {
-      console.log(`📝 Setting pending correction: "${pattern.invalidName}" → "${newValue}"`);
+      // Setting pending correction
       setPendingCorrections(prev => new Map(prev.set(patternKey, newValue)));
     } else {
-      console.log(`🗑️ Clearing pending correction for: "${pattern.invalidName}"`);
+      // Clearing pending correction
       setPendingCorrections(prev => {
         const newMap = new Map(prev);
         newMap.delete(patternKey);
@@ -306,7 +341,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     if (pendingCorrections.size > 0) {
       await new Promise<void>((resolve) => {
         setIsProcessing(true);
-        console.log(`🚀 Applying ${pendingCorrections.size} pending corrections...`);
+        // Applying pending corrections
         
         try {
           let updatedEmployees = currentEmployees;
@@ -321,15 +356,16 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
             if (pattern) {
               updatedEmployees = MappingUtils.applyBulkCorrection(updatedEmployees, pattern, newValue);
               newResolvedPatterns.add(patternKey);
-              console.log(`✅ Applied: "${pattern.invalidName}" → "${newValue}" in ${pattern.count} rows`);
+              // Applied correction to rows
             }
           }
           
           setCurrentEmployees(updatedEmployees);
           setResolvedPatterns(newResolvedPatterns);
+          onPatternsResolved?.(newResolvedPatterns);
           setPendingCorrections(new Map()); // Clear all pending corrections
           
-          console.log(`🎉 Successfully applied all ${pendingCorrections.size} pending corrections`);
+          // Successfully applied all pending corrections
           resolve();
         } catch (error) {
           console.error('❌ Error applying pending corrections:', error);
@@ -340,7 +376,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       });
     }
     
-    console.log('🚀 Moving to individual corrections phase with corrected data');
+    // Moving to individual corrections phase
     setCurrentPhase('individual-correction');
   };
 
@@ -363,7 +399,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
               Fix Invalid Names
             </h3>
             <p className="text-gray-600">
-              These department/employee group names don't exist in Planday and must be corrected before proceeding.
+              These department/employee group/employee type names don't exist in Planday and must be corrected before proceeding.
             </p>
           </div>
         </Card>
@@ -478,10 +514,12 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
         employees={currentEmployees}
         departments={departments}
         employeeGroups={employeeGroups}
+        employeeTypes={employeeTypes}
         plandayApi={plandayApi}
         onComplete={(correctedEmployees) => {
           setCurrentEmployees(correctedEmployees);
           console.log('✅ Individual corrections complete, proceeding with', correctedEmployees.length, 'corrected employees');
+          // ValidationAndCorrectionStep - calling onComplete with corrected employees
           onComplete(correctedEmployees); // Pass the corrected employees directly instead of relying on state
         }}
         onBack={() => setCurrentPhase('bulk-correction')}

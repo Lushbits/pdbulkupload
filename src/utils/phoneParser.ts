@@ -22,14 +22,11 @@ export class PhoneParser {
    * This is called after successful authentication when portal info is available
    */
   static setPortalCountry(portalCountry: string): void {
-    console.log(`📱 Setting portal country for phone parsing: ${portalCountry}`);
     this.portalCountry = portalCountry;
     
     // Map portal country to phone country code
     const mappedCountry = this.mapPortalCountryToPhoneCountry(portalCountry);
     this.defaultCountry = mappedCountry;
-    
-    console.log(`📱 Phone parsing will default to country: ${this.defaultCountry}`);
   }
 
   /**
@@ -122,7 +119,20 @@ export class PhoneParser {
       return detected;
     }
     
-    // If no country code detected, try with portal's default country
+    // If no country code detected and it's a reasonable local number length (6-9 digits), accept as local
+    if (cleaned.length >= 6 && cleaned.length <= 9) {
+      return {
+        isValid: true,
+        phoneNumber: cleaned,
+        countryCode: this.defaultCountry,
+        dialCode: '',
+        confidence: 0.6, // Medium confidence for local numbers
+        originalInput: cleaned,
+        assumedCountry: true
+      };
+    }
+    
+    // For other cases, try with portal's default country
     const withDefault = this.parseWithDefaultCountry(cleaned);
     if (withDefault.isValid) {
       return withDefault;
@@ -148,61 +158,119 @@ export class PhoneParser {
 
   /**
    * Try to detect country code from the phone number itself
+   * Prioritizes common European market country codes (45, 46, 47, 44, 49)
    */
   private static detectCountryFromNumber(cleaned: string): PhoneParseResult {
     let workingNumber = cleaned;
+    let hasInternationalIndicator = false;
     
     // Handle leading zeros (00 prefix for international dialing)
     if (workingNumber.startsWith('00')) {
       workingNumber = workingNumber.substring(2);
+      hasInternationalIndicator = true;
     }
     
     // Remove leading + if present
     if (workingNumber.startsWith('+')) {
       workingNumber = workingNumber.substring(1);
+      hasInternationalIndicator = true;
     }
     
-    // Try to match known country codes, starting with longest dial codes first
-    const sortedMappings = [...COUNTRY_PHONE_MAPPINGS].sort(
-      (a, b) => b.dialCode.length - a.dialCode.length
-    );
+    // Define main European market country codes that are commonly used in Excel
+    const mainMarketCodes = ['45', '46', '47', '44', '49']; // Denmark, Sweden, Norway, UK, Germany
     
-    for (const mapping of sortedMappings) {
-      if (workingNumber.startsWith(mapping.dialCode)) {
-        const phoneNumber = workingNumber.substring(mapping.dialCode.length);
-        
-        // Validate phone number length for this country
-        if (phoneNumber.length >= mapping.minLength && 
-            phoneNumber.length <= mapping.maxLength) {
-          return {
-            isValid: true,
-            phoneNumber,
-            countryCode: mapping.countryCode,
-            dialCode: mapping.dialCode,
-            countryId: mapping.countryId,
-            confidence: 0.95, // High confidence since we detected country code
-            originalInput: cleaned,
-            assumedCountry: false
-          };
-        } else {
-          // Country code detected but length is wrong - return error for this specific country
-          const countryName = this.getCountryName(mapping.countryCode);
-          const inputFormatExample = this.getInputFormatExample(mapping.countryCode);
-          let errorMessage = '';
-          if (phoneNumber.length < mapping.minLength) {
-            errorMessage = `Phone number too short for ${countryName}. Expected format: ${inputFormatExample}`;
-          } else {
-            errorMessage = `Phone number too long for ${countryName}. Expected format: ${inputFormatExample}`;
+    // Only check for main market country codes if the number is 10+ digits
+    // This prevents false positives like "47498384" being detected as a short Norwegian number
+    if (workingNumber.length >= 10) {
+      for (const dialCode of mainMarketCodes) {
+        if (workingNumber.startsWith(dialCode)) {
+          const mapping = COUNTRY_PHONE_MAPPINGS.find(m => m.dialCode === dialCode);
+          if (mapping) {
+            const phoneNumber = workingNumber.substring(dialCode.length);
+            
+            // Validate phone number length for this country
+            if (phoneNumber.length >= mapping.minLength && 
+                phoneNumber.length <= mapping.maxLength) {
+              return {
+                isValid: true,
+                phoneNumber,
+                countryCode: mapping.countryCode,
+                dialCode: mapping.dialCode,
+                countryId: mapping.countryId,
+                confidence: 0.9, // High confidence for main market codes
+                originalInput: cleaned,
+                assumedCountry: false
+              };
+            } else {
+              // Country code detected but length is wrong
+              const countryName = this.getCountryName(mapping.countryCode);
+              const inputFormatExample = this.getInputFormatExample(mapping.countryCode);
+              let errorMessage = '';
+              if (phoneNumber.length < mapping.minLength) {
+                errorMessage = `Phone number too short for ${countryName}. Expected format: ${inputFormatExample}`;
+              } else {
+                errorMessage = `Phone number too long for ${countryName}. Expected format: ${inputFormatExample}`;
+              }
+              
+              return {
+                isValid: false,
+                originalInput: cleaned,
+                confidence: 0.8,
+                error: errorMessage,
+                countryCode: mapping.countryCode,
+                dialCode: mapping.dialCode
+              };
+            }
           }
+        }
+      }
+    }
+    
+    // Only try other country code detection if there's a clear international indicator
+    // OR if the number is very long (11+ digits) suggesting international format
+    if (hasInternationalIndicator || workingNumber.length >= 11) {
+      // Try to match other known country codes, starting with longest dial codes first
+      const sortedMappings = [...COUNTRY_PHONE_MAPPINGS]
+        .filter(m => !mainMarketCodes.includes(m.dialCode)) // Exclude main markets (already checked)
+        .sort((a, b) => b.dialCode.length - a.dialCode.length);
+      
+      for (const mapping of sortedMappings) {
+        if (workingNumber.startsWith(mapping.dialCode)) {
+          const phoneNumber = workingNumber.substring(mapping.dialCode.length);
           
-          return {
-            isValid: false,
-            originalInput: cleaned,
-            confidence: 0.8, // High confidence we detected the right country, just wrong length
-            error: errorMessage,
-            countryCode: mapping.countryCode,
-            dialCode: mapping.dialCode
-          };
+          // Validate phone number length for this country
+          if (phoneNumber.length >= mapping.minLength && 
+              phoneNumber.length <= mapping.maxLength) {
+            return {
+              isValid: true,
+              phoneNumber,
+              countryCode: mapping.countryCode,
+              dialCode: mapping.dialCode,
+              countryId: mapping.countryId,
+              confidence: hasInternationalIndicator ? 0.85 : 0.75, // Lower confidence for non-main markets
+              originalInput: cleaned,
+              assumedCountry: false
+            };
+          } else if (hasInternationalIndicator) {
+            // Only show country-specific errors if there was an international indicator
+            const countryName = this.getCountryName(mapping.countryCode);
+            const inputFormatExample = this.getInputFormatExample(mapping.countryCode);
+            let errorMessage = '';
+            if (phoneNumber.length < mapping.minLength) {
+              errorMessage = `Phone number too short for ${countryName}. Expected format: ${inputFormatExample}`;
+            } else {
+              errorMessage = `Phone number too long for ${countryName}. Expected format: ${inputFormatExample}`;
+            }
+            
+            return {
+              isValid: false,
+              originalInput: cleaned,
+              confidence: 0.8,
+              error: errorMessage,
+              countryCode: mapping.countryCode,
+              dialCode: mapping.dialCode
+            };
+          }
         }
       }
     }

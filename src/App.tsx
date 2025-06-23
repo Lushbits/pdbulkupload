@@ -52,6 +52,9 @@ function App() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [mappedColumns, setMappedColumns] = useState<ColumnMapping>({});
   
+  // Bulk correction state - persists across navigation
+  const [resolvedBulkCorrectionPatterns, setResolvedBulkCorrectionPatterns] = useState<Set<string>>(new Set());
+  
   // Upload results state for verification step
   const [uploadResults, setUploadResults] = useState<EmployeeUploadResult[]>([]);
   const [originalEmployees, setOriginalEmployees] = useState<PlandayEmployeeCreateRequest[]>([]);
@@ -70,22 +73,41 @@ function App() {
   
   // Planday API integration - centralized hook usage
   const plandayApi = usePlandayApi();
-  const { departments, employeeGroups } = plandayApi;
+  const { departments, employeeGroups, employeeTypes } = plandayApi;
+
+  // Security: Clean up any stray tokens from localStorage on app initialization
+  useEffect(() => {
+    // Our app uses sessionStorage for security, but clean localStorage
+    // in case other apps, browser extensions, or previous versions left tokens there
+    localStorage.removeItem('planday_refresh_token');
+    localStorage.removeItem('planday_access_token');
+    localStorage.removeItem('planday_token_expiry');
+    
+    // Clear any other potential Planday-related tokens
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('planday_')) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    // Only log if we actually found tokens to remove
+    if (keysToRemove.length > 0) {
+      console.log('🔒 Security cleanup: Found and removing stray Planday tokens from localStorage');
+      keysToRemove.forEach(key => {
+        console.log(`🧹 Removing stray token: ${key}`);
+        localStorage.removeItem(key);
+      });
+    }
+  }, []); // Run only on mount
   
   // Debug: Log departments and employee groups
 
   
-  // Additional debug: Log what we're passing to ValidationAndCorrectionStep
-  useEffect(() => {
-    if (currentStep === WorkflowStep.ValidationCorrection && employees.length > 0) {
-      console.log('🏗️ App.tsx passing to ValidationAndCorrectionStep:');
-      console.log('   - departments:', departments.length, departments);
-      console.log('   - employeeGroups:', employeeGroups.length, employeeGroups);
-      console.log('   - employees:', employees.length);
-    }
-  }, [currentStep, employees.length]); // Removed departments and employeeGroups from dependency array
+  // Data passed to ValidationAndCorrectionStep when needed
   
-  // Silence unused variable warning temporarily 
+  // Track employees state changes for validation steps
   
   
 
@@ -116,11 +138,42 @@ function App() {
     setColumnMappings([]);
     setEmployees([]);
     setMappedColumns({});
+    setResolvedBulkCorrectionPatterns(new Set());
     setUploadResults([]);
     setOriginalEmployees([]);
     
     // Also clear Planday API state
     plandayApi.logout();
+    
+    // Complete localStorage and sessionStorage cleanup
+    // Clear all Planday-related tokens from both storage types
+    try {
+      // sessionStorage cleanup (handled by plandayApi.logout() but being extra sure)
+      sessionStorage.removeItem('planday_refresh_token');
+      sessionStorage.removeItem('planday_access_token');
+      sessionStorage.removeItem('planday_token_expiry');
+      
+      // localStorage cleanup (in case tokens were stored there too)
+      localStorage.removeItem('planday_refresh_token');
+      localStorage.removeItem('planday_access_token');
+      localStorage.removeItem('planday_token_expiry');
+      
+      // Clear any other potential app state that might be cached
+      // (Future-proofing for any other localStorage usage)
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('planday_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      console.log('🧹 Complete storage cleanup completed');
+    } catch (error) {
+      console.warn('⚠️ Storage cleanup had issues:', error);
+      // Don't throw - cleanup failures shouldn't break the cancel operation
+    }
   };
 
   // Determine if we should show the main header (only on step 1)
@@ -175,7 +228,7 @@ function App() {
           <AuthenticationStep
             onNext={handleNextStep}
             onPrevious={() => {}}
-            onCancel={() => {}}
+            onCancel={handleCancelUpload}
             onAuthenticated={() => {
               // Data is already loaded during authentication process
             }}
@@ -206,6 +259,7 @@ function App() {
           <MappingStep
             employees={excelData.rows}
             headers={excelData.headers}
+            excelData={excelData}
             initialColumnMappings={columnMappings}
             savedMappings={Object.keys(mappedColumns).length > 0 ? mappedColumns : undefined}
             onComplete={(mappedEmployees, mappings) => {
@@ -225,7 +279,11 @@ function App() {
             employees={employees}
             departments={departments}
             employeeGroups={employeeGroups}
+            employeeTypes={employeeTypes}
+            resolvedPatterns={resolvedBulkCorrectionPatterns}
+            onPatternsResolved={setResolvedBulkCorrectionPatterns}
             onComplete={(correctedEmployees) => {
+              // ValidationAndCorrectionStep completed with corrected employees
               setEmployees(correctedEmployees);
               handleNextStep(); // Go to final preview
             }}

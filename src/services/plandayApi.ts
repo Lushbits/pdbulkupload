@@ -16,6 +16,8 @@ import type {
   PlandayDepartmentsResponse,
   PlandayEmployeeGroup,
   PlandayEmployeeGroupsResponse,
+  PlandayEmployeeType,
+  PlandayEmployeeTypesResponse,
   PlandayEmployeeCreateRequest,
   PlandayEmployeeResponse,
   BulkUploadProgress,
@@ -262,6 +264,22 @@ export class PlandayApiClient {
   }
 
   /**
+   * Fetch all employee types from Planday
+   */
+  async fetchEmployeeTypes(): Promise<PlandayEmployeeType[]> {
+    try {
+      const response = await this.makeAuthenticatedRequest<PlandayEmployeeTypesResponse>(
+        API_ENDPOINTS.EMPLOYEE_TYPES
+      );
+      
+      return response.data || [];
+    } catch (error) {
+      console.error('❌ Failed to fetch employee types:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Fetch portal information including company name and country
    * Used for phone number parsing defaults and user experience
    */
@@ -271,7 +289,6 @@ export class PlandayApiClient {
         '/portal/v1.0/info'
       );
       
-      console.log(`✅ Fetched portal info: ${response.data.companyName} (${response.data.country})`);
       return response.data;
     } catch (error) {
       console.error('❌ Failed to fetch portal info:', error);
@@ -333,22 +350,25 @@ export class PlandayApiClient {
     const existingEmployees = new Map<string, PlandayEmployeeResponse>();
     
     try {
-      console.log(`🔍 Checking for existing employees with ${emailAddresses.length} email addresses...`);
       
       // Fetch all employees in batches to check for duplicates
       // Note: Planday API doesn't have a direct "search by email" endpoint,
       // so we need to fetch employees and filter locally
       let offset = 0;
-      const limit = 100;
+      const limit = 50; // Planday API maximum is 50 records per request
       let hasMore = true;
       
       while (hasMore) {
         const result = await this.fetchEmployees(limit, offset);
         
-        // Check each employee's email against our list
+        // Check each employee's userName against our list
         for (const employee of result.employees) {
-          if (employee.userName && emailAddresses.includes(employee.userName.toLowerCase())) {
-            existingEmployees.set(employee.userName.toLowerCase(), employee);
+          if (employee.userName) {
+            const normalizedApiEmail = employee.userName.toLowerCase().trim();
+            
+            if (emailAddresses.includes(normalizedApiEmail)) {
+              existingEmployees.set(normalizedApiEmail, employee);
+            }
           }
         }
         
@@ -361,7 +381,8 @@ export class PlandayApiClient {
         }
       }
       
-      console.log(`✅ Found ${existingEmployees.size} existing employees out of ${emailAddresses.length} checked`);
+      // Existing employee check completed
+      
       return existingEmployees;
       
     } catch (error) {
@@ -914,6 +935,13 @@ export const PlandayApi = {
    */
   async getEmployeeGroups(): Promise<PlandayEmployeeGroup[]> {
     return plandayApiClient.fetchEmployeeGroups();
+  },
+
+  /**
+   * Fetch employee types
+   */
+  async getEmployeeTypes(): Promise<PlandayEmployeeType[]> {
+    return plandayApiClient.fetchEmployeeTypes();
   },
 
   /**

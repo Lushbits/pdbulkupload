@@ -5,6 +5,8 @@ import type { Employee, BulkUploadProgress, EmployeeUploadResult, PlandayEmploye
 import { usePlandayApi } from '../../hooks/usePlandayApi';
 import { MappingUtils, ValidationService } from '../../services/mappingService';
 
+
+
 interface BulkUploadStepProps {
   employees: Employee[];
   onComplete: (results: EmployeeUploadResult[]) => void;
@@ -63,7 +65,10 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       // Use MappingUtils for conversion and additional validation
       const validation = await MappingUtils.validateEmployee(employee);
       
-      const allValidationErrors = [...requiredFieldErrors, ...validation.errors];
+      // Country code validation using centralized ValidationService
+      const countryCodeErrors = ValidationService.validateCountryCodeFields(employee, index);
+      
+      const allValidationErrors = [...requiredFieldErrors, ...validation.errors, ...countryCodeErrors];
       
       if (allValidationErrors.length > 0) {
         const errorMessages = allValidationErrors.map(e => e.message);
@@ -83,6 +88,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           email: converted.userName || employee.userName || '', // Add email field (same as userName)
           departments: converted.departments || [], // Should be array of IDs
           employeeGroups: converted.employeeGroups || [],
+          employeeTypeId: converted.employeeTypeId, // Include the corrected employee type ID
           cellPhone: converted.cellPhone || employee.cellPhone,
           cellPhoneCountryCode: converted.cellPhoneCountryCode,
           cellPhoneCountryId: converted.cellPhoneCountryId,
@@ -99,7 +105,13 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         };
         
         validatedEmployees.push(plandayEmployee);
-        addLogEntry(`✅ ${employeeName}: Valid`);
+        
+        // Debug log to verify employeeTypeId is being included
+        if (plandayEmployee.employeeTypeId) {
+          addLogEntry(`✅ ${employeeName}: Valid (employeeTypeId: ${plandayEmployee.employeeTypeId})`);
+        } else {
+          addLogEntry(`✅ ${employeeName}: Valid`);
+        }
       }
     }
     

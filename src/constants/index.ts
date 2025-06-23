@@ -57,6 +57,7 @@ export const API_ENDPOINTS = {
   DEPARTMENTS: '/hr/v1.0/departments',
   EMPLOYEES: '/hr/v1.0/employees',
   EMPLOYEE_GROUPS: '/hr/v1.0/employeegroups',
+  EMPLOYEE_TYPES: '/hr/v1.0/employeetypes',
   EMPLOYEE_FIELD_DEFINITIONS: '/hr/v1.0/employees/fielddefinitions',
 } as const;
 
@@ -147,7 +148,12 @@ export const AUTO_MAPPING_RULES = {
   ],
   ssn: [
     'ssn', 'social security', 'social security number', 'social',
-    'national id', 'personal number', 'cpr'
+    'national id', 'personal number', 'cpr', 'tax id', 'taxid'
+  ],
+  payrollId: [
+    'payroll identifier', 'pay id', 'payroll id', 'payid', 'payrollid',
+    'salary id', 'salaryid', 'salary identifier', 'payroll number',
+    'employee id', 'emp id', 'employeeid', 'staff id', 'worker id'
   ],
   departments: [
     'departments', 'department', 'dept', 'depts',
@@ -159,6 +165,11 @@ export const AUTO_MAPPING_RULES = {
     'employee roles', 'employee role', 'roles', 'role',
     'positions', 'position', 'job roles', 'job role',
     'team', 'teams', 'category', 'categories'
+  ],
+  employeeTypeId: [
+    'employee type', 'employment type', 'type', 'job type',
+    'position type', 'contract type', 'employment status',
+    'worker type', 'staff type', 'employment category'
   ],
 } as const;
 
