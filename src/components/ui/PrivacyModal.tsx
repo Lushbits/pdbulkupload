@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from './Button';
 
 interface PrivacyModalProps {
@@ -7,6 +7,23 @@ interface PrivacyModalProps {
 }
 
 export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) => {
+  // ESC key handler
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -21,11 +38,11 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 min-h-[60px]">
             <h2 className="text-xl font-semibold text-gray-900">Privacy Statement</h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-gray-400 hover:text-gray-600 transition-colors flex items-center justify-center p-1"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -36,29 +53,43 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
           {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
             <div className="prose prose-sm max-w-none text-gray-700">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">Planday Bulk Employee Uploader</h2>
-              <p className="text-sm text-gray-600 mb-6"><strong>Last updated:</strong> June 22, 2025</p>
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">Planday Bulk Employee Uploader - Privacy Statement</h2>
+              <p className="text-sm text-gray-600 mb-6"><strong>Last updated:</strong> June 23, 2025</p>
 
-              <h3 className="text-base font-semibold text-gray-900 mb-2">Independent Third-Party Application</h3>
+              <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-6">
+                <h3 className="text-base font-semibold text-green-900 mb-2">🛠️ Software Tool & Your Responsibilities</h3>
+                <p className="text-sm text-green-800 mb-2">
+                  <strong>You are the Data Controller</strong> - You process employee data using our software tool on your own device and are fully responsible for GDPR compliance.
+                </p>
+                <p className="text-sm text-green-800">
+                  <strong>We are a Software Tool Provider</strong> - Like Excel or any client-side application, we provide JavaScript functionality that runs entirely on your device. We never see or access your data.
+                </p>
+              </div>
+
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Independent Client-Side Software Tool</h3>
               <p className="text-sm mb-4">
-                <strong>This application is not created, owned, or operated by Planday or any Planday-affiliated company.</strong> We are an independent third-party tool that integrates with Planday's public API to provide bulk employee upload functionality. While we use Planday's official API, we operate independently and are solely responsible for this application's privacy practices.
+                <strong>This is an independent JavaScript application that runs entirely on your device.</strong> We are not affiliated with Planday or any Planday-affiliated company. 
+                Like any software tool (Excel, web browsers, mobile apps), you download and run our code on your own device to accomplish your business objectives. 
+                Your data flows directly from your device to Planday's servers without passing through our systems.
               </p>
 
-              <h3 className="text-base font-semibold text-gray-900 mb-2">Our Commitment to Your Privacy</h3>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Software Tool Privacy Principles</h3>
               <p className="text-sm mb-4">
-                We are committed to protecting your privacy and ensuring the security of your employee data. 
-                This privacy statement explains how our Planday Bulk Employee Uploader handles your information.
+                Our software is designed with privacy by design. <strong>You process data on your own device using our software tool.</strong>
+                Since we never receive, store, or access your data, traditional privacy concerns about third-party data handling do not apply. 
+                This statement explains the technical architecture and confirms what data handling does and does not occur.
               </p>
 
-              <h3 className="text-base font-semibold text-gray-900 mb-2">Client-Side Processing Architecture</h3>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">How Our Software Works</h3>
               <p className="text-sm mb-2">
-                <strong>Your data is processed locally and never stored on our servers.</strong> Our application is built with a privacy-by-design architecture that ensures:
+                <strong>Our JavaScript software runs entirely on your device like any desktop application.</strong> The technical architecture ensures complete data sovereignty:
               </p>
               <ul className="text-sm mb-4 ml-4 list-disc space-y-1">
-                <li><strong>Local processing only</strong>: All file parsing, data validation, column mapping, and formatting occurs entirely within your web browser</li>
-                <li><strong>No server-side storage</strong>: We do not store, cache, or retain any of your employee data on our servers or any third-party systems</li>
-                <li><strong>Direct API integration</strong>: Your processed data flows directly from your browser to Planday's secure servers via their official API</li>
-                <li><strong>Temporary memory only</strong>: All data processing happens in your browser's temporary memory and is automatically cleared when you close the application</li>
+                <li><strong>Client-side execution</strong>: JavaScript code runs in your browser to parse Excel files, validate data, and provide user interface</li>
+                <li><strong>Browser memory only</strong>: All data exists only in your browser's temporary memory while you use the software</li>
+                <li><strong>Direct API communication</strong>: Your browser sends data directly to Planday's servers using our HTTP client functionality</li>
+                <li><strong>No data transmission to us</strong>: We never receive, see, or have access to your employee data at any point</li>
+                <li><strong>Automatic memory clearing</strong>: Data is automatically cleared when you close your browser or navigate away</li>
               </ul>
 
               <h3 className="text-base font-semibold text-gray-900 mb-2">Data Processing Location</h3>
@@ -105,13 +136,16 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
                 <li><strong>Netlify hosting</strong>: Static application hosting with no data processing capabilities</li>
               </ul>
 
-              <h3 className="text-base font-semibold text-gray-900 mb-2">Your Rights and Control</h3>
-              <p className="text-sm mb-2">You maintain complete control over your data:</p>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Your Control as Data Controller</h3>
+              <p className="text-sm mb-2">You maintain complete control over your data processing activities when using our software:</p>
               <ul className="text-sm mb-4 ml-4 list-disc space-y-1">
-                <li><strong>Data sovereignty</strong>: Your data remains under your control at all times</li>
-                <li><strong>Immediate deletion</strong>: Simply closing your browser removes all processed data from memory</li>
-                <li><strong>Transparent processing</strong>: You can inspect all data before it's sent to Planday</li>
-                <li><strong>Revoke access</strong>: You can revoke API access through your Planday portal at any time</li>
+                <li><strong>Full data sovereignty</strong>: Your data remains on your device under your exclusive control</li>
+                <li><strong>Software usage decisions</strong>: You decide whether, when, and how to use our software tool</li>
+                <li><strong>Data processing control</strong>: You control what data to upload, how to format it, and when to transmit</li>
+                <li><strong>GDPR responsibility</strong>: You are responsible for legal basis, employee consent, and all data protection compliance</li>
+                <li><strong>Immediate termination</strong>: Simply close your browser to end all data processing</li>
+                <li><strong>Complete transparency</strong>: You can review all data before transmission and control every step</li>
+                <li><strong>Third-party management</strong>: You manage your own relationships with Planday and employees</li>
               </ul>
 
               <h3 className="text-base font-semibold text-gray-900 mb-2">Technical Safeguards</h3>
@@ -125,20 +159,21 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
 
               <h3 className="text-base font-semibold text-gray-900 mb-2">Changes to This Statement</h3>
               <p className="text-sm mb-4">
-                We will notify users of any material changes to this privacy statement. The current version is always available within the application.
+                Since we don't store user contact information, we cannot notify users of changes. Any updates to this privacy statement will be reflected in the current version available when you use the software. Users are responsible for reviewing the current privacy statement during each use.
               </p>
 
               <div className="border-t border-gray-200 pt-4 mt-6">
                 <p className="text-sm font-medium text-gray-900">
-                  <strong>Summary:</strong> Your employee data is processed locally in your browser and sent directly to Planday. 
-                  We never store your data on our servers - all processing happens on your device and is automatically cleared when you close the application.
+                  <strong>Summary:</strong> You use our client-side software tool to process employee data entirely on your own device. 
+                  We are a software provider (like Microsoft Excel) - we never receive, store, or access your data. 
+                  You are the Data Controller responsible for all GDPR compliance. Your data flows directly from your browser to Planday without involving our servers.
                 </p>
               </div>
             </div>
           </div>
           
           {/* Footer */}
-          <div className="flex justify-end p-6 border-t border-gray-200">
+          <div className="flex items-center justify-end px-6 py-3 border-t border-gray-200">
             <Button onClick={onClose} variant="primary">
               Close
             </Button>

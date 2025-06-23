@@ -3,7 +3,7 @@
  * Displays the application version history with changelog
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface VersionModalProps {
   isOpen: boolean;
@@ -12,6 +12,16 @@ interface VersionModalProps {
 
 // Version history data - single source of truth for all versions
 const versionHistory = [
+  {
+    version: '0.1.4',
+    date: '2025-06-23',
+    features: [
+      'Added comprehensive Terms of Service with clear GDPR roles and responsibilities',
+      'Enhanced Privacy Statement with software tool provider clarifications',
+      'Added ESC key functionality to close all modals (Privacy, Terms, Cookie, Version)',
+      'Clarified data processing model - positioned as client-side software tool provider'
+    ]
+  },
   {
     version: '0.1.3',
     date: '2025-06-22',
@@ -74,6 +84,23 @@ const versionHistory = [
 export const getCurrentVersion = () => versionHistory[0].version;
 
 export const VersionModal: React.FC<VersionModalProps> = ({ isOpen, onClose }) => {
+  // ESC key handler
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (

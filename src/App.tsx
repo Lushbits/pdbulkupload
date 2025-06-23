@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Card, ProgressIndicator, PrivacyModal, CookieModal, VersionModal, getCurrentVersion } from './components/ui';
+import { Button, Card, ProgressIndicator, PrivacyModal, CookieModal, TermsOfServiceModal, VersionModal, getCurrentVersion } from './components/ui';
 import { AuthenticationStep } from './components/auth/AuthenticationStep';
 import { FileUploadStep } from './components/upload/FileUploadStep';
 import MappingStep from './components/mapping/MappingStep';
@@ -61,6 +61,9 @@ function App() {
   
   // Cookie modal state
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
+  
+  // Terms of Service modal state
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   
   // Version modal state
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
@@ -425,6 +428,13 @@ function App() {
                   Cookie Policy
                 </button>
                 <span className="mx-2">-</span>
+                <button
+                  onClick={() => setIsTermsModalOpen(true)}
+                  className="hover:text-gray-800 transition-colors underline"
+                >
+                  Terms of Service
+                </button>
+                <span className="mx-2">-</span>
                 <span>Made with <span className="heartbeat">❤️</span> by the </span>
                 <a 
                   href="https://www.planday.com" 
@@ -450,6 +460,12 @@ function App() {
         <CookieModal
           isOpen={isCookieModalOpen}
           onClose={() => setIsCookieModalOpen(false)}
+        />
+
+        {/* Terms of Service Modal */}
+        <TermsOfServiceModal
+          isOpen={isTermsModalOpen}
+          onClose={() => setIsTermsModalOpen(false)}
         />
 
         {/* Version Modal */}

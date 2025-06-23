@@ -3,7 +3,7 @@
  * Displays information about cookie usage (or lack thereof)
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface CookieModalProps {
   isOpen: boolean;
@@ -11,6 +11,23 @@ interface CookieModalProps {
 }
 
 export const CookieModal: React.FC<CookieModalProps> = ({ isOpen, onClose }) => {
+  // ESC key handler
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (

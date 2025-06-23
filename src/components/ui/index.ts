@@ -11,6 +11,7 @@ export { Input } from './Input';
 export { Card } from './Card';
 export { PrivacyModal } from './PrivacyModal';
 export { CookieModal } from './CookieModal';
+export { TermsOfServiceModal } from './TermsOfServiceModal';
 export { VersionModal, getCurrentVersion } from './VersionModal';
 
 // Progress Components
