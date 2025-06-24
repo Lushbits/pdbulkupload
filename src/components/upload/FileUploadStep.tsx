@@ -13,7 +13,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal';
+// import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal'; // Commented out for production
 import { ExcelUtils, type ExcelParseResult } from '../../services/excelParser';
 import { ValidationService, MappingService } from '../../services/mappingService';
 import type { 
@@ -509,10 +509,12 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
               </div>
             </div>
             
-            {/* Debug Button - Right aligned */}
+            {/* Debug Button - Commented out for production but kept for future debugging */}
+            {/*
             <div className="flex-shrink-0 ml-4">
               <FieldDefinitionsDebugButton className="whitespace-nowrap" />
             </div>
+            */}
           </div>
         </div>
       )}

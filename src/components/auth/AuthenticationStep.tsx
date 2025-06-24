@@ -12,7 +12,7 @@ import React, { useState } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
-import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal';
+// import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal'; // Commented out for production
 import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
 import type { StepComponentProps } from '../../types/planday';
 
@@ -115,7 +115,8 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
               </Button>
             </div>
             
-            {/* Debug Tools */}
+            {/* Debug Tools - Commented out for production but kept for future debugging */}
+            {/*
             <div className="pt-4 border-t border-gray-200">
               <div className="flex justify-center">
                 <FieldDefinitionsDebugButton />
@@ -124,6 +125,7 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
                 Debug tool: View raw field definitions from your Planday portal
               </p>
             </div>
+            */}
           </div>
         </Card>
       ) : (

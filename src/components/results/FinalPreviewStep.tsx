@@ -24,8 +24,13 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
   onBack,
   onStartUpload
 }) => {
+  const [convertedEmployee, setConvertedEmployee] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const employeesPerPage = 100;
+  const employeesPerPage = 25;
+
+  // Pre-convert all employees for table display
+  const [convertedEmployees, setConvertedEmployees] = useState<any[]>([]);
+  const [isConverting, setIsConverting] = useState(true);
 
   // Debug: Log what employees data we receive
   useEffect(() => {
@@ -49,9 +54,6 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     return fieldName;
   };
 
-  // Convert the first employee to show exactly what will be sent to Planday API
-  const [convertedEmployee, setConvertedEmployee] = useState<any>(null);
-  
   useEffect(() => {
     const convertFirstEmployee = async () => {
       if (employees.length === 0) {
@@ -94,6 +96,29 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     convertFirstEmployee();
   }, [employees]);
 
+  // Convert all employees for table display
+  useEffect(() => {
+    const convertAllEmployees = async () => {
+      setIsConverting(true);
+      const converted = [];
+      
+      for (const employee of employees) {
+        try {
+          const result = await mappingService.validateAndConvert(employee);
+          converted.push(result.converted);
+        } catch (error) {
+          console.warn('Failed to convert employee data for display:', error);
+          converted.push(employee); // Fallback to original data
+        }
+      }
+      
+      setConvertedEmployees(converted);
+      setIsConverting(false);
+    };
+    
+    convertAllEmployees();
+  }, [employees]);
+
   // Calculate statistics for the preview
   const stats = {
     totalEmployees: employees.length,
@@ -107,36 +132,48 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
   const totalPages = Math.ceil(employees.length / employeesPerPage);
   const startIndex = (currentPage - 1) * employeesPerPage;
   const endIndex = startIndex + employeesPerPage;
-  const displayEmployees = employees.slice(startIndex, endIndex);
+  const displayEmployees = convertedEmployees.slice(startIndex, endIndex);
 
-  // Get all unique field names from all employees to create table columns
+  // Get all unique field names from converted employees to create table columns
   const [allFields, setAllFields] = useState<string[]>([]);
   
   useEffect(() => {
-    const getAllFieldsAsync = async () => {
-      const fieldSet = new Set<string>();
-      
-      for (const emp of employees) {
-        const result = await mappingService.validateAndConvert(emp);
-        const converted = result.converted;
-        const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
-        
-        Object.keys(converted).forEach(key => {
-          if (!internalFields.has(key) && converted[key] != null && converted[key] !== '') {
-            fieldSet.add(key);
-          }
-        });
-      }
-      
-      // Sort fields with important ones first
-      const importantFields = ['firstName', 'lastName', 'userName', 'email'];
-      const otherFields = Array.from(fieldSet).filter(field => !importantFields.includes(field)).sort();
-      
-      setAllFields([...importantFields.filter(field => fieldSet.has(field)), ...otherFields]);
-    };
+    if (convertedEmployees.length === 0) return;
     
-    getAllFieldsAsync();
-  }, [employees]);
+    const fieldSet = new Set<string>();
+    const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+    
+    convertedEmployees.forEach(converted => {
+      Object.keys(converted).forEach(key => {
+        if (!internalFields.has(key) && converted[key] != null && converted[key] !== '') {
+          fieldSet.add(key);
+        }
+      });
+    });
+    
+    // Sort fields with important ones first
+    const importantFields = ['firstName', 'lastName', 'userName', 'email'];
+    const otherFields = Array.from(fieldSet).filter(field => !importantFields.includes(field)).sort();
+    
+    setAllFields([...importantFields.filter(field => fieldSet.has(field)), ...otherFields]);
+  }, [convertedEmployees]);
+
+  // Show loading state while converting
+  if (isConverting) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Preparing Data for Review
+          </h3>
+          <p className="text-gray-600">
+            Converting employee data to match Planday API format...
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -156,8 +193,6 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
         </div>
       </Card>
 
-
-
       {/* Employee Data Table */}
       <Card>
         <div className="flex justify-between items-center mb-4">
@@ -165,6 +200,9 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
             <h3 className="text-lg font-semibold text-gray-900">Employee Data Table</h3>
             <p className="text-sm text-gray-600">
               Showing {startIndex + 1}-{Math.min(endIndex, employees.length)} of {employees.length} employees
+              <span className="text-blue-600 font-medium ml-2">
+                (Data converted for Planday API)
+              </span>
             </p>
           </div>
           
@@ -240,10 +278,7 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {displayEmployees.map((employee, index) => {
-                // Note: For table display, we'll use basic employee data since async conversion would complicate the rendering
-                // The real conversion happens in the upload step where async is properly handled
-                const converted = employee;
+              {displayEmployees.map((convertedEmployee, index) => {
                 // Filter out internal fields that shouldn't be displayed
                 const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
                 
@@ -253,7 +288,7 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
                       {startIndex + index + 1}
                     </td>
                     {allFields.filter(field => !internalFields.has(field)).map(field => {
-                      const value = converted[field];
+                      const value = convertedEmployee[field];
                       let displayValue = '';
                       
                       if (value == null || value === '') {
