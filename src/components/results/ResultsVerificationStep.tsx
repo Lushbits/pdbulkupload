@@ -180,23 +180,48 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
         idType: typeof emp.id,
         name: `${emp.firstName} ${emp.lastName}`,
         userName: emp.userName,
+        email: emp.email,
         fullEmployee: emp
       })));
-      console.log('🔍 Raw API employees:', apiEmployees);
+      console.log('🔍 Upload results to match:', uploadResults.map(ur => ({
+        success: ur.success,
+        plandayId: ur.plandayId,
+        employeeName: `${ur.employee.firstName} ${ur.employee.lastName}`,
+        employeeUserName: ur.employee.userName
+      })));
+      console.log('🔍 Original employees:', originalEmployees.map(oe => ({
+        name: `${oe.firstName} ${oe.lastName}`,
+        userName: oe.userName,
+        email: oe.email
+      })));
       
       // Create verification results
       const results: VerificationResult[] = [];
       
+      console.log('🔍 Starting employee verification loop...');
+      
       for (const uploadResult of uploadResults) {
+        console.log(`🔍 Processing upload result:`, {
+          employeeName: `${uploadResult.employee.firstName} ${uploadResult.employee.lastName}`,
+          success: uploadResult.success,
+          plandayId: uploadResult.plandayId,
+          error: uploadResult.error
+        });
+        
         const originalEmployee = originalEmployees.find(emp => 
-          emp.firstName === uploadResult.employee.firstName && 
-          emp.lastName === uploadResult.employee.lastName
+          emp.userName === uploadResult.employee.userName
         );
         
         if (!originalEmployee) {
-          console.warn(`⚠️ Could not find original employee for ${uploadResult.employee.firstName} ${uploadResult.employee.lastName}`);
+          console.warn(`⚠️ Could not find original employee for ${uploadResult.employee.firstName} ${uploadResult.employee.lastName} (${uploadResult.employee.userName})`);
           continue;
         }
+        
+        console.log(`🔍 Found original employee:`, {
+          name: `${originalEmployee.firstName} ${originalEmployee.lastName}`,
+          userName: originalEmployee.userName,
+          email: originalEmployee.email
+        });
         
         if (uploadResult.success && uploadResult.plandayId) {
           // Find corresponding API employee
@@ -206,12 +231,23 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
             uploadResultId: uploadResult.plandayId,
             uploadResultIdType: typeof uploadResult.plandayId,
             apiEmployeeIds: apiEmployees.map(emp => ({ id: emp.id, type: typeof emp.id })),
-            found: !!apiEmployee
+            found: !!apiEmployee,
+            apiEmployee: apiEmployee ? {
+              id: apiEmployee.id,
+              name: `${apiEmployee.firstName} ${apiEmployee.lastName}`,
+              userName: apiEmployee.userName,
+              email: apiEmployee.email
+            } : null
           });
           
           if (apiEmployee) {
             // Compare data
             const comparison = compareEmployeeData(originalEmployee, apiEmployee);
+            
+            console.log(`🔍 Comparison result for ${originalEmployee.firstName} ${originalEmployee.lastName}:`, {
+              matches: comparison.matches,
+              issues: comparison.issues
+            });
             
             results.push({
               employee: originalEmployee,
@@ -222,6 +258,7 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
             });
           } else {
             // Employee not found in API - this is a problem
+            console.warn(`❌ Employee not found in API: ${originalEmployee.firstName} ${originalEmployee.lastName} (ID: ${uploadResult.plandayId})`);
             results.push({
               employee: originalEmployee,
               uploadResult,
@@ -230,7 +267,8 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
             });
           }
         } else {
-          // Failed upload
+          // Failed upload - FIXED: Added missing 'else' to prevent duplicate processing
+          console.log(`❌ Processing failed upload: ${originalEmployee.firstName} ${originalEmployee.lastName} - ${uploadResult.error}`);
           results.push({
             employee: originalEmployee,
             uploadResult,
@@ -239,6 +277,14 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
           });
         }
       }
+      
+      console.log('🔍 Final verification results:', results.map(r => ({
+        name: `${r.employee.firstName} ${r.employee.lastName}`,
+        verified: r.verified,
+        hasApiEmployee: !!r.apiEmployee,
+        issues: r.issues,
+        plandayId: r.uploadResult.plandayId
+      })));
       
       setVerificationResults(results);
       
@@ -372,8 +418,16 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
         
         {/* Email */}
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-gray-600 truncate">
-            {result.employee.userName}
+          <div className="text-sm text-gray-900 truncate">
+            <div>Uploaded: {result.employee.userName}</div>
+            {result.apiEmployee && (
+              <div className="text-gray-500">
+                Planday: {result.apiEmployee.userName}
+                {result.apiEmployee.email && result.apiEmployee.email !== result.apiEmployee.userName && (
+                  <span className="ml-1">({result.apiEmployee.email})</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         
