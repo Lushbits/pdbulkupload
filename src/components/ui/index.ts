@@ -14,6 +14,10 @@ export { CookieModal } from './CookieModal';
 export { TermsOfServiceModal } from './TermsOfServiceModal';
 export { VersionModal, getCurrentVersion } from './VersionModal';
 
+// Beta Components
+export { BetaBanner } from './BetaBanner';
+export { BetaTag } from './BetaTag';
+
 // Progress Components
 export { ProgressIndicator } from '../progress/ProgressIndicator';
 

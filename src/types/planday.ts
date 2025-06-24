@@ -358,7 +358,8 @@ export type WorkflowStep =
   | 'validation-correction'
   | 'preview'
   | 'uploading'
-  | 'results';
+  | 'results'
+  | 'documentation';
 
 /**
  * API Configuration

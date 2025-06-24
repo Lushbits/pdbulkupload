@@ -28,6 +28,7 @@ export const WorkflowStep = {
   FinalPreview: 'preview',
   BulkUpload: 'uploading',
   Results: 'results',
+  Documentation: 'documentation',
 } as const;
 
 /**
