@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { FieldSelectionModal } from '../ui/FieldSelectionModal';
 import { AUTO_MAPPING_RULES } from '../../constants';
 import { ValidationService } from '../../services/mappingService';
 import type { Employee, ColumnMapping, ExcelColumnMapping, ParsedExcelData } from '../../types/planday';
@@ -55,6 +56,15 @@ const MappingStep: React.FC<MappingStepProps> = ({
   const [columnMappings, setColumnMappings] = useState<ColumnMapping>({});
   const [mappingErrors, setMappingErrors] = useState<string[]>([]);
   const [customValues, setCustomValues] = useState<{ [fieldName: string]: string }>({});
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    columnName: string | null;
+  }>({ isOpen: false, columnName: null });
+  
+  const [customValueModalState, setCustomValueModalState] = useState<{
+    isOpen: boolean;
+    fieldName: string | null;
+  }>({ isOpen: false, fieldName: null });
 
   // Prepare Excel columns with sample data
   const excelColumns = useMemo<ExcelColumn[]>(() => {
@@ -69,9 +79,9 @@ const MappingStep: React.FC<MappingStepProps> = ({
   const plandayFields = useMemo<PlandayField[]>(() => {
     const requiredFields = ValidationService.getRequiredFields();
     const customFields = ValidationService.getCustomFields();
-    const optionalFieldsList = ['departments', 'employeeGroups', 'cellPhone', 'phone', 'hireDate', 'birthDate', 'street1', 'city', 'zip', 'gender', 'ssn', 'employeeId', 'payrollId', 'jobTitle'];
-
-    // Building Planday fields for mapping
+    
+    // Get all available fields from the API field definitions
+    const allApiFields = ValidationService.getAllFieldNames();
 
     const fields: PlandayField[] = [];
     const processedFields = new Set<string>();
@@ -91,9 +101,9 @@ const MappingStep: React.FC<MappingStepProps> = ({
       }
     });
 
-    // Add optional fields (only if not already in required)
-    optionalFieldsList.forEach(fieldName => {
-      if (!processedFields.has(fieldName)) {
+    // Add all other API fields as optional (excluding custom fields and already processed fields)
+    allApiFields.forEach(fieldName => {
+      if (!processedFields.has(fieldName) && !fieldName.startsWith('custom_')) {
         fields.push({
           name: fieldName,
           displayName: fieldName.replace(/([A-Z])/g, ' $1').trim(),
@@ -109,7 +119,6 @@ const MappingStep: React.FC<MappingStepProps> = ({
     // Add custom fields
     customFields.forEach(customField => {
       if (!processedFields.has(customField.name)) {
-        // Adding custom field
         fields.push({
           name: customField.name,
           displayName: customField.description || customField.name,
@@ -122,8 +131,6 @@ const MappingStep: React.FC<MappingStepProps> = ({
         processedFields.add(customField.name);
       }
     });
-
-
 
     return fields;
   }, []);
@@ -154,14 +161,24 @@ const MappingStep: React.FC<MappingStepProps> = ({
       if (initialColumnMappings && initialColumnMappings.length > 0) {
         // Using initial auto-mappings from Excel parser
         const initialMappings: ColumnMapping = {};
+        const usedFields = new Set<string>();
         
+        // Process mappings, but prevent duplicates by tracking used fields
         initialColumnMappings.forEach(mapping => {
           if (mapping.isMapped && mapping.plandayField) {
+            const fieldName = mapping.plandayField as string;
+            
             // Check if the field exists in our available fields
-            if (availableFieldNames.has(mapping.plandayField as string)) {
-              initialMappings[mapping.excelColumn] = mapping.plandayField as string;
+            if (availableFieldNames.has(fieldName)) {
+              // Only map if this field hasn't been used yet
+              if (!usedFields.has(fieldName)) {
+                initialMappings[mapping.excelColumn] = fieldName;
+                usedFields.add(fieldName);
+              } else {
+                console.warn(`Field "${fieldName}" already mapped to another column. Skipping duplicate mapping for "${mapping.excelColumn}"`);
+              }
             } else {
-              console.warn(`Field "${mapping.plandayField}" not found in available fields. Skipping mapping for "${mapping.excelColumn}"`);
+              console.warn(`Field "${fieldName}" not found in available fields. Skipping mapping for "${mapping.excelColumn}"`);
             }
           }
         });
@@ -172,13 +189,22 @@ const MappingStep: React.FC<MappingStepProps> = ({
 
   // Get available fields for dropdown (excluding already mapped fields)
   const getAvailableFields = (currentColumnName: string): PlandayField[] => {
-    const currentMapping = columnMappings[currentColumnName];
-    const mappedFields = new Set(Object.values(columnMappings).filter(Boolean));
-    const customMappedFields = new Set(Object.keys(customValues));
+    // Get all fields that are mapped to other columns (exclude current column and __IGNORE__)
+    const mappedFields = new Set();
+    Object.entries(columnMappings).forEach(([columnName, fieldName]) => {
+      if (columnName !== currentColumnName && fieldName && fieldName !== '__IGNORE__') {
+        mappedFields.add(fieldName);
+      }
+    });
+    
+    // Get all fields that have custom values set
+    const customMappedFields = new Set(Object.keys(customValues).filter(key => customValues[key].trim()));
     
     return plandayFields.filter(field => {
-      // Include if not mapped in either regular or custom mappings, or if it's the current mapping
-      return (!mappedFields.has(field.name) && !customMappedFields.has(field.name)) || field.name === currentMapping;
+      // Include field if:
+      // 1. It's not mapped by another column AND
+      // 2. It doesn't have a custom value set
+      return !mappedFields.has(field.name) && !customMappedFields.has(field.name);
     });
   };
 
@@ -214,15 +240,23 @@ const MappingStep: React.FC<MappingStepProps> = ({
     // Only run auto-detection if no initial mappings were provided
     if (!initialColumnMappings || initialColumnMappings.length === 0) {
       const autoDetectedMappings: ColumnMapping = {};
+      const usedFields = new Set<string>();
+      const usedColumns = new Set<string>();
 
-      // Auto-detect mappings using fuzzy matching
+      // Auto-detect mappings using fuzzy matching, preventing duplicates
       for (const [fieldName, patterns] of Object.entries(AUTO_MAPPING_RULES)) {
+        // Skip if this field has already been mapped
+        if (usedFields.has(fieldName)) {
+          continue;
+        }
+        
         const bestMatch = findBestColumnMatch(headers, patterns);
-        if (bestMatch) {
+        if (bestMatch && !usedColumns.has(bestMatch)) {
           autoDetectedMappings[bestMatch] = fieldName;
+          usedFields.add(fieldName);
+          usedColumns.add(bestMatch);
         }
       }
-
 
       setColumnMappings(autoDetectedMappings);
     }
@@ -307,6 +341,23 @@ const MappingStep: React.FC<MappingStepProps> = ({
     const mappedFields = new Set(Object.values(columnMappings).filter(field => field && field !== '__IGNORE__'));
     const customMappedFields = new Set(Object.keys(customValues).filter(key => customValues[key].trim()));
 
+    // Check for duplicate mappings (multiple Excel columns mapped to same Planday field)
+    const fieldMappingCount = new Map<string, string[]>();
+    Object.entries(columnMappings).forEach(([columnName, fieldName]) => {
+      if (fieldName && fieldName !== '__IGNORE__') {
+        if (!fieldMappingCount.has(fieldName)) {
+          fieldMappingCount.set(fieldName, []);
+        }
+        fieldMappingCount.get(fieldName)!.push(columnName);
+      }
+    });
+    
+    fieldMappingCount.forEach((columns, fieldName) => {
+      if (columns.length > 1) {
+        errors.push(`"${fieldName}" is mapped to multiple columns: ${columns.join(', ')}. Each Planday field can only be mapped to one Excel column.`);
+      }
+    });
+
     // Check required fields - they can be satisfied by either Excel mappings OR custom values
     for (const field of requiredFields) {
       if (!mappedFields.has(field) && !customMappedFields.has(field)) {
@@ -371,6 +422,53 @@ const MappingStep: React.FC<MappingStepProps> = ({
   };
 
   /**
+   * Handle modal operations
+   */
+  const openFieldModal = (columnName: string) => {
+    console.log(`🔍 Opening field modal for column: ${columnName}`);
+    setModalState({ isOpen: true, columnName });
+  };
+
+  const closeFieldModal = () => {
+    setModalState({ isOpen: false, columnName: null });
+  };
+
+  // Function to handle field selection from modal
+  const handleFieldSelect = (fieldName: string) => {
+    const { columnName } = modalState;
+    if (!columnName) return;
+
+    // Update column mappings
+    setColumnMappings(prev => ({
+      ...prev,
+      [columnName]: fieldName
+    }));
+
+    // Close modal and clear any errors related to this mapping
+    setModalState({ isOpen: false, columnName: null });
+    setMappingErrors(prev => prev.filter(error => 
+      !error.includes(`Column "${columnName}"`)
+    ));
+
+    console.log(`✅ Mapped column "${columnName}" to field "${fieldName}"`);
+  };
+
+  /**
+   * Handle ignore button click - properly unmaps field before ignoring
+   */
+  const handleIgnoreColumn = (columnName: string) => {
+    const currentMapping = columnMappings[columnName];
+    
+    // If currently mapped to a real field, we need to unmap it first to make it available for other columns
+    if (currentMapping && currentMapping !== '__IGNORE__') {
+      console.log(`Unmapping "${currentMapping}" from "${columnName}" before ignoring`);
+    }
+    
+    // Set to ignore (this will free up the previously mapped field for other columns)
+    handleMappingChange(columnName, '__IGNORE__');
+  };
+
+  /**
    * Handle form submission
    */
   const handleSubmit = () => {
@@ -410,7 +508,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                 <p>The following required Planday fields need to be mapped:</p>
                 <ul className="list-disc list-inside mt-1">
                   {unmappedRequiredFields.map(field => (
-                    <li key={field}><strong>{field.replace(/([A-Z])/g, ' $1').trim()}</strong></li>
+                    <li key={field}><strong className="font-mono">{field}</strong></li>
                   ))}
                 </ul>
               </div>
@@ -444,16 +542,18 @@ const MappingStep: React.FC<MappingStepProps> = ({
           </div>
           
           {/* Mapping Rows */}
-          <div className="space-y-3">
-            {excelColumns.map((column) => {
+          <div className="divide-y divide-gray-100">
+            {excelColumns.map((column, index) => {
               const mappedField = columnMappings[column.name];
-              const availableFields = getAvailableFields(column.name);
+              // const availableFields = getAvailableFields(column.name); // Available for future use
               const status = getMappingStatus(column.name);
               
               return (
                 <div 
                   key={column.name}
-                  className="grid grid-cols-12 gap-4 items-center p-3 rounded-lg transition-colors hover:bg-gray-50"
+                  className={`grid grid-cols-12 gap-4 items-center p-4 transition-colors hover:bg-gray-50 group ${
+                    index === 0 ? '' : 'pt-4'
+                  }`}
                 >
                   {/* Excel Column (Left) */}
                   <div className="col-span-5">
@@ -497,92 +597,89 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     </div>
                   </div>
 
-                  {/* Planday Field Dropdown (Right) */}
+                  {/* Planday Field Buttons (Right) */}
                   <div className="col-span-5">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={mappedField || ''}
-                        onChange={(e) => handleMappingChange(column.name, e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Select Planday field...</option>
-                        
-                        {/* Ignore Option */}
-                        <optgroup label="🚫 Skip Column">
-                          <option value="__IGNORE__">Ignore this column (don't import)</option>
-                        </optgroup>
-                        
-                        {/* Required Fields */}
-                        <optgroup label="📍 Required Fields">
-                          {availableFields
-                            .filter(field => field.isRequired)
-                            .map(field => (
-                              <option key={field.name} value={field.name}>
-                                {field.displayName}
-                                {field.isUnique ? ' ⚡' : ''}
-                                {field.isReadOnly ? ' 🔒' : ''}
-                              </option>
-                            ))
-                          }
-                        </optgroup>
-
-                        {/* Optional Fields */}
-                        <optgroup label="⚪ Optional Fields">
-                          {availableFields
-                            .filter(field => !field.isRequired && !field.isCustom)
-                            .map(field => (
-                              <option key={field.name} value={field.name}>
-                                {field.displayName}
-                                {field.isUnique ? ' ⚡' : ''}
-                                {field.isReadOnly ? ' 🔒' : ''}
-                              </option>
-                            ))
-                          }
-                        </optgroup>
-
-                        {/* Custom Fields */}
-                        {availableFields.some(field => field.isCustom) && (
-                          <optgroup label="✨ Custom Fields">
-                            {availableFields
-                              .filter(field => field.isCustom)
-                              .map(field => (
-                                <option key={field.name} value={field.name}>
-                                  {field.displayName}
-                                  {field.isUnique ? ' ⚡' : ''}
-                                  {field.isReadOnly ? ' 🔒' : ''}
-                                </option>
-                              ))
-                            }
-                          </optgroup>
-                        )}
-                      </select>
-                      
-                      {/* Checkmark when mapped */}
-                      {status === 'mapped' && (
-                        <div className="flex-shrink-0 text-green-600">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
+                    <div className="flex items-center w-full relative">
+                      {status === 'mapped' && mappedField !== '__IGNORE__' ? (
+                        <>
+                          {/* Green "Selected Field" button */}
+                          <Button
+                            onClick={() => openFieldModal(column.name)}
+                            className="bg-green-100 border-green-300 text-green-800 hover:bg-green-200 hover:border-green-400 justify-start transition-all duration-200 flex-1 group-hover:mr-12"
+                            variant="outline"
+                          >
+                            <div className="flex items-center">
+                              <span className="text-green-600 mr-2">✓</span>
+                              <span className="font-mono">
+                                {(() => {
+                                  const field = plandayFields.find(f => f.name === mappedField);
+                                  if (!field) return mappedField;
+                                  return field.isCustom ? (field.description || field.displayName || field.name) : field.name;
+                                })()}
+                              </span>
+                            </div>
+                          </Button>
+                          {/* Ignore button - slides in from right */}
+                          <Button
+                            onClick={() => handleIgnoreColumn(column.name)}
+                            className="text-orange-600 border-gray-300 hover:bg-orange-50 hover:border-orange-300 transition-all duration-200 opacity-0 absolute right-0 w-10 px-0 group-hover:opacity-100"
+                            variant="outline"
+                            title="Ignore this column"
+                          >
+                            🚫
+                          </Button>
+                        </>
+                      ) : status === 'ignored' ? (
+                        <>
+                          {/* Ignored text */}
+                          <div className="flex items-center text-orange-600 font-medium transition-all duration-200 flex-1 group-hover:mr-12">
+                            <span>Column will be ignored during import</span>
+                          </div>
+                          {/* Clear ignore button - slides in from right */}
+                          <Button
+                            onClick={() => handleMappingChange(column.name, '')}
+                            className="text-gray-600 border-gray-300 hover:bg-gray-50 transition-all duration-200 opacity-0 absolute right-0 w-10 px-0 group-hover:opacity-100"
+                            variant="outline"
+                            title="Clear ignore status"
+                          >
+                            ✕
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          {/* Default "Map to Planday field" button */}
+                          <Button
+                            onClick={() => openFieldModal(column.name)}
+                            className="justify-start text-gray-700 transition-all duration-200 flex-1 group-hover:mr-12"
+                            variant="outline"
+                          >
+                            Map to Planday field
+                          </Button>
+                          {/* Ignore button - slides in from right */}
+                          <Button
+                            onClick={() => handleIgnoreColumn(column.name)}
+                            className="text-orange-600 border-gray-300 hover:bg-orange-50 hover:border-orange-300 transition-all duration-200 opacity-0 absolute right-0 w-10 px-0 group-hover:opacity-100"
+                            variant="outline"
+                            title="Ignore this column"
+                          >
+                            🚫
+                          </Button>
+                        </>
                       )}
                     </div>
                     
                     {/* Field description */}
-                    {mappedField && (
+                    {mappedField && mappedField !== '__IGNORE__' && (
                       <div className="text-xs text-gray-500 mt-1">
-                        {mappedField === '__IGNORE__' ? (
-                          <span className="text-orange-600 font-medium">Column will be ignored during import</span>
-                        ) : (
-                          (() => {
-                            const field = plandayFields.find(f => f.name === mappedField);
-                            const badges = [];
-                            if (field?.isRequired) badges.push('Required');
-                            if (field?.isUnique) badges.push('Must be unique');
-                            if (field?.isReadOnly) badges.push('Read-only');
-                            if (field?.isCustom) badges.push('Custom field');
-                            return badges.length > 0 ? badges.join(' • ') : '';
-                          })()
-                        )}
+                        {(() => {
+                          const field = plandayFields.find(f => f.name === mappedField);
+                          const badges = [];
+                          if (field?.isRequired) badges.push('Required');
+                          if (field?.isUnique) badges.push('Must be unique');
+                          if (field?.isReadOnly) badges.push('Read-only');
+                          if (field?.isCustom) badges.push('Custom field');
+                          return badges.length > 0 ? badges.join(' • ') : '';
+                        })()}
                       </div>
                     )}
                   </div>
@@ -668,63 +765,35 @@ const MappingStep: React.FC<MappingStepProps> = ({
                       </div>
                     </div>
 
-                    {/* Planday Field Dropdown (Right) */}
+                    {/* Planday Field Button (Right) */}
                     <div className="col-span-4">
-                      <select
-                        value={fieldName}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleCustomFieldChange(fieldName, e.target.value);
-                          }
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Select Planday field...</option>
-                        
-                        {/* Required Fields */}
-                        <optgroup label="📍 Required Fields">
-                          {availableFields
-                            .filter(field => field.isRequired)
-                            .map(field => (
-                              <option key={field.name} value={field.name}>
-                                {field.displayName}
-                                {field.isUnique ? ' ⚡' : ''}
-                                {field.isReadOnly ? ' 🔒' : ''}
-                              </option>
-                            ))
-                          }
-                        </optgroup>
-
-                        {/* Optional Fields */}
-                        <optgroup label="⚪ Optional Fields">
-                          {availableFields
-                            .filter(field => !field.isRequired && !field.isCustom)
-                            .map(field => (
-                              <option key={field.name} value={field.name}>
-                                {field.displayName}
-                                {field.isUnique ? ' ⚡' : ''}
-                                {field.isReadOnly ? ' 🔒' : ''}
-                              </option>
-                            ))
-                          }
-                        </optgroup>
-
-                        {/* Custom Fields */}
-                        {availableFields.some(field => field.isCustom) && (
-                          <optgroup label="✨ Custom Fields">
-                            {availableFields
-                              .filter(field => field.isCustom)
-                              .map(field => (
-                                <option key={field.name} value={field.name}>
-                                  {field.displayName}
-                                  {field.isUnique ? ' ⚡' : ''}
-                                  {field.isReadOnly ? ' 🔒' : ''}
-                                </option>
-                              ))
-                            }
-                          </optgroup>
-                        )}
-                      </select>
+                      {fieldName && availableFields.some(f => f.name === fieldName) ? (
+                        <Button
+                          onClick={() => openFieldModal(fieldName)}
+                          className="bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200 hover:border-purple-400 justify-start transition-all duration-200 w-full"
+                          variant="outline"
+                        >
+                          <div className="flex items-center">
+                            <span className="text-purple-600 mr-2">✓</span>
+                            <span className="font-mono">
+                              {(() => {
+                                const field = availableFields.find(f => f.name === fieldName);
+                                if (!field) return fieldName;
+                                return field.isCustom ? (field.description || field.displayName || field.name) : field.name;
+                              })()}
+                            </span>
+                          </div>
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => openFieldModal(fieldName)}
+                          className="text-gray-600 border-gray-300 hover:bg-gray-50 hover:border-gray-400 justify-start w-full"
+                          variant="outline"
+                        >
+                          <span className="text-gray-400 mr-2">📋</span>
+                          Select Planday field...
+                        </Button>
+                      )}
                     </div>
 
                     {/* Remove Button */}
@@ -776,6 +845,29 @@ const MappingStep: React.FC<MappingStepProps> = ({
           </div>
         </div>
       </Card>
+
+      {/* Field Selection Modal */}
+      <FieldSelectionModal
+        isOpen={modalState.isOpen}
+        onClose={closeFieldModal}
+        onSelectField={handleFieldSelect}
+        availableFields={modalState.columnName ? getAvailableFields(modalState.columnName) : []}
+        currentMapping={modalState.columnName ? columnMappings[modalState.columnName] : undefined}
+        columnName={modalState.columnName || ''}
+      />
+
+      {/* Custom Values Field Selection Modal */}
+      <FieldSelectionModal
+        isOpen={customValueModalState.isOpen}
+        onClose={() => setCustomValueModalState({ isOpen: false, fieldName: null })}
+        onSelectField={(fieldName) => {
+          handleCustomFieldChange(customValueModalState.fieldName || '', fieldName);
+          setCustomValueModalState({ isOpen: false, fieldName: null });
+        }}
+        availableFields={customValueModalState.fieldName ? getAvailableFieldsForCustom(customValueModalState.fieldName) : []}
+        currentMapping={customValueModalState.fieldName || undefined}
+        columnName={customValueModalState.fieldName || 'Unknown Field'}
+      />
     </div>
   );
 };

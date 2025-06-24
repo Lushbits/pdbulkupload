@@ -675,54 +675,53 @@ export class MappingService {
     // Get field information from validation service
     const requiredFields = ValidationService.getRequiredFields();
     const customFields = ValidationService.getCustomFields();
+    const allApiFields = ValidationService.getAllFieldNames();
     const fieldDefinitionsStatus = ValidationService.getStatus();
     
     console.log('🔍 Template Generation Debug:', {
       requiredFields,
       customFieldsCount: customFields.length,
       customFields: customFields.map(cf => ({ name: cf.name, description: cf.description })),
+      allApiFieldsCount: allApiFields.length,
       fieldDefinitionsStatus
     });
     
-    // Define logical field order (most important first)
-    const fieldPriority = [
-      'firstName', 'lastName', 'userName', 'departments', 'employeeGroups',
-      'cellPhone', 'phone', 'email', 'hireDate', 'birthDate', 
-      'street1', 'city', 'zip', 'gender', 'jobTitle', 'employeeId', 
-      'payrollId', 'ssn', 'bankAccount'
-    ];
-    
-    // Build ordered field list
+    // Build ordered field list dynamically based on actual API fields
     const fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }> = [];
+    const processedFields = new Set<string>();
     
-    // Add required fields first (in priority order)
-    fieldPriority.forEach(field => {
-      if (requiredFields.includes(field)) {
+    // Add required fields first
+    requiredFields.forEach(field => {
+      if (allApiFields.includes(field) && !processedFields.has(field)) {
         fieldOrder.push({
           field,
-          displayName: field.replace(/([A-Z])/g, ' $1').trim(),
+          displayName: field, // Use raw field name for standard fields
           isRequired: true,
-          isCustom: false
+          isCustom: field.startsWith('custom_'),
+          description: field.startsWith('custom_') ? 
+            customFields.find(cf => cf.name === field)?.description : undefined
         });
+        processedFields.add(field);
       }
     });
     
-    // Add remaining optional fields (in priority order)
-    fieldPriority.forEach(field => {
-      if (!requiredFields.includes(field) && !fieldOrder.some(f => f.field === field)) {
+    // Add remaining non-custom fields (standard optional fields)
+    allApiFields
+      .filter(field => !field.startsWith('custom_') && !processedFields.has(field))
+      .sort() // Alphabetical order for consistent output
+      .forEach(field => {
         fieldOrder.push({
           field,
-          displayName: field.replace(/([A-Z])/g, ' $1').trim(),
+          displayName: field, // Use raw field name for standard fields
           isRequired: false,
           isCustom: false
         });
-      }
-    });
+        processedFields.add(field);
+      });
     
-    // Add custom fields at the end (but skip any that already exist as standard fields)
+    // Add custom fields at the end
     customFields.forEach(customField => {
-      // Skip custom fields that already exist as standard fields to avoid duplicates
-      if (!fieldOrder.some(f => f.field === customField.name)) {
+      if (!processedFields.has(customField.name)) {
         fieldOrder.push({
           field: customField.name,
           displayName: customField.description || customField.name,
@@ -730,6 +729,7 @@ export class MappingService {
           isCustom: true,
           description: customField.description
         });
+        processedFields.add(customField.name);
       }
     });
     
@@ -739,33 +739,79 @@ export class MappingService {
     // Create empty template with just headers - no sample data
     const examples: string[][] = [];
     
-    // Generate instructions
+    // Generate instructions dynamically based on actual fields
     const instructions: Record<string, string> = {
       general: 'Fill in employee data. Required fields must be completed. Use the exact department and employee group names from your Planday portal.',
-      firstName: 'Employee\'s first name (required)',
-      lastName: 'Employee\'s last name (required)',
-      userName: 'Email address that will be used for login (required, must be unique)',
-      departments: `Department names from your portal. Use comma-separated names for multiple departments. Available: ${mappingService.getAvailableNames('departments').join(', ')}`,
-      employeeGroups: `Employee group names from your portal. Use comma-separated names for multiple groups. Available: ${mappingService.getAvailableNames('employeeGroups').join(', ')}`,
-      cellPhone: 'Mobile phone number (optional)',
-      phone: 'Work phone number (optional)',
-      email: 'Email address (if different from userName)',
-      hireDate: 'Hire date in YYYY-MM-DD format (e.g., 2024-01-15)',
-      birthDate: 'Birth date in YYYY-MM-DD format (e.g., 1990-03-15)',
-      street1: 'Street address',
-      city: 'City',
-      zip: 'ZIP/Postal code',
-      gender: 'Gender (Male/Female)',
-      jobTitle: 'Job title or position',
-      employeeId: 'Internal employee ID (if applicable)',
-      payrollId: 'Payroll system ID (if applicable)',
-      ssn: 'Social Security Number (if required by your portal)',
-      bankAccount: 'Bank account information (if required by your portal)'
     };
     
-    // Add custom field instructions
-    customFields.forEach(customField => {
-      instructions[customField.name] = customField.description || `Custom field: ${customField.name}`;
+    // Add field-specific instructions
+    fieldOrder.forEach(field => {
+      if (field.isCustom && field.description) {
+        instructions[field.field] = field.description;
+      } else {
+        // Standard field instructions
+        switch (field.field) {
+          case 'firstName':
+            instructions[field.field] = 'Employee\'s first name (required)';
+            break;
+          case 'lastName':
+            instructions[field.field] = 'Employee\'s last name (required)';
+            break;
+          case 'userName':
+            instructions[field.field] = 'Email address that will be used for login (required, must be unique)';
+            break;
+          case 'departments':
+            instructions[field.field] = `Department names from your portal. Use comma-separated names for multiple departments. Available: ${mappingService.getAvailableNames('departments').join(', ')}`;
+            break;
+          case 'employeeGroups':
+            instructions[field.field] = `Employee group names from your portal. Use comma-separated names for multiple groups. Available: ${mappingService.getAvailableNames('employeeGroups').join(', ')}`;
+            break;
+          case 'cellPhone':
+            instructions[field.field] = 'Mobile phone number (optional)';
+            break;
+          case 'phone':
+            instructions[field.field] = 'Work phone number (optional)';
+            break;
+          case 'email':
+            instructions[field.field] = 'Email address (if different from userName)';
+            break;
+          case 'hiredFrom':
+            instructions[field.field] = 'Hire date in YYYY-MM-DD format (e.g., 2024-01-15)';
+            break;
+          case 'birthDate':
+            instructions[field.field] = 'Birth date in YYYY-MM-DD format (e.g., 1990-03-15)';
+            break;
+          case 'street1':
+            instructions[field.field] = 'Street address';
+            break;
+          case 'city':
+            instructions[field.field] = 'City';
+            break;
+          case 'zip':
+            instructions[field.field] = 'ZIP/Postal code';
+            break;
+          case 'gender':
+            instructions[field.field] = 'Gender (Male/Female)';
+            break;
+          case 'jobTitle':
+            instructions[field.field] = 'Job title or position';
+            break;
+          case 'employeeId':
+            instructions[field.field] = 'Internal employee ID (if applicable)';
+            break;
+          case 'payrollId':
+            instructions[field.field] = 'Payroll system ID (if applicable)';
+            break;
+          case 'ssn':
+            instructions[field.field] = 'Social Security Number (if required by your portal)';
+            break;
+          case 'bankAccount':
+            instructions[field.field] = 'Bank account information (if required by your portal)';
+            break;
+          default:
+            instructions[field.field] = `Enter appropriate value for ${field.field}`;
+        }
+      }
     });
     
     return {
@@ -775,6 +821,8 @@ export class MappingService {
       fieldOrder
     };
   }
+
+
 }
 
 /**
@@ -877,6 +925,33 @@ export class ValidationService {
    */
   static initialize(fieldDefinitions: PlandayFieldDefinitionsSchema): void {
     this.fieldDefinitions = fieldDefinitions;
+    
+    // Add detailed logging to debug field processing inconsistencies
+    const requiredFields = this.getRequiredFields();
+    const customFields = this.getCustomFields();
+    const readOnlyFields = this.getReadOnlyFields();
+    const uniqueFields = this.getUniqueFields();
+    
+    console.log('🔍 Field Processing Debug - ValidationService.initialize:', {
+      portalId: fieldDefinitions.portalId,
+      rawApiRequiredFields: fieldDefinitions.required,
+      processedRequiredFields: requiredFields,
+      rawApiReadOnlyFields: fieldDefinitions.readOnly,
+      processedReadOnlyFields: readOnlyFields,
+      rawApiUniqueFields: fieldDefinitions.unique,
+      processedUniqueFields: uniqueFields,
+      rawApiFieldNames: Object.keys(fieldDefinitions.properties),
+      detectedCustomFields: customFields.map(cf => ({ name: cf.name, description: cf.description })),
+      businessLogicOverrides: {
+        forcedRequiredFields: ['userName', 'departments']
+      },
+      fieldClassification: {
+        totalApiFields: Object.keys(fieldDefinitions.properties).length,
+        standardFields: Object.keys(fieldDefinitions.properties).filter(f => !f.startsWith('custom_')).length,
+        customFields: Object.keys(fieldDefinitions.properties).filter(f => f.startsWith('custom_')).length,
+        requiredFieldOverrides: requiredFields.filter(field => !fieldDefinitions.required.includes(field))
+      }
+    });
   }
 
   /**
@@ -962,18 +1037,10 @@ export class ValidationService {
     }
 
     const customFields: Array<{ name: string; description: string }> = [];
-    const standardFields = new Set([
-      'firstName', 'lastName', 'email', 'departments', 'employeeGroups', 
-      'cellPhone', 'phone', 'hireDate', 'birthDate', 'street1', 'city', 
-      'zip', 'gender', 'ssn', 'employeeId', 'payrollId', 'jobTitle'
-    ]);
-    
-
     
     for (const [fieldName, fieldConfig] of Object.entries(this.fieldDefinitions.properties)) {
-      // Consider any field that's not in our standard list as custom
-      if (!standardFields.has(fieldName)) {
-        // Individual custom field logging removed to reduce noise
+      // Use Planday's actual custom field convention: fields starting with 'custom_'
+      if (fieldName.startsWith('custom_')) {
         customFields.push({
           name: fieldName,
           description: fieldConfig.description || fieldName
@@ -981,8 +1048,6 @@ export class ValidationService {
       }
     }
 
-    // Mark as logged to prevent repeat logging
-    // this.hasLoggedCustomFields = true;
     return customFields;
   }
 
@@ -1205,6 +1270,92 @@ export class ValidationService {
       portalId: this.fieldDefinitions?.portalId || null,
       requiredFieldsCount: this.fieldDefinitions?.required.length || 0,
       customFieldsCount: this.getCustomFields().length,
+    };
+  }
+
+  /**
+   * Get all field names available from the API
+   */
+  static getAllFieldNames(): string[] {
+    if (!this.fieldDefinitions) {
+      return [];
+    }
+    return Object.keys(this.fieldDefinitions.properties);
+  }
+
+  /**
+   * Diagnostic method to analyze field classification
+   * Call this method to get detailed information about how fields are being classified
+   */
+  static diagnoseFieldInconsistencies(): {
+    isLoaded: boolean;
+    fieldClassification: {
+      totalApiFields: number;
+      standardFields: string[];
+      customFields: string[];
+      requiredFieldOverrides: string[];
+    };
+    fieldMapping: {
+      apiField: string;
+      classification: string;
+      isRequired: boolean;
+      isCustom: boolean;
+      notes: string;
+    }[];
+  } {
+    if (!this.fieldDefinitions) {
+      return {
+        isLoaded: false,
+        fieldClassification: {
+          totalApiFields: 0,
+          standardFields: [],
+          customFields: [],
+          requiredFieldOverrides: []
+        },
+        fieldMapping: []
+      };
+    }
+
+    const apiFieldNames = Object.keys(this.fieldDefinitions.properties);
+    const standardFields = apiFieldNames.filter(field => !field.startsWith('custom_'));
+    const customFieldsFromApi = apiFieldNames.filter(field => field.startsWith('custom_'));
+
+    // Check for required field overrides
+    const apiRequiredFields = this.fieldDefinitions.required;
+    const processedRequiredFields = this.getRequiredFields();
+    const requiredFieldOverrides = processedRequiredFields.filter(
+      (field: string) => !apiRequiredFields.includes(field)
+    );
+
+    // Create field mapping analysis
+    const fieldMapping = apiFieldNames.map(apiField => ({
+      apiField,
+      classification: apiField.startsWith('custom_') ? 'Custom Field' : 'Standard Field',
+      isRequired: this.isRequired(apiField),
+      isCustom: apiField.startsWith('custom_'),
+      notes: apiField.startsWith('custom_') 
+        ? 'Custom field identified by custom_ prefix'
+        : 'Standard Planday field'
+    }));
+
+    console.log('🔍 Field Classification Analysis:', {
+      portalId: this.fieldDefinitions.portalId,
+      totalApiFields: apiFieldNames.length,
+      standardFieldsCount: standardFields.length,
+      customFieldsCount: customFieldsFromApi.length,
+      requiredFieldOverrides,
+      customFieldsDetected: this.getCustomFields().length
+    });
+
+    return {
+      isLoaded: true,
+      fieldClassification: {
+        totalApiFields: apiFieldNames.length,
+        standardFields,
+        customFields: customFieldsFromApi,
+        requiredFieldOverrides
+      },
+      fieldMapping
     };
   }
 } 

@@ -99,7 +99,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           city: converted.city || employee.city,
           zip: converted.zip || employee.zip,
           gender: converted.gender || employee.gender || 'Male', // Add default gender for testing
-          hireDate: converted.hireDate || employee.hireDate,
+          hiredFrom: converted.hiredFrom || employee.hiredFrom,
           birthDate: converted.birthDate || employee.birthDate,
           ssn: converted.ssn || employee.ssn,
         };

@@ -101,12 +101,12 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
         }
 
         // Date validation (if provided)
-        if (employee.hireDate && employee.hireDate.trim() !== '') {
+        if (employee.hiredFrom && employee.hiredFrom.trim() !== '') {
           const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-          if (!dateRegex.test(employee.hireDate)) {
+          if (!dateRegex.test(employee.hiredFrom)) {
             errors.push({
-              field: 'hireDate',
-              value: employee.hireDate,
+              field: 'hiredFrom',
+              value: employee.hiredFrom,
               message: 'Date must be in YYYY-MM-DD format',
               rowIndex: index,
               severity: 'error'

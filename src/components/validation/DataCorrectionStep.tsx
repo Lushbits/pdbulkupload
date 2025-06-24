@@ -203,14 +203,14 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       }
 
       // Date validation (if provided)
-      // Convert hireDate to string and check if it's not empty
-      const hireDateStr = employee.hireDate?.toString()?.trim() || '';
-      if (hireDateStr !== '') {
+      // Convert hiredFrom to string and check if it's not empty
+      const hiredFromStr = employee.hiredFrom?.toString()?.trim() || '';
+      if (hiredFromStr !== '') {
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(hireDateStr)) {
+        if (!dateRegex.test(hiredFromStr)) {
           errors.push({
-            field: 'hireDate',
-            value: hireDateStr,
+            field: 'hiredFrom',
+            value: hiredFromStr,
             message: 'Date must be in YYYY-MM-DD format',
             rowIndex: index,
             severity: 'error'
@@ -599,11 +599,12 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     const customField = customFields.find(f => f.name === fieldName);
     
     if (customField && customField.description) {
+      // For custom fields, show human-readable description
       return customField.description;
     }
     
-    // For standard fields, convert camelCase to Title Case
-    return fieldName.replace(/([A-Z])/g, ' $1').trim();
+    // For standard fields, show raw field names (consistent with modal and mapping)
+    return fieldName;
   };
 
   /**
@@ -832,7 +833,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                 </th>
                                                  {editableFields.map(field => (
                   <th key={field} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32 bg-gray-50 sticky top-0 z-10">
-                    {getFieldDisplayName(field.toString())}
+                    <span className="font-mono normal-case">{getFieldDisplayName(field.toString())}</span>
                     {ValidationService.isRequired(field.toString()) && (
                       <span className="text-red-500 ml-1">*</span>
                     )}
@@ -949,7 +950,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                               : 'bg-yellow-100 text-yellow-800'
                           }`}
                         >
-                          <strong>{error.field}:</strong> {error.message}
+                          <strong className="font-mono">{error.field}:</strong> {error.message}
                         </div>
                       ))}
                     </div>

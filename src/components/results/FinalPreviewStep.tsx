@@ -41,11 +41,12 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     const customField = customFields.find(f => f.name === fieldName);
     
     if (customField && customField.description) {
+      // For custom fields, show human-readable description
       return customField.description;
     }
     
-    // For standard fields, convert camelCase to Title Case
-    return fieldName.replace(/([A-Z])/g, ' $1').trim();
+    // For standard fields, show raw field names (consistent with modal and mapping)
+    return fieldName;
   };
 
   // Convert the first employee to show exactly what will be sent to Planday API
@@ -233,7 +234,7 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
                     key={field}
                     className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50 sticky top-0 z-20"
                   >
-                    {getFieldDisplayName(field)}
+                    <span className="font-mono normal-case">{getFieldDisplayName(field)}</span>
                   </th>
                 ))}
               </tr>

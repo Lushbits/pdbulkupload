@@ -13,6 +13,8 @@ export { PrivacyModal } from './PrivacyModal';
 export { CookieModal } from './CookieModal';
 export { TermsOfServiceModal } from './TermsOfServiceModal';
 export { VersionModal, getCurrentVersion } from './VersionModal';
+export { FieldDefinitionsModal, FieldDefinitionsDebugButton } from './FieldDefinitionsModal';
+export { FieldSelectionModal } from './FieldSelectionModal';
 
 // Beta Components
 export { BetaBanner } from './BetaBanner';

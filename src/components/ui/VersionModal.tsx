@@ -13,6 +13,22 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.1.6',
+    date: '2025-01-24',
+    features: [
+      'Enhanced field display consistency: raw API field names for standard fields, human-readable descriptions for custom fields',
+      'Added monospace font styling to all field displays for improved "data-like" appearance throughout the application',
+      'Completely dynamic Excel template generation - no more hardcoded field lists, templates now reflect actual portal configuration',
+      'Fixed critical field name inconsistency: corrected hireDate → hiredFrom throughout codebase to match Planday API',
+      'Improved custom field detection using Planday\'s actual custom_ prefix convention instead of hardcoded exclusion lists',
+      'Enhanced field selection modal with consistent raw field names for standard fields and descriptions for custom fields',
+      'Updated auto-mapping rules to use correct API field names (hiredFrom, etc.) for better Excel column detection',
+      'Synchronized field display across all components: mapping interface, validation steps, preview tables, and templates',
+      'Resolved TypeScript compilation errors and improved code maintainability',
+      'Template downloads now show exactly the same field names visible in the mapping interface for perfect consistency'
+    ]
+  },
+  {
     version: '0.1.5',
     date: '2025-01-23',
     features: [

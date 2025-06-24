@@ -107,6 +107,9 @@ interface PlandayApiActions {
   // Utility actions
   testConnection: () => Promise<boolean>;
   clearErrors: () => void;
+  
+  // Diagnostic actions for debugging field inconsistencies
+  diagnoseFieldInconsistencies: () => ReturnType<typeof ValidationService.diagnoseFieldInconsistencies>;
 }
 
 export interface UsePlandayApiReturn extends PlandayApiState, PlandayApiActions {}
@@ -869,6 +872,9 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     checkExistingEmployeesByEmail,
     testConnection,
     clearErrors,
+    
+    // Diagnostic actions for debugging field inconsistencies
+    diagnoseFieldInconsistencies: () => ValidationService.diagnoseFieldInconsistencies(),
   };
 
   return returnValue;

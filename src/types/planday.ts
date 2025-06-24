@@ -34,7 +34,7 @@ export interface PlandayEmployee {
   email?: string;
   departments: number[]; // Array of department IDs (required)
   employeeGroups?: number[]; // Array of employee group IDs
-  hireDate?: string; // YYYY-MM-DD format
+  hiredFrom?: string; // YYYY-MM-DD format
   birthDate?: string; // YYYY-MM-DD format - requires special scope
   ssn?: string; // Social Security Number - requires special scope
   bankAccount?: string; // Bank account info - requires special scope
@@ -58,7 +58,7 @@ export interface PlandayEmployeeCreateRequest {
   email?: string;
   departments: number[];
   employeeGroups?: number[];
-  hireDate?: string;
+  hiredFrom?: string;
   birthDate?: string;
   ssn?: string;
   bankAccount?: string;
@@ -164,7 +164,7 @@ export interface PlandayEmployeeResponse {
   phone?: string;
   departments: PlandayDepartment[];
   employeeGroups?: PlandayEmployeeGroup[];
-  hireDate?: string;
+  hiredFrom?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -289,7 +289,7 @@ export interface ColumnMapping {
   departments?: string;
   employeeGroups?: string;
   cellPhone?: string;
-  hireDate?: string;
+  hiredFrom?: string;
   [key: string]: string | undefined;
 }
 
@@ -305,7 +305,7 @@ export interface Employee {
   employeeGroups?: string; // Can be names or IDs, comma-separated
   employeeTypeId?: string; // Can be name or ID, single value only
   cellPhone?: string;
-  hireDate?: string;
+  hiredFrom?: string;
   rowIndex: number;
   _skipUpload?: boolean; // Flag to mark employee for skipping during upload
   [key: string]: any; // Allow additional fields from Excel

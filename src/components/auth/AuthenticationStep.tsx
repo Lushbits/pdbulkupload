@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
+import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal';
 import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
 import type { StepComponentProps } from '../../types/planday';
 
@@ -112,6 +113,16 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
               >
                 Disconnect & Use Different Token
               </Button>
+            </div>
+            
+            {/* Debug Tools */}
+            <div className="pt-4 border-t border-gray-200">
+              <div className="flex justify-center">
+                <FieldDefinitionsDebugButton />
+              </div>
+              <p className="text-xs text-gray-500 text-center mt-2">
+                Debug tool: View raw field definitions from your Planday portal
+              </p>
             </div>
           </div>
         </Card>

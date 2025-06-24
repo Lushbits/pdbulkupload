@@ -125,9 +125,10 @@ export const AUTO_MAPPING_RULES = {
     'phone', 'telephone', 'phone number', 'tel', 'work phone',
     'office phone', 'landline'
   ],
-  hireDate: [
+  hiredFrom: [
     'hire date', 'start date', 'employment date', 'date hired',
-    'start of employment', 'employment start', 'join date'
+    'start of employment', 'employment start', 'join date',
+    'hired from', 'hiredate', 'startdate'
   ],
   birthDate: [
     'birth date', 'date of birth', 'birthday', 'born', 'dob',

@@ -245,6 +245,35 @@ export class ExcelParser {
       return this.normalizeHeader(header.toString());
     }) || [];
 
+    // Check for duplicate column names
+    const headerCounts = new Map<string, number[]>();
+    originalHeaders.forEach((header, index) => {
+      if (!headerCounts.has(header)) {
+        headerCounts.set(header, []);
+      }
+      headerCounts.get(header)!.push(index + 1); // Use 1-based column numbers for user display
+    });
+
+    // Find duplicates
+    const duplicates = Array.from(headerCounts.entries())
+      .filter(([_, positions]) => positions.length > 1)
+      .map(([header, positions]) => ({
+        name: header,
+        positions: positions,
+        columns: positions.map(pos => this.getExcelColumnLetter(pos - 1)).join(', ')
+      }));
+
+    if (duplicates.length > 0) {
+      const duplicateMessages = duplicates.map(dup => 
+        `"${dup.name}" (appears in columns ${dup.columns})`
+      ).join(', ');
+      
+      throw new Error(
+        `Duplicate column names found: ${duplicateMessages}. ` +
+        `Please rename your columns to have unique names and re-upload your file.`
+      );
+    }
+
     // Extract data rows (skip header row)
     const dataRows = rawData.slice(1);
 
@@ -309,6 +338,21 @@ export class ExcelParser {
 
     // Data processing complete
 
+    return result;
+  }
+
+  /**
+   * Convert column index to Excel column letter (0=A, 1=B, 25=Z, 26=AA, etc.)
+   */
+  private static getExcelColumnLetter(columnIndex: number): string {
+    let result = '';
+    let index = columnIndex;
+    
+    while (index >= 0) {
+      result = String.fromCharCode(65 + (index % 26)) + result;
+      index = Math.floor(index / 26) - 1;
+    }
+    
     return result;
   }
 
@@ -442,8 +486,8 @@ export class ExcelParser {
       for (const [field, patterns] of Object.entries(AUTO_MAPPING_RULES)) {
         if (patterns.some(pattern => normalizedHeader.includes(pattern))) {
           plandayField = field;
-          // For standard fields, create a display name from the field name
-          plandayFieldDisplayName = field.replace(/([A-Z])/g, ' $1').trim();
+          // For standard fields, use raw field name (consistent with other components)
+          plandayFieldDisplayName = field;
           break;
         }
       }

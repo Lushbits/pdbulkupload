@@ -309,6 +309,18 @@ export class PlandayApiClient {
         `${API_ENDPOINTS.EMPLOYEE_FIELD_DEFINITIONS}?type=${type}`
       );
       
+      // Add detailed logging to debug field inconsistencies
+      console.log('🔍 RAW Field Definitions API Response:', {
+        endpoint: `${API_ENDPOINTS.EMPLOYEE_FIELD_DEFINITIONS}?type=${type}`,
+        portalId: response.data.portalId,
+        totalProperties: Object.keys(response.data.properties).length,
+        requiredFields: response.data.required,
+        readOnlyFields: response.data.readOnly,
+        uniqueFields: response.data.unique,
+        allFieldNames: Object.keys(response.data.properties),
+        fieldDefinitions: response.data.properties
+      });
+      
       return response.data;
     } catch (error) {
       console.error('❌ Failed to fetch employee field definitions:', error);
