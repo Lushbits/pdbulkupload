@@ -31,7 +31,6 @@ export interface ExcelParseOptions {
   maxFileSize?: number;
   onProgress?: (progress: number) => void;
   customFields?: Array<{ name: string; description: string }>;
-  dateFormat?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'auto'; // Add date format preference
 }
 
 export interface ExcelParseResult {
@@ -39,8 +38,6 @@ export interface ExcelParseResult {
   data?: ParsedExcelData;
   error?: string;
   columnMappings?: ExcelColumnMapping[];
-  dateFormatAmbiguous?: boolean; // Indicate when user input is needed
-  detectedDateSamples?: string[]; // Show samples for user decision
 }
 
 /**
@@ -62,7 +59,6 @@ export class ExcelParser {
       maxFileSize = VALIDATION_CONFIG.MAX_FILE_SIZE,
       onProgress,
       customFields,
-      dateFormat = 'auto',
     } = options;
 
     try {
@@ -166,29 +162,8 @@ export class ExcelParser {
 
       onProgress?.(85); // Data extracted
 
-      // First pass: detect date format if in auto mode
-      if (dateFormat === 'auto') {
-        const tempData = this.processRawDataForDateAnalysis(rawData, maxRows);
-        const dateAnalysis = this.analyzeDateFormats(tempData.rows);
-        
-        if (dateAnalysis.isAmbiguous) {
-          return {
-            success: false,
-            dateFormatAmbiguous: true,
-            detectedDateSamples: dateAnalysis.samples,
-            error: 'Date format is ambiguous. Please specify whether your dates are in DD/MM/YYYY or MM/DD/YYYY format.',
-          };
-        }
-        
-        // Set the detected format for use in actual parsing
-        this.detectedDateFormat = dateAnalysis.detectedFormat;
-      } else {
-        // Use the explicitly specified format
-        this.detectedDateFormat = dateFormat;
-      }
-
-      // Process the data with detected date format
-      const processedData = this.processRawData(rawData, maxRows, file, this.detectedDateFormat || 'DD/MM/YYYY');
+      // Process the data (no date format detection here)
+      const processedData = this.processRawData(rawData, maxRows, file);
       
       onProgress?.(95); // Data processed
 
@@ -266,52 +241,12 @@ export class ExcelParser {
   }
 
   /**
-   * Minimal processing for date format analysis (first pass)
-   * Only extracts string values without date conversion for analysis
-   */
-  private static processRawDataForDateAnalysis(
-    rawData: any[][],
-    maxRows: number
-  ): { headers: string[]; rows: any[][] } {
-    // Extract headers (first row)
-    const headers = rawData[0]?.map((header, index) => {
-      if (!header || header.toString().trim() === '') {
-        return `Column ${index + 1}`;
-      }
-      return header.toString().trim();
-    }) || [];
-
-    // Extract data rows (skip header row) and limit
-    const dataRows = rawData.slice(1);
-    const limitedRows = maxRows > 0 ? dataRows.slice(0, maxRows) : dataRows;
-
-    // Only do minimal cleaning - preserve original string values for date analysis
-    const rows = limitedRows.map((row) => {
-      return headers.map((_, colIndex) => {
-        const cellValue = row[colIndex];
-        if (cellValue === null || cellValue === undefined) {
-          return null;
-        }
-        if (typeof cellValue === 'string') {
-          return cellValue.trim();
-        }
-        return cellValue.toString();
-      });
-    }).filter(row => 
-      row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== '')
-    );
-
-    return { headers, rows };
-  }
-
-  /**
    * Process raw Excel data into structured format
    */
   private static processRawData(
     rawData: any[][],
     maxRows: number,
-    file: File,
-    dateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'auto'
+    file: File
   ): ParsedExcelData {
     // Extract headers (first row)
     const originalHeaders = rawData[0]?.map((header, index) => {
@@ -361,7 +296,7 @@ export class ExcelParser {
     const cleanedRows = limitedRows.map((row) => {
       return originalHeaders.map((_, colIndex) => {
         const cellValue = row[colIndex];
-        return this.normalizeCellValue(cellValue, dateFormat);
+        return this.normalizeCellValue(cellValue);
       });
     });
 
@@ -453,7 +388,7 @@ export class ExcelParser {
   /**
    * Normalize cell values with proper type handling
    */
-  private static normalizeCellValue(value: any, dateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'auto'): any {
+  private static normalizeCellValue(value: any): any {
     // Handle null/undefined
     if (value === null || value === undefined) {
       return null;
@@ -515,7 +450,7 @@ export class ExcelParser {
       
       // Try to parse as date if it looks like a date
       if (this.isDateString(trimmed)) {
-        return this.parseFormattedDateString(trimmed, dateFormat);
+        return this.parseFormattedDateString(trimmed);
       }
       
       return trimmed;
@@ -551,7 +486,7 @@ export class ExcelParser {
    * Handles various formats without timezone conversion issues
    * Uses smart format detection to avoid DD/MM vs MM/DD ambiguity
    */
-  private static parseFormattedDateString(dateStr: string, dateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'auto'): string | null {
+  private static parseFormattedDateString(dateStr: string): string | null {
     const trimmed = dateStr.trim();
     
     // Already in YYYY-MM-DD format
@@ -657,37 +592,25 @@ export class ExcelParser {
       let day: string, month: string;
       
       // Auto-detection logic for this specific date
-      if (dateFormat === 'auto') {
-        // If first number > 12, it must be day (DD/MM format)
-        if (firstNum > 12) {
-          day = first;
-          month = second;
-        }
-        // If second number > 12, it must be day (MM/DD format) 
-        else if (secondNum > 12) {
-          month = first;
-          day = second;
-        }
-        // Both <= 12 - use detected format or fallback to DD/MM
-        else {
-          if (this.detectedDateFormat === 'MM/DD/YYYY') {
-            month = first;
-            day = second;
-          } else {
-            // Default to DD/MM when ambiguous (European convention)
-            day = first;
-            month = second;
-          }
-        }
-      }
-      // Use explicit format specified by user
-      else if (dateFormat === 'DD/MM/YYYY') {
+      if (firstNum > 12) {
         day = first;
         month = second;
       }
-      else { // MM/DD/YYYY
+      // If second number > 12, it must be day (MM/DD format) 
+      else if (secondNum > 12) {
         month = first;
         day = second;
+      }
+      // Both <= 12 - use detected format or fallback to DD/MM
+      else {
+        if (this.detectedDateFormat === 'MM/DD/YYYY') {
+          month = first;
+          day = second;
+        } else {
+          // Default to DD/MM when ambiguous (European convention)
+          day = first;
+          month = second;
+        }
       }
       
       const paddedDay = day.padStart(2, '0');
@@ -695,7 +618,7 @@ export class ExcelParser {
       
       // Validate month is <= 12
       if (parseInt(month, 10) > 12) {
-        console.warn(`⚠️ Invalid month value in date: ${trimmed} (interpreted as ${dateFormat || 'auto'})`);
+        console.warn(`⚠️ Invalid month value in date: ${trimmed} (interpreted as ${this.detectedDateFormat || 'auto'})`);
         return null;
       }
       
@@ -719,69 +642,6 @@ export class ExcelParser {
     // If all parsing fails, return null
     console.warn(`⚠️ Unrecognized date format: ${trimmed}`);
     return null;
-  }
-
-  /**
-   * Analyze date formats in the dataset to automatically detect DD/MM vs MM/DD
-   */
-  private static analyzeDateFormats(
-    rows: any[][]
-  ): { isAmbiguous: boolean; detectedFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | null; samples: string[] } {
-    const dateValues: string[] = [];
-    
-    // Find all potential date values in the dataset
-    rows.forEach(row => {
-      row.forEach(cell => {
-        if (typeof cell === 'string' && this.isDateString(cell)) {
-          dateValues.push(cell);
-        }
-      });
-    });
-
-    const samples = dateValues.slice(0, 5); // Keep first 5 for user display
-    
-    if (dateValues.length === 0) {
-      return { isAmbiguous: false, detectedFormat: null, samples: [] };
-    }
-
-    // Analyze patterns to detect format
-    let hasDefinitiveDDMM = false;
-    let hasDefinitiveMMDD = false;
-    
-    for (const dateStr of dateValues) {
-      const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (slashMatch) {
-        const [, first, second] = slashMatch;
-        const firstNum = parseInt(first, 10);
-        const secondNum = parseInt(second, 10);
-        
-        // If first number > 12, it must be day (DD/MM format)
-        if (firstNum > 12) {
-          hasDefinitiveDDMM = true;
-        }
-        // If second number > 12, it must be day (MM/DD format)
-        if (secondNum > 12) {
-          hasDefinitiveMMDD = true;
-        }
-      }
-    }
-
-    // If we have conflicting evidence, there's likely a data error
-    if (hasDefinitiveDDMM && hasDefinitiveMMDD) {
-      console.warn('⚠️ Conflicting date formats detected in dataset - some dates appear to be DD/MM and others MM/DD');
-      return { isAmbiguous: true, detectedFormat: null, samples };
-    }
-
-    // If we have definitive evidence for one format, use it
-    if (hasDefinitiveDDMM) {
-      return { isAmbiguous: false, detectedFormat: 'DD/MM/YYYY', samples };
-    }
-    if (hasDefinitiveMMDD) {
-      return { isAmbiguous: false, detectedFormat: 'MM/DD/YYYY', samples };
-    }
-
-    // If all dates have values ≤ 12 in both positions, it's ambiguous
-    return { isAmbiguous: true, detectedFormat: null, samples };
   }
 
   /**
@@ -1090,17 +950,6 @@ export const ExcelUtils = {
     options?: ExcelParseOptions
   ): Promise<ExcelParseResult> {
     return ExcelParser.parseFile(file, options);
-  },
-
-  /**
-   * Parse Excel file with specific date format
-   */
-  async parseFileWithDateFormat(
-    file: File,
-    dateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY',
-    options?: Omit<ExcelParseOptions, 'dateFormat'>
-  ): Promise<ExcelParseResult> {
-    return ExcelParser.parseFile(file, { ...options, dateFormat });
   },
 
   /**

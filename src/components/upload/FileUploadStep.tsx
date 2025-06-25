@@ -13,7 +13,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { DateFormatModal } from '../ui/DateFormatModal';
+
 // import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal'; // Commented out for production
 import { ExcelUtils, type ExcelParseResult } from '../../services/excelParser';
 import { ValidationService, MappingService } from '../../services/mappingService';
@@ -50,11 +50,6 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
   const [parseResult, setParseResult] = useState<ExcelParseResult | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   
-  // Date format modal state
-  const [showDateFormatModal, setShowDateFormatModal] = useState(false);
-  const [currentFile, setCurrentFile] = useState<File | null>(null);
-  const [dateFormatSamples, setDateFormatSamples] = useState<string[]>([]);
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /**
@@ -83,7 +78,6 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
           setProgress(progressValue);
         },
         customFields: ValidationService.getCustomFields(),
-        dateFormat: 'auto', // Start with auto-detection
       });
 
       if (result.success && result.data && result.columnMappings) {
@@ -99,11 +93,6 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
         }
 
         // File processing completed successfully
-      } else if (result.dateFormatAmbiguous && result.detectedDateSamples) {
-        // Date format is ambiguous - show modal for user selection
-        setCurrentFile(file);
-        setDateFormatSamples(result.detectedDateSamples);
-        setShowDateFormatModal(true);
       } else {
         setUploadError(result.error || 'Failed to process the Excel file');
       }
@@ -121,67 +110,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
     }
   }, [onFileProcessed]);
 
-  /**
-   * Process file with selected date format
-   */
-  const handleDateFormatSelection = useCallback(async (selectedFormat?: 'DD/MM/YYYY' | 'MM/DD/YYYY') => {
-    setShowDateFormatModal(false);
-    
-    if (!selectedFormat || !currentFile) {
-      // User cancelled - reset everything
-      setCurrentFile(null);
-      setDateFormatSamples([]);
-      return;
-    }
 
-    setIsProcessing(true);
-    setUploadError(null);
-    setParseResult(null);
-    setValidationErrors([]);
-    setProgress(0);
-
-    try {
-      console.log(`📁 Reprocessing file with ${selectedFormat} format: ${currentFile.name}`);
-
-      // Parse the Excel file with the selected date format
-      const result = await ExcelUtils.parseFileWithDateFormat(currentFile, selectedFormat, {
-        onProgress: (progressValue) => {
-          setProgress(progressValue);
-        },
-        customFields: ValidationService.getCustomFields(),
-      });
-
-      if (result.success && result.data && result.columnMappings) {
-        setParseResult(result);
-        
-        // Validate the parsed data
-        const errors = ExcelUtils.validateData(result.data);
-        setValidationErrors(errors);
-
-        // Notify parent component
-        if (onFileProcessed) {
-          onFileProcessed(result.data, result.columnMappings);
-        }
-
-        console.log(`✅ File processed successfully with ${selectedFormat} format`);
-      } else {
-        setUploadError(result.error || 'Failed to process the Excel file with selected date format');
-      }
-
-    } catch (error) {
-      console.error('❌ File reprocessing failed:', error);
-      setUploadError(
-        error instanceof Error 
-          ? error.message 
-          : 'An unexpected error occurred while reprocessing the file'
-      );
-    } finally {
-      setIsProcessing(false);
-      setProgress(0);
-      setCurrentFile(null);
-      setDateFormatSamples([]);
-    }
-  }, [currentFile, onFileProcessed]);
 
   /**
    * Handle drag events
@@ -693,12 +622,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
         </div>
       </Card>
 
-      {/* Date Format Selection Modal */}
-      <DateFormatModal
-        isOpen={showDateFormatModal}
-        onClose={handleDateFormatSelection}
-        samples={dateFormatSamples}
-      />
+
     </div>
   );
 }; 
