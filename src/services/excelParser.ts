@@ -7,6 +7,15 @@
  * - Data extraction with error handling
  * - Progress tracking for large files
  * - Memory-efficient processing
+ * - Timezone-safe date parsing using display text
+ * 
+ * DATE PARSING APPROACH:
+ * This service uses cellText: true and cellDates: false in SheetJS configuration
+ * to avoid the notorious "off by one day" Excel date issue. Instead of letting
+ * SheetJS convert Excel serial numbers to JavaScript Date objects (which introduces
+ * timezone conversions), we read the formatted display text that users actually see
+ * in their Excel file and parse it directly. This ensures deterministic results
+ * that match user expectations.
  */
 
 import * as XLSX from 'xlsx';
@@ -69,12 +78,13 @@ export class ExcelParser {
       onProgress?.(30); // File read complete
 
       // Parse workbook
-  
+      // Using cellText: true and cellDates: false to avoid timezone conversion issues
+      // This reads the formatted display text that users actually see in Excel
       const workbook = XLSX.read(arrayBuffer, {
         type: 'array',
-        cellText: false,
-        cellDates: true,
-        raw: false, // Force string parsing to prevent scientific notation
+        cellText: true,   // Get formatted display text (what user sees)
+        cellDates: false, // Avoid automatic date conversion and timezone issues
+        raw: false,       // Force string parsing to prevent scientific notation
       });
 
       onProgress?.(50); // Workbook parsed
@@ -387,24 +397,24 @@ export class ExcelParser {
       return null;
     }
 
-    // Handle dates
+    // Since we're using cellText: true, we should primarily get strings
+    // Date objects shouldn't appear with cellDates: false, but handle them just in case
     if (value instanceof Date) {
-      // Format as YYYY-MM-DD for Planday API
-      return value.toISOString().split('T')[0];
+      // Use UTC methods to avoid timezone conversion issues
+      const year = value.getUTCFullYear();
+      const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(value.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
 
-    // Handle numbers
+    // Handle numbers (should be rare with cellText: true, but keep for safety)
     if (typeof value === 'number') {
-      // Check if it's a date serial number (Excel dates)
-      if (value > 25000 && value < 50000) {
-        // Likely an Excel date serial number
-        const date = new Date((value - 25569) * 86400 * 1000);
-        return date.toISOString().split('T')[0];
-      }
+      // Don't try to convert numbers to dates automatically anymore
+      // Let the string-based date parsing handle formatted date strings instead
       return value;
     }
 
-    // Handle strings
+    // Handle strings (this is now the primary path for all Excel data)
     if (typeof value === 'string') {
       const trimmed = value.trim();
       
@@ -421,7 +431,6 @@ export class ExcelParser {
             if (!isNaN(mantissaNum) && !isNaN(exp) && mantissaNum > 1 && exp >= 6) {
               // For phone numbers, try to reconstruct the original precision
               const phoneNumber = (mantissaNum * Math.pow(10, exp)).toFixed(0);
-              // Excel scientific notation converted
               return phoneNumber;
             }
           }
@@ -430,7 +439,6 @@ export class ExcelParser {
           const numericValue = parseFloat(trimmed);
           if (!isNaN(numericValue) && numericValue > 1000000) { // Likely a phone number
             const phoneNumber = Math.round(numericValue).toString();
-            // Excel scientific notation converted (fallback)
             return phoneNumber;
           }
         } catch (error) {
@@ -440,10 +448,7 @@ export class ExcelParser {
       
       // Try to parse as date if it looks like a date
       if (this.isDateString(trimmed)) {
-        const date = new Date(trimmed);
-        if (!isNaN(date.getTime())) {
-          return date.toISOString().split('T')[0];
-        }
+        return this.parseFormattedDateString(trimmed);
       }
       
       return trimmed;
@@ -457,16 +462,105 @@ export class ExcelParser {
    * Check if a string looks like a date
    */
   private static isDateString(value: string): boolean {
-    // Common date patterns
+    // Common date patterns that Excel might display
     const datePatterns = [
-      /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
-      /^\d{2}\/\d{2}\/\d{4}$/, // MM/DD/YYYY
-      /^\d{2}-\d{2}-\d{4}$/, // MM-DD-YYYY
-      /^\d{2}\.\d{2}\.\d{4}$/, // MM.DD.YYYY
-      /^\d{4}\/\d{2}\/\d{2}$/, // YYYY/MM/DD
+      /^\d{4}-\d{2}-\d{2}$/,        // YYYY-MM-DD
+      /^\d{1,2}\/\d{1,2}\/\d{4}$/,  // MM/DD/YYYY or DD/MM/YYYY
+      /^\d{1,2}-\d{1,2}-\d{4}$/,    // MM-DD-YYYY or DD-MM-YYYY
+      /^\d{1,2}\.\d{1,2}\.\d{4}$/,  // MM.DD.YYYY or DD.MM.YYYY
+      /^\d{4}\/\d{1,2}\/\d{1,2}$/,  // YYYY/MM/DD
+      /^\d{4}\.\d{1,2}\.\d{1,2}$/,  // YYYY.MM.DD
+      /^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i, // 24 Jun 1974
+      /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$/i, // Jun 24, 1974
     ];
 
     return datePatterns.some(pattern => pattern.test(value));
+  }
+
+  /**
+   * Parse formatted date string from Excel display text
+   * Handles various formats without timezone conversion issues
+   */
+  private static parseFormattedDateString(dateStr: string): string | null {
+    const trimmed = dateStr.trim();
+    
+    // Already in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+    
+    // Handle DD/MM/YYYY format (common in European Excel)
+    const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (ddmmyyyyMatch) {
+      const [, day, month, year] = ddmmyyyyMatch;
+      const paddedDay = day.padStart(2, '0');
+      const paddedMonth = month.padStart(2, '0');
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    // Handle MM/DD/YYYY format (common in US Excel)
+    const mmddyyyyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (mmddyyyyMatch) {
+      const [, month, day, year] = mmddyyyyMatch;
+      const paddedDay = day.padStart(2, '0');
+      const paddedMonth = month.padStart(2, '0');
+      // Note: This assumes MM/DD format, but we could add logic to detect based on values
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    // Handle DD-MM-YYYY format
+    const ddmmyyyyDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (ddmmyyyyDashMatch) {
+      const [, day, month, year] = ddmmyyyyDashMatch;
+      const paddedDay = day.padStart(2, '0');
+      const paddedMonth = month.padStart(2, '0');
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    // Handle MM-DD-YYYY format
+    const mmddyyyyDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (mmddyyyyDashMatch) {
+      const [, month, day, year] = mmddyyyyDashMatch;
+      const paddedDay = day.padStart(2, '0');
+      const paddedMonth = month.padStart(2, '0');
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    // Handle DD.MM.YYYY format (common in German Excel)
+    const ddmmyyyyDotMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (ddmmyyyyDotMatch) {
+      const [, day, month, year] = ddmmyyyyDotMatch;
+      const paddedDay = day.padStart(2, '0');
+      const paddedMonth = month.padStart(2, '0');
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    // Handle YYYY/MM/DD format
+    const yyyymmddMatch = trimmed.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    if (yyyymmddMatch) {
+      const [, year, month, day] = yyyymmddMatch;
+      const paddedDay = day.padStart(2, '0');
+      const paddedMonth = month.padStart(2, '0');
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    // Handle other common formats like "24 Jun 1974", "June 24, 1974", etc.
+    // Use a fallback Date constructor but be careful about timezone
+    try {
+      const date = new Date(trimmed + ' UTC'); // Add UTC to avoid timezone conversion
+      if (!isNaN(date.getTime())) {
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not parse date string: ${trimmed}`);
+    }
+    
+    // If all parsing fails, return null
+    console.warn(`⚠️ Unrecognized date format: ${trimmed}`);
+    return null;
   }
 
   /**

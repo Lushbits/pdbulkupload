@@ -13,6 +13,14 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.1.7',
+    date: '2025-01-25',
+    features: [
+      'Fixed Excel date parsing "off by one day" issue by reading formatted display text instead of converting Excel serial numbers',
+      'Fixed Results Verification step showing incorrect employee data and improved table transparency'
+    ]
+  },
+  {
     version: '0.1.6',
     date: '2025-01-24',
     features: [
