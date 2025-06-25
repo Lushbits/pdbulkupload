@@ -203,11 +203,24 @@ const MappingStep: React.FC<MappingStepProps> = ({
     // Get all fields that have custom values set
     const customMappedFields = new Set(Object.keys(customValues).filter(key => customValues[key].trim()));
     
+    // Check if cellPhone is mapped (for conditional requirements)
+    const isCellPhoneMapped = mappedFields.has('cellPhone') || customMappedFields.has('cellPhone');
+    
     return plandayFields.filter(field => {
       // Include field if:
       // 1. It's not mapped by another column AND
       // 2. It doesn't have a custom value set
       return !mappedFields.has(field.name) && !customMappedFields.has(field.name);
+    }).map(field => {
+      // Apply conditional requirements
+      // cellPhoneCountryCode becomes required when cellPhone is mapped
+      if (field.name === 'cellPhoneCountryCode' && isCellPhoneMapped) {
+        return {
+          ...field,
+          isRequired: true
+        };
+      }
+      return field;
     });
   };
 
@@ -216,9 +229,22 @@ const MappingStep: React.FC<MappingStepProps> = ({
     const mappedFields = new Set(Object.values(columnMappings).filter(Boolean));
     const customMappedFields = new Set(Object.keys(customValues));
     
+    // Check if cellPhone is mapped (for conditional requirements)
+    const isCellPhoneMapped = mappedFields.has('cellPhone') || customMappedFields.has('cellPhone');
+    
     return plandayFields.filter(field => {
       // Include if not mapped in either regular or custom mappings, or if it's the current custom mapping
       return (!mappedFields.has(field.name) && !customMappedFields.has(field.name)) || field.name === currentFieldName;
+    }).map(field => {
+      // Apply conditional requirements
+      // cellPhoneCountryCode becomes required when cellPhone is mapped
+      if (field.name === 'cellPhoneCountryCode' && isCellPhoneMapped) {
+        return {
+          ...field,
+          isRequired: true
+        };
+      }
+      return field;
     });
   };
 
