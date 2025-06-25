@@ -13,6 +13,18 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.1.9',
+    date: '2025-01-25',
+    features: [
+      'Simplified phone number logic: removed landline phone field support, now only supports cellPhone',
+      'Made cellPhoneCountryCode mandatory when cellPhone is mapped - no more auto-detection guesswork',
+      'Enhanced country code support: accepts both ISO codes (DK, SE) and country names (Denmark, Sweden)',
+      'Intelligent dial code removal: automatically strips country dial codes (e.g., removes "46" from Swedish numbers)',
+      'Improved phone validation with country-specific length validation and clearer error messages',
+      'Removed phone field from mapping UI, templates, and all auto-mapping rules for cleaner user experience'
+    ]
+  },
+  {
     version: '0.1.8',
     date: '2025-01-25',
     features: [

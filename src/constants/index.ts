@@ -121,10 +121,6 @@ export const AUTO_MAPPING_RULES = {
     'mobile', 'cell phone', 'cell', 'mobile phone', 'cellular',
     'mobile number', 'cell number', 'gsm'
   ],
-  phone: [
-    'phone', 'telephone', 'phone number', 'tel', 'work phone',
-    'office phone', 'landline'
-  ],
   hiredFrom: [
     'hire date', 'start date', 'employment date', 'date hired',
     'start of employment', 'employment start', 'join date',
@@ -208,7 +204,6 @@ export const VALIDATION_CONFIG = {
     lastName: { min: 1, max: 50 },
     userName: { min: 1, max: 100 },
     cellPhone: { max: 20 },
-    phone: { max: 20 },
     street1: { max: 100 },
     city: { max: 50 },
     zip: { max: 10 },

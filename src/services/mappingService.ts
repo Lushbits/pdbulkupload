@@ -618,49 +618,42 @@ export class MappingService {
     // Convert cellPhone to string and check if it's not empty
     const cellPhoneStr = employee.cellPhone?.toString()?.trim() || '';
     if (cellPhoneStr !== '') {
-      try {
-        const { PhoneParser } = await import('../utils');
-        const parseResult = PhoneParser.parsePhoneNumber(cellPhoneStr);
-        
-        if (parseResult.isValid && parseResult.phoneNumber && parseResult.countryCode) {
-          // Set the parsed phone number and country information
-          converted.cellPhone = parseResult.phoneNumber;
-          converted.cellPhoneCountryCode = parseResult.countryCode;
-          if (parseResult.countryId) {
-            converted.cellPhoneCountryId = parseResult.countryId;
+      // Simplified phone parsing - user must specify country code
+      const countryCode = employee.cellPhoneCountryCode?.toString()?.trim() || '';
+      
+      if (countryCode) {
+        try {
+          const { PhoneParser } = await import('../utils');
+          const parseResult = PhoneParser.parsePhoneNumberWithCountry(cellPhoneStr, countryCode);
+          
+          if (parseResult.isValid && parseResult.phoneNumber && parseResult.countryCode) {
+            // Set the parsed phone number and country information
+            converted.cellPhone = parseResult.phoneNumber;
+            converted.cellPhoneCountryCode = parseResult.countryCode;
+            if (parseResult.countryId) {
+              converted.cellPhoneCountryId = parseResult.countryId;
+            }
+          } else {
+            // Keep original value if parsing failed - validation will catch this
+            converted.cellPhone = cellPhoneStr;
+            converted.cellPhoneCountryCode = countryCode;
           }
-        } else {
-          // Keep original value if parsing failed - validation will catch this
+        } catch (error) {
+          console.warn('⚠️ Error parsing phone number:', error);
+          // Fallback to original values
           converted.cellPhone = cellPhoneStr;
+          converted.cellPhoneCountryCode = countryCode;
         }
-      } catch (error) {
-        console.warn('⚠️ Error parsing phone number:', error);
-        // Fallback to original value
+      } else {
+        // No country code provided - keep original phone number
         converted.cellPhone = cellPhoneStr;
       }
     }
 
-    // Handle landline phone numbers similarly
-    // Convert phone to string and check if it's not empty
-    const phoneStr = employee.phone?.toString()?.trim() || '';
-    if (phoneStr !== '') {
-      try {
-        const { PhoneParser } = await import('../utils');
-        const parseResult = PhoneParser.parsePhoneNumber(phoneStr);
-        
-        if (parseResult.isValid && parseResult.phoneNumber && parseResult.countryCode) {
-          converted.phone = parseResult.phoneNumber;
-          converted.phoneCountryCode = parseResult.countryCode;
-          if (parseResult.countryId) {
-            converted.phoneCountryId = parseResult.countryId;
-          }
-        } else {
-          converted.phone = phoneStr;
-        }
-      } catch (error) {
-        console.warn('⚠️ Error parsing landline phone number:', error);
-        converted.phone = phoneStr;
-      }
+    // Auto-populate email field from userName
+    // Email field is not shown in mapping UI but must be populated for Planday API
+    if (converted.userName) {
+      converted.email = converted.userName;
     }
 
     return {
@@ -685,8 +678,7 @@ export class MappingService {
         'userName',
         'departments',
         'employeeGroups',
-        'cellPhone',
-        'hireDate'
+        'hiredFrom'
       ],
       examples: [],
       instructions: {
@@ -725,9 +717,12 @@ export class MappingService {
     const fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }> = [];
     const processedFields = new Set<string>();
     
-    // Add required fields first
+    // Fields to exclude from templates because they are auto-populated
+    const excludedFields = ['email', 'phone']; // email is auto-populated from userName, phone field removed (only cellPhone supported)
+    
+    // Add required fields first (excluding auto-populated ones)
     requiredFields.forEach(field => {
-      if (allApiFields.includes(field) && !processedFields.has(field)) {
+      if (allApiFields.includes(field) && !processedFields.has(field) && !excludedFields.includes(field)) {
         fieldOrder.push({
           field,
           displayName: field, // Use raw field name for standard fields
@@ -740,9 +735,9 @@ export class MappingService {
       }
     });
     
-    // Add remaining non-custom fields (standard optional fields)
+    // Add remaining non-custom fields (standard optional fields, excluding auto-populated ones)
     allApiFields
-      .filter(field => !field.startsWith('custom_') && !processedFields.has(field))
+      .filter(field => !field.startsWith('custom_') && !processedFields.has(field) && !excludedFields.includes(field))
       .sort() // Alphabetical order for consistent output
       .forEach(field => {
         fieldOrder.push({
@@ -803,12 +798,6 @@ export class MappingService {
             break;
           case 'cellPhone':
             instructions[field.field] = 'Mobile phone number (optional)';
-            break;
-          case 'phone':
-            instructions[field.field] = 'Work phone number (optional)';
-            break;
-          case 'email':
-            instructions[field.field] = 'Email address (if different from userName)';
             break;
           case 'hiredFrom':
             instructions[field.field] = 'Hire date in YYYY-MM-DD format (e.g., 2024-01-15)';
@@ -1355,6 +1344,20 @@ export class ValidationService {
           severity: 'error'
         });
       }
+    }
+
+    // Conditional requirement: cellPhoneCountryCode is required when cellPhone is provided
+    const cellPhone = employee.cellPhone?.toString()?.trim() || '';
+    const cellPhoneCountryCode = employee.cellPhoneCountryCode?.toString()?.trim() || '';
+    
+    if (cellPhone && !cellPhoneCountryCode) {
+      errors.push({
+        field: 'cellPhoneCountryCode',
+        value: cellPhoneCountryCode,
+        message: 'cellPhoneCountryCode is required when cellPhone is provided. Specify country like "DK", "SE", "Denmark", "Sweden"',
+        rowIndex,
+        severity: 'error'
+      });
     }
 
     return errors;

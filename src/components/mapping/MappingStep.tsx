@@ -86,9 +86,12 @@ const MappingStep: React.FC<MappingStepProps> = ({
     const fields: PlandayField[] = [];
     const processedFields = new Set<string>();
 
-    // Add required fields
+    // Fields to exclude from mapping UI because they are auto-populated
+    const excludedFields = ['email', 'phone']; // email is auto-populated from userName, phone field is removed (only cellPhone supported)
+
+    // Add required fields (excluding auto-populated ones)
     requiredFields.forEach(fieldName => {
-      if (!processedFields.has(fieldName)) {
+      if (!processedFields.has(fieldName) && !excludedFields.includes(fieldName)) {
         fields.push({
           name: fieldName,
           displayName: fieldName.replace(/([A-Z])/g, ' $1').trim(),
@@ -101,9 +104,9 @@ const MappingStep: React.FC<MappingStepProps> = ({
       }
     });
 
-    // Add all other API fields as optional (excluding custom fields and already processed fields)
+    // Add all other API fields as optional (excluding custom fields, already processed fields, and excluded fields)
     allApiFields.forEach(fieldName => {
-      if (!processedFields.has(fieldName) && !fieldName.startsWith('custom_')) {
+      if (!processedFields.has(fieldName) && !fieldName.startsWith('custom_') && !excludedFields.includes(fieldName)) {
         fields.push({
           name: fieldName,
           displayName: fieldName.replace(/([A-Z])/g, ' $1').trim(),

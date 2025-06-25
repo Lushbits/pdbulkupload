@@ -497,4 +497,147 @@ export class PhoneParser {
     this.portalCountry = null;
     this.defaultCountry = PHONE_PARSING_CONFIG.DEFAULT_COUNTRY;
   }
+
+  /**
+   * Parse a phone number with user-specified country code
+   * Simpler and more predictable than auto-detection
+   */
+  static parsePhoneNumberWithCountry(input: string, userCountryCode: string): PhoneParseResult {
+    if (!input || typeof input !== 'string') {
+      return {
+        isValid: false,
+        originalInput: input || '',
+        confidence: 0,
+        error: 'Phone number is required'
+      };
+    }
+
+    if (!userCountryCode || typeof userCountryCode !== 'string') {
+      return {
+        isValid: false,
+        originalInput: input,
+        confidence: 0,
+        error: 'Country code is required when cellPhone is provided'
+      };
+    }
+
+    // Normalize country code (handle "Denmark" -> "DK", "Sweden" -> "SE", etc.)
+    const normalizedCountryCode = this.normalizeCountryCode(userCountryCode.trim());
+    if (!normalizedCountryCode) {
+      return {
+        isValid: false,
+        originalInput: input,
+        confidence: 0,
+        error: `Unknown country "${userCountryCode}". Use country codes like DK, SE, NO or names like Denmark, Sweden, Norway`
+      };
+    }
+
+    // Handle scientific notation from Excel (e.g., "4.47976E+11" -> "447976000000")
+    let processedInput = input;
+    if (input.includes('E+') || input.includes('e+')) {
+      try {
+        const numericValue = parseFloat(input);
+        if (!isNaN(numericValue)) {
+          processedInput = Math.round(numericValue).toString();
+          console.log(`📱 Converted scientific notation: ${input} → ${processedInput}`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Could not convert scientific notation: ${input}`);
+      }
+    }
+
+    // Clean the input - remove spaces, dashes, parentheses
+    const cleaned = processedInput.replace(/[\s\-\(\)]/g, '');
+    
+    if (cleaned.length === 0) {
+      return {
+        isValid: false,
+        originalInput: input,
+        confidence: 0,
+        error: 'Phone number cannot be empty'
+      };
+    }
+
+    // Get country mapping for the specified country
+    const countryMapping = this.getCountryMapping(normalizedCountryCode);
+    if (!countryMapping) {
+      return {
+        isValid: false,
+        originalInput: input,
+        confidence: 0,
+        error: `Country "${normalizedCountryCode}" is not supported`
+      };
+    }
+
+    // Remove leading + or 00 if present
+    let workingNumber = cleaned;
+    if (workingNumber.startsWith('+')) {
+      workingNumber = workingNumber.substring(1);
+    } else if (workingNumber.startsWith('00')) {
+      workingNumber = workingNumber.substring(2);
+    }
+
+    // If number starts with the dial code for this country, remove it
+    if (workingNumber.startsWith(countryMapping.dialCode)) {
+      workingNumber = workingNumber.substring(countryMapping.dialCode.length);
+      console.log(`📱 Removed dial code ${countryMapping.dialCode}: ${cleaned} → ${workingNumber}`);
+    }
+
+    // Validate phone number length for this country
+    if (workingNumber.length >= countryMapping.minLength && 
+        workingNumber.length <= countryMapping.maxLength) {
+      
+      return {
+        isValid: true,
+        phoneNumber: workingNumber,
+        countryCode: countryMapping.countryCode,
+        dialCode: countryMapping.dialCode,
+        countryId: countryMapping.countryId,
+        confidence: 1.0, // High confidence since user specified country
+        originalInput: input,
+        assumedCountry: false
+      };
+    } else {
+      // Length validation failed
+      const countryName = this.getCountryName(countryMapping.countryCode);
+      const inputFormatExample = this.getInputFormatExample(countryMapping.countryCode);
+      let errorMessage = '';
+      
+      if (workingNumber.length < countryMapping.minLength) {
+        errorMessage = `Phone number too short for ${countryName}. Expected format: ${inputFormatExample}`;
+      } else {
+        errorMessage = `Phone number too long for ${countryName}. Expected format: ${inputFormatExample}`;
+      }
+      
+      return {
+        isValid: false,
+        originalInput: input,
+        confidence: 0.8,
+        error: errorMessage,
+        countryCode: countryMapping.countryCode,
+        dialCode: countryMapping.dialCode
+      };
+    }
+  }
+
+  /**
+   * Normalize country code from user input
+   * Handles both ISO codes (DK, SE) and country names (Denmark, Sweden)
+   */
+  private static normalizeCountryCode(input: string): string | null {
+    const upperInput = input.toUpperCase();
+    
+    // Check if it's already a valid ISO code
+    if (PHONE_PARSING_CONFIG.SUPPORTED_COUNTRIES.includes(upperInput as any)) {
+      return upperInput;
+    }
+    
+    // Try to map from country name to ISO code
+    const mapped = PORTAL_COUNTRY_MAPPING[input];
+    if (mapped && PHONE_PARSING_CONFIG.SUPPORTED_COUNTRIES.includes(mapped as any)) {
+      return mapped;
+    }
+    
+    return null;
+  }
 } 
