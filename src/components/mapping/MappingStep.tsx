@@ -427,23 +427,36 @@ const MappingStep: React.FC<MappingStepProps> = ({
    * Handle custom value changes
    */
   const handleAddCustomValue = () => {
-    const newFieldName = `custom_field_${Date.now()}`;
-    setCustomValues(prev => ({
-      ...prev,
-      [newFieldName]: ''
-    }));
+    // Open field selection modal directly instead of creating temp field
+    setCustomValueModalState({ isOpen: true, fieldName: null });
   };
 
   const handleCustomFieldChange = (oldFieldName: string, newFieldName: string) => {
+    console.log(`🔄 Custom field change: "${oldFieldName}" → "${newFieldName}"`);
     if (newFieldName !== oldFieldName) {
       const newCustomValues = { ...customValues };
       const value = newCustomValues[oldFieldName];
       delete newCustomValues[oldFieldName];
       if (newFieldName.trim()) {
         newCustomValues[newFieldName] = value;
+        console.log(`✅ Updated custom values:`, newCustomValues);
       }
       setCustomValues(newCustomValues);
     }
+  };
+
+  const handleCustomFieldSelect = (fieldName: string) => {
+    // For new custom values (when oldFieldName is null), directly create the field
+    if (!customValueModalState.fieldName) {
+      setCustomValues(prev => ({
+        ...prev,
+        [fieldName]: ''
+      }));
+    } else {
+      // For existing custom values, rename the field
+      handleCustomFieldChange(customValueModalState.fieldName, fieldName);
+    }
+    setCustomValueModalState({ isOpen: false, fieldName: null });
   };
 
   const handleCustomValueChange = (fieldName: string, value: string) => {
@@ -469,6 +482,15 @@ const MappingStep: React.FC<MappingStepProps> = ({
 
   const closeFieldModal = () => {
     setModalState({ isOpen: false, columnName: null });
+  };
+
+  const openCustomValueFieldModal = (fieldName: string) => {
+    console.log(`🔍 Opening custom value field modal for: ${fieldName}`);
+    setCustomValueModalState({ isOpen: true, fieldName });
+  };
+
+  const closeCustomValueFieldModal = () => {
+    setCustomValueModalState({ isOpen: false, fieldName: null });
   };
 
   // Function to handle field selection from modal
@@ -832,7 +854,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     <div className="col-span-4">
                       {fieldName && availableFields.some(f => f.name === fieldName) ? (
                         <Button
-                          onClick={() => openFieldModal(fieldName)}
+                          onClick={() => openCustomValueFieldModal(fieldName)}
                           className="bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200 hover:border-purple-400 justify-start transition-all duration-200 w-full"
                           variant="outline"
                         >
@@ -849,7 +871,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                         </Button>
                       ) : (
                         <Button
-                          onClick={() => openFieldModal(fieldName)}
+                          onClick={() => openCustomValueFieldModal(fieldName)}
                           className="text-gray-600 border-gray-300 hover:bg-gray-50 hover:border-gray-400 justify-start w-full"
                           variant="outline"
                         >
@@ -922,11 +944,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
       {/* Custom Values Field Selection Modal */}
       <FieldSelectionModal
         isOpen={customValueModalState.isOpen}
-        onClose={() => setCustomValueModalState({ isOpen: false, fieldName: null })}
-        onSelectField={(fieldName) => {
-          handleCustomFieldChange(customValueModalState.fieldName || '', fieldName);
-          setCustomValueModalState({ isOpen: false, fieldName: null });
-        }}
+        onClose={closeCustomValueFieldModal}
+        onSelectField={handleCustomFieldSelect}
         availableFields={customValueModalState.fieldName ? getAvailableFieldsForCustom(customValueModalState.fieldName) : []}
         currentMapping={customValueModalState.fieldName || undefined}
         columnName={customValueModalState.fieldName || 'Unknown Field'}
