@@ -15,6 +15,7 @@ export { TermsOfServiceModal } from './TermsOfServiceModal';
 export { VersionModal, getCurrentVersion } from './VersionModal';
 export { FieldDefinitionsModal, FieldDefinitionsDebugButton } from './FieldDefinitionsModal';
 export { FieldSelectionModal } from './FieldSelectionModal';
+export { DateFormatModal } from './DateFormatModal';
 
 // Beta Components
 export { BetaBanner } from './BetaBanner';
