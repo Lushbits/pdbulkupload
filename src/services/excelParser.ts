@@ -526,7 +526,8 @@ export class ExcelParser {
   }
 
   /**
-   * Check if a string looks like a date
+   * Check if a string looks like a date (conservative approach)
+   * Excludes 8-digit numbers to avoid confusion with phone numbers
    */
   private static isDateString(value: string): boolean {
     // Common date patterns that Excel might display
@@ -537,6 +538,7 @@ export class ExcelParser {
       /^\d{1,2}\.\d{1,2}\.\d{4}$/,  // MM.DD.YYYY or DD.MM.YYYY
       /^\d{4}\/\d{1,2}\/\d{1,2}$/,  // YYYY/MM/DD
       /^\d{4}\.\d{1,2}\.\d{1,2}$/,  // YYYY.MM.DD
+      // Note: YYYYMMDD (8-digit) pattern excluded here to avoid phone number confusion
       /^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i, // 24 Jun 1974
       /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$/i, // Jun 24, 1974
     ];
@@ -555,6 +557,28 @@ export class ExcelParser {
     // Already in YYYY-MM-DD format
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
       return trimmed;
+    }
+    
+    // Handle YYYYMMDD format (compact, unambiguous format like 20230405)
+    const yyyymmddCompactMatch = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (yyyymmddCompactMatch) {
+      const [, year, month, day] = yyyymmddCompactMatch;
+      
+      // Validate month and day ranges
+      const monthNum = parseInt(month, 10);
+      const dayNum = parseInt(day, 10);
+      
+      if (monthNum < 1 || monthNum > 12) {
+        console.warn(`⚠️ Invalid month value in date: ${trimmed} (month: ${monthNum})`);
+        return null;
+      }
+      
+      if (dayNum < 1 || dayNum > 31) {
+        console.warn(`⚠️ Invalid day value in date: ${trimmed} (day: ${dayNum})`);
+        return null;
+      }
+      
+      return `${year}-${month}-${day}`;
     }
     
     // Handle YYYY/MM/DD format

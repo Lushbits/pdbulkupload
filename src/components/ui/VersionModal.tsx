@@ -13,6 +13,14 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.1.8',
+    date: '2025-01-25',
+    features: [
+      'Enhanced 8-digit date format support: now handles YYYYMMDD, DDMMYYYY, MMDDYYYY, and YYYYDDMM formats with intelligent detection',
+      'Context-aware date conversion: preserves ambiguous values during Excel parsing, then converts based on user field mapping intent'
+    ]
+  },
+  {
     version: '0.1.7',
     date: '2025-01-25',
     features: [
