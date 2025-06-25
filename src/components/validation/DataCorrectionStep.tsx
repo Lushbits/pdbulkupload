@@ -171,16 +171,18 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         });
       }
 
-      // Phone validation with intelligent parsing (if provided)
+      // Phone validation with user-specified country code
       // Convert cellPhone to string and check if it's not empty
       const cellPhoneStr = employee.cellPhone?.toString()?.trim() || '';
       if (cellPhoneStr !== '') {
-        const { PhoneParser } = await import('../../utils');
-        const parseResult = PhoneParser.parsePhoneNumber(cellPhoneStr);
+        const countryCode = employee.cellPhoneCountryCode?.toString()?.trim() || '';
         
-        if (!parseResult.isValid) {
-          // Only show errors for clearly invalid formats, not local numbers
-          if (parseResult.error && !parseResult.error.includes('No valid country code detected')) {
+        if (countryCode) {
+          // Use the new parsePhoneNumberWithCountry method for proper validation
+          const { PhoneParser } = await import('../../utils');
+          const parseResult = PhoneParser.parsePhoneNumberWithCountry(cellPhoneStr, countryCode);
+          
+          if (!parseResult.isValid && parseResult.error) {
             errors.push({
               field: 'cellPhone',
               value: cellPhoneStr,
@@ -189,15 +191,14 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
               severity: 'error'
             });
           }
-        } else if (parseResult.confidence < 0.8 && parseResult.assumedCountry) {
-          // Show warning for numbers where we assumed a country
-          const displayCountry = parseResult.countryCode || 'Unknown';
+        } else {
+          // cellPhone provided but no country code - this should be caught by conditional validation in mapping
           errors.push({
             field: 'cellPhone',
             value: cellPhoneStr,
-            message: `Phone number assumed to be ${displayCountry} format: ${PhoneParser.formatPhoneNumber(parseResult)}. Verify if correct.`,
+            message: 'Country code is required when cellPhone is provided',
             rowIndex: index,
-            severity: 'warning'
+            severity: 'error'
           });
         }
       }

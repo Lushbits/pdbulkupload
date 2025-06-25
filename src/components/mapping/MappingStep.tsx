@@ -294,7 +294,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   // Validate mappings when they change
   useEffect(() => {
     validateMappings();
-  }, [columnMappings]);
+  }, [columnMappings, customValues]);
 
   /**
    * Find best matching column for a field using fuzzy matching
@@ -350,15 +350,63 @@ const MappingStep: React.FC<MappingStepProps> = ({
         }
       }
 
-      // Apply custom static values
+      // Apply custom static values with normalization
       for (const [fieldName, staticValue] of Object.entries(customValues)) {
         if (staticValue.trim()) {
-          employee[fieldName as keyof Employee] = staticValue.trim();
+          let normalizedValue = staticValue.trim();
+          
+          // Special handling for cellPhoneCountryCode - normalize "Sweden" -> "SE"
+          if (fieldName === 'cellPhoneCountryCode') {
+            normalizedValue = normalizeCellPhoneCountryCode(staticValue.trim());
+          }
+          
+          employee[fieldName as keyof Employee] = normalizedValue;
         }
       }
 
       return employee as Employee;
     });
+  };
+
+  /**
+   * Normalize cellPhoneCountryCode values from custom values
+   * Converts country names like "Sweden" to ISO codes like "SE"
+   */
+  const normalizeCellPhoneCountryCode = (value: string): string => {
+    const basicMappings: Record<string, string> = {
+      'Sweden': 'SE',
+      'Denmark': 'DK', 
+      'Norway': 'NO',
+      'Finland': 'FI',
+      'Iceland': 'IS',
+      'United Kingdom': 'UK',
+      'Germany': 'DE',
+      'France': 'FR',
+      'Italy': 'IT',
+      'Spain': 'ES',
+      'Netherlands': 'NL',
+      'Switzerland': 'CH',
+      'Belgium': 'BE',
+      'Austria': 'AT',
+      'Poland': 'PL'
+    };
+    
+    const upperInput = value.toUpperCase();
+    const supportedCountries = ["DK", "UK", "NO", "SE", "DE", "US", "PL", "VN", "FR", "ES", "IT", "NL", "CH", "BE", "AT", "FI", "IS", "AU", "CA", "JP", "KR", "CN", "BR", "MX", "IN", "ZA", "SG"];
+    
+    // Check if it's already a valid ISO code
+    if (supportedCountries.includes(upperInput)) {
+      return upperInput;
+    }
+    
+    // Try to map from country name to ISO code
+    const mapped = basicMappings[value];
+    if (mapped && supportedCountries.includes(mapped)) {
+      return mapped;
+    }
+    
+    // If no mapping found, return original value (validation will catch this)
+    return value;
   };
 
   /**
@@ -804,7 +852,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
           ) : (
             <div className="space-y-3">
               {Object.entries(customValues).map(([fieldName, value]) => {
-                const availableFields = getAvailableFieldsForCustom(fieldName);
+                const selectedField = plandayFields.find(f => f.name === fieldName);
+                const isFieldSelected = !!selectedField;
                 
                 return (
                   <div 
@@ -814,8 +863,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     {/* Custom Field Name & Value (Left) */}
                     <div className="col-span-5">
                       <div className={`p-3 rounded-lg border-2 ${
-                        value.trim() && availableFields.some(f => f.name === fieldName)
-                          ? 'bg-purple-50 border-purple-200' 
+                        value.trim() && isFieldSelected
+                          ? 'bg-green-50 border-green-200' 
                           : 'bg-gray-50 border-gray-200'
                       }`}>
                         <div className="space-y-2">
@@ -830,8 +879,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
                             This value will be applied to ALL employees
                           </div>
                         </div>
-                        {value.trim() && (
-                          <div className="text-xs text-purple-600 mt-2 flex items-center">
+                        {value.trim() && isFieldSelected && (
+                          <div className="text-xs text-green-600 mt-2 flex items-center">
                             <span className="mr-1">🔧</span>
                             All employees will get: "<strong>{value}</strong>"
                           </div>
@@ -842,8 +891,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     {/* Arrow (Center) */}
                     <div className="col-span-2 flex justify-center">
                       <div className={`text-2xl font-bold ${
-                        value.trim() && availableFields.some(f => f.name === fieldName)
-                          ? 'text-purple-500' 
+                        value.trim() && isFieldSelected
+                          ? 'text-green-500' 
                           : 'text-gray-300'
                       }`}>
                         →
@@ -852,20 +901,16 @@ const MappingStep: React.FC<MappingStepProps> = ({
 
                     {/* Planday Field Button (Right) */}
                     <div className="col-span-4">
-                      {fieldName && availableFields.some(f => f.name === fieldName) ? (
+                      {isFieldSelected ? (
                         <Button
                           onClick={() => openCustomValueFieldModal(fieldName)}
-                          className="bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200 hover:border-purple-400 justify-start transition-all duration-200 w-full"
+                          className="bg-green-100 border-green-300 text-green-800 hover:bg-green-200 hover:border-green-400 justify-start transition-all duration-200 w-full"
                           variant="outline"
                         >
                           <div className="flex items-center">
-                            <span className="text-purple-600 mr-2">✓</span>
+                            <span className="text-green-600 mr-2">✓</span>
                             <span className="font-mono">
-                              {(() => {
-                                const field = availableFields.find(f => f.name === fieldName);
-                                if (!field) return fieldName;
-                                return field.isCustom ? (field.description || field.displayName || field.name) : field.name;
-                              })()}
+                              {selectedField.isCustom ? (selectedField.description || selectedField.displayName || selectedField.name) : selectedField.name}
                             </span>
                           </div>
                         </Button>
@@ -878,6 +923,20 @@ const MappingStep: React.FC<MappingStepProps> = ({
                           <span className="text-gray-400 mr-2">📋</span>
                           Select Planday field...
                         </Button>
+                      )}
+                      
+                      {/* Field description */}
+                      {isFieldSelected && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {(() => {
+                            const badges = [];
+                            if (selectedField.isRequired) badges.push('Required');
+                            if (selectedField.isUnique) badges.push('Must be unique');
+                            if (selectedField.isReadOnly) badges.push('Read-only');
+                            if (selectedField.isCustom) badges.push('Custom field');
+                            return badges.length > 0 ? badges.join(' • ') : '';
+                          })()}
+                        </div>
                       )}
                     </div>
 
@@ -914,16 +973,16 @@ const MappingStep: React.FC<MappingStepProps> = ({
           
           <div className="flex items-center gap-4">
             <div className="text-sm text-gray-500">
-              {unmappedRequiredFields.length === 0 ? 
+              {unmappedRequiredFields.length === 0 && mappingErrors.length === 0 ? 
                 `${mappedFieldsCount} Excel columns + ${customValuesCount} custom values mapped` :
-                `${unmappedRequiredFields.length} required fields missing`
+                `${unmappedRequiredFields.length + mappingErrors.length} mapping issues`
               }
             </div>
             
             <Button
               onClick={handleSubmit}
-              disabled={unmappedRequiredFields.length > 0}
-              className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
+              disabled={unmappedRequiredFields.length > 0 || mappingErrors.length > 0}
+              className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 transition-all duration-200"
             >
               Continue to Validation →
             </Button>
@@ -946,9 +1005,9 @@ const MappingStep: React.FC<MappingStepProps> = ({
         isOpen={customValueModalState.isOpen}
         onClose={closeCustomValueFieldModal}
         onSelectField={handleCustomFieldSelect}
-        availableFields={customValueModalState.fieldName ? getAvailableFieldsForCustom(customValueModalState.fieldName) : []}
+        availableFields={getAvailableFieldsForCustom(customValueModalState.fieldName || undefined)}
         currentMapping={customValueModalState.fieldName || undefined}
-        columnName={customValueModalState.fieldName || 'Unknown Field'}
+        columnName={customValueModalState.fieldName || 'Select Field for Custom Value'}
       />
     </div>
   );
