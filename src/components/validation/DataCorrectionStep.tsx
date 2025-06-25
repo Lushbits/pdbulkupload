@@ -202,19 +202,37 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         }
       }
 
-      // Date validation (if provided)
+      // Date validation using mapping service (supports 8-digit formats)
       // Convert hiredFrom to string and check if it's not empty
       const hiredFromStr = employee.hiredFrom?.toString()?.trim() || '';
       if (hiredFromStr !== '') {
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(hiredFromStr)) {
-          errors.push({
-            field: 'hiredFrom',
-            value: hiredFromStr,
-            message: 'Date must be in YYYY-MM-DD format',
-            rowIndex: index,
-            severity: 'error'
-          });
+        try {
+          const { mappingService } = await import('../../services/mappingService');
+          const validation = await mappingService.validateAndConvert(employee);
+          
+          // Check if there are date-specific errors
+          const dateErrors = validation.errors.filter(e => e.field === 'hiredFrom');
+          if (dateErrors.length > 0) {
+            errors.push(...dateErrors.map(e => ({
+              field: e.field,
+              value: e.value,
+              message: e.message,
+              rowIndex: index,
+              severity: 'error' as const
+            })));
+          }
+        } catch (error) {
+          // Fallback to simple format check if mapping service fails
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (!dateRegex.test(hiredFromStr)) {
+            errors.push({
+              field: 'hiredFrom',
+              value: hiredFromStr,
+              message: 'Date must be in YYYY-MM-DD format',
+              rowIndex: index,
+              severity: 'error'
+            });
+          }
         }
       }
 

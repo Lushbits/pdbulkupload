@@ -100,17 +100,35 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
           }
         }
 
-        // Date validation (if provided)
+        // Date validation using mapping service (supports 8-digit formats)
         if (employee.hiredFrom && employee.hiredFrom.trim() !== '') {
-          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-          if (!dateRegex.test(employee.hiredFrom)) {
-            errors.push({
-              field: 'hiredFrom',
-              value: employee.hiredFrom,
-              message: 'Date must be in YYYY-MM-DD format',
-              rowIndex: index,
-              severity: 'error'
-            });
+          try {
+            const { mappingService } = await import('../../services/mappingService');
+            const validation = await mappingService.validateAndConvert(employee);
+            
+            // Check if there are date-specific errors
+            const dateErrors = validation.errors.filter(e => e.field === 'hiredFrom');
+            if (dateErrors.length > 0) {
+              errors.push(...dateErrors.map(e => ({
+                field: e.field,
+                value: e.value,
+                message: e.message,
+                rowIndex: index,
+                severity: 'error' as const
+              })));
+            }
+          } catch (error) {
+            // Fallback to simple format check if mapping service fails
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(employee.hiredFrom)) {
+              errors.push({
+                field: 'hiredFrom',
+                value: employee.hiredFrom,
+                message: 'Date must be in YYYY-MM-DD format',
+                rowIndex: index,
+                severity: 'error'
+              });
+            }
           }
         }
 
