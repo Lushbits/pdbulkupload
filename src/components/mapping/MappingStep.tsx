@@ -368,6 +368,15 @@ const MappingStep: React.FC<MappingStepProps> = ({
       }
     }
 
+    // Check conditional requirements
+    // cellPhoneCountryCode is required when cellPhone is mapped
+    const hasCellPhone = mappedFields.has('cellPhone') || customMappedFields.has('cellPhone');
+    const hasCellPhoneCountryCode = mappedFields.has('cellPhoneCountryCode') || customMappedFields.has('cellPhoneCountryCode');
+    
+    if (hasCellPhone && !hasCellPhoneCountryCode) {
+      errors.push('cellPhoneCountryCode is required when cellPhone is mapped. Please map a column containing country codes (like "DK", "SE", "Denmark", "Sweden")');
+    }
+
     setMappingErrors(errors);
   };
 
