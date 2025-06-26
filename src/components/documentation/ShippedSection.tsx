@@ -81,7 +81,7 @@ const ShippedItemRow: React.FC<{ item: RoadmapItem }> = ({ item }) => {
           {priorityInfo.name}
         </span>
       )}
-      <span className="text-gray-900 font-medium">
+      <span className="text-gray-900">
         {item.title || 'Untitled'}
       </span>
     </div>
