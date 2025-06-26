@@ -12,7 +12,7 @@ import { useEffect } from 'react';
  * Root router for the Planday Bulk Employee Uploader.
  * Uses Wouter for clean routing between different page types:
  * - / -> Main 7-step workflow app
- * - /roadmap -> Beta documentation and roadmap
+ * - /status -> Beta documentation and status page
  */
 
 function App() {
@@ -50,8 +50,8 @@ function App() {
         <WorkflowAppWithLayout />
       </Route>
       
-      {/* Documentation/roadmap page */}
-      <Route path="/roadmap">
+      {/* Documentation/status page */}
+      <Route path="/status">
         <DocumentationLayout>
           <RoadmapPage />
         </DocumentationLayout>

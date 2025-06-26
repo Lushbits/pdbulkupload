@@ -4,13 +4,12 @@
  */
 
 import React from 'react';
+import { Link } from 'wouter';
 
 export const BetaBanner: React.FC = () => {
   return (
-    <a 
-      href="https://holy-mind-c22.notion.site/Known-Issues-Roadmap-21c42cb43d56800f9c34c29420151613"
-      target="_blank"
-      rel="noopener noreferrer"
+    <Link 
+      href="/status"
       className="block w-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 hover:from-amber-100 hover:to-orange-100 hover:border-amber-300 transition-all duration-200 group cursor-pointer"
     >
       <div className="flex items-center justify-center gap-3 text-center">
@@ -40,6 +39,6 @@ export const BetaBanner: React.FC = () => {
           </svg>
         </div>
       </div>
-    </a>
+    </Link>
   );
 }; 

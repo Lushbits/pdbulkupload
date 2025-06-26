@@ -13,6 +13,20 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.1',
+    date: '2025-01-26',
+    title: 'Status Page Integration',
+    features: [
+      'Added /status page with Notion API integration',
+      'Known Issues section with status-based grouping and color-coded badges',
+      'Three-column kanban Roadmap View (Backlog, In Development, QA & Testing)',
+      'Shipped section with pagination (10 items per page)',
+      'Priority-based sorting (Critical, High, Medium, Low)',
+      'Updated BetaTag and BetaBanner to link to internal /status route',
+      'Route changed from /roadmap to /status'
+    ]
+  },
+  {
     version: '0.2.0',
     date: '2025-01-26',
     title: 'Smart Date Validation Overhaul',

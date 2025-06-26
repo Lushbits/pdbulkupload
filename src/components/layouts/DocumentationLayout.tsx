@@ -42,7 +42,7 @@ export const DocumentationLayout: React.FC<DocumentationLayoutProps> = ({ childr
               ← Back to Main App
             </Link>
           </div>
-          <div className="px-6 pb-6">
+          <div className="px-10 pb-10">
             {children}
           </div>
         </div>
