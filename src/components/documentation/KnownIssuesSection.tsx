@@ -34,7 +34,7 @@ const IssueItem: React.FC<{ issue: RoadmapItem }> = ({ issue }) => {
       <span className="inline-flex items-center gap-2 flex-wrap">
         {/* Priority first, then status */}
         {issue.priority && (
-          <span className={`px-3 py-1 text-sm font-bold rounded ${
+          <span className={`px-3 py-1 text-sm font-medium rounded ${
             issue.priority === 'High' ? 'bg-red-100 text-red-800' :
             issue.priority === 'Medium' ? 'bg-orange-100 text-orange-800' :
             'bg-green-100 text-green-800'
@@ -42,7 +42,7 @@ const IssueItem: React.FC<{ issue: RoadmapItem }> = ({ issue }) => {
             {issue.priority}
           </span>
         )}
-        <span className={`px-3 py-1 text-sm font-bold rounded ${statusInfo.color}`}>
+        <span className={`px-3 py-1 text-sm font-medium rounded ${statusInfo.color}`}>
           {statusInfo.name}
         </span>
         <span className="font-medium">
