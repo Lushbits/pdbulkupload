@@ -49,13 +49,10 @@ export interface RoadmapItem {
  * Fetch all pages from the roadmap database
  */
 export async function fetchRoadmapDatabase(): Promise<NotionDatabaseResponse> {
-  // Use Vite proxy in development, direct API in production
-  const isDevelopment = import.meta.env.DEV;
-  const url = isDevelopment 
-    ? `/api/notion/databases/${DATABASE_ID}/query`
-    : `https://api.notion.com/v1/databases/${DATABASE_ID}/query`;
+  // Always use proxy pattern (Vite dev proxy or Netlify redirect)
+  const url = `/api/notion/databases/${DATABASE_ID}/query`;
   
-  console.log(`🌐 Using ${isDevelopment ? 'proxy' : 'direct'} URL:`, url);
+  console.log(`🌐 Using proxy URL:`, url);
   
   const response = await fetch(url, {
     method: 'POST',

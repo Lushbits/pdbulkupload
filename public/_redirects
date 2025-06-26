@@ -1,0 +1,2 @@
+# Proxy Notion API requests to avoid CORS
+/api/notion/* https://api.notion.com/v1/:splat 200 
