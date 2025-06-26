@@ -180,7 +180,7 @@ export const ShippedSection: React.FC<ShippedSectionProps> = ({ roadmapItems }) 
       
       <div className="space-y-6">
         <ShippedSubSection 
-          title="Features" 
+          title="Updates" 
           items={shippedFeatures}
           currentPage={featuresPage}
           onPageChange={setFeaturesPage}

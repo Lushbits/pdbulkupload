@@ -111,7 +111,7 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({ roadmapItems }) => {
           title="Backlog" 
           items={backlogItems} 
           count={backlogItems.length}
-          bgColor="bg-gray-50"
+          bgColor="bg-blue-50"
         />
         <RoadmapColumn 
           title="In Development" 
@@ -120,7 +120,7 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({ roadmapItems }) => {
           bgColor="bg-yellow-50"
         />
         <RoadmapColumn 
-          title="QA & Testing" 
+          title="Release Candidates" 
           items={qaTestingItems} 
           count={qaTestingItems.length}
           bgColor="bg-green-50"
