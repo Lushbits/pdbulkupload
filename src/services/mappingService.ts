@@ -531,34 +531,46 @@ export class MappingService {
     const errors: ValidationError[] = [];
     const converted = { ...employee };
 
-    // Handle date fields conversion (hiredFrom, birthDate)
+    // Handle date fields conversion using new DateParser (hiredFrom, birthDate)
+    // Only parse dates if user has resolved ambiguity or if no ambiguous dates exist
     const dateFields = ['hiredFrom', 'birthDate'];
     for (const field of dateFields) {
       if (employee[field] && employee[field].toString().trim() !== '') {
         const dateStr = employee[field].toString().trim();
         
-        // Only attempt conversion if it looks like a date in this context
-        if (this.isDateInContext(dateStr)) {
-          const convertedDate = this.convertDateToISO(dateStr);
+        // Check if this date value looks like a date
+        if (DateParser.couldBeDate(dateStr)) {
+          // Check if this specific date is ambiguous
+          const ambiguousDates = DateParser.findAmbiguousDates([dateStr]);
           
-          if (convertedDate) {
-            converted[field] = convertedDate;
-            console.log(`📅 Converted ${field}: "${dateStr}" → "${convertedDate}"`);
+          if (ambiguousDates.length > 0) {
+            // This date is ambiguous and user hasn't selected format yet
+            // Keep original value and don't convert yet
+            converted[field] = dateStr;
+            console.log(`📅 Preserving ambiguous date "${dateStr}" for user format selection`);
           } else {
-            errors.push({
-              field: field as any,
-              value: dateStr,
-              message: `Invalid date format. Expected formats: YYYY-MM-DD, YYYYMMDD, MM/DD/YYYY, DD/MM/YYYY`,
-              rowIndex: employee.rowIndex || 0,
-              severity: 'error'
-            });
+            // Date is unambiguous or user has already set format preference
+            const convertedDate = DateParser.parseToISO(dateStr);
+            
+            if (convertedDate) {
+              converted[field] = convertedDate;
+              console.log(`📅 Converted ${field}: "${dateStr}" → "${convertedDate}"`);
+            } else {
+              errors.push({
+                field: field as any,
+                value: dateStr,
+                message: `Invalid date format. Supported: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD, named months, etc.`,
+                rowIndex: employee.rowIndex || 0,
+                severity: 'error'
+              });
+            }
           }
         } else {
-          // Value doesn't look like a date - this is likely not meant to be a date
+          // Value doesn't look like a date 
           errors.push({
             field: field as any,
             value: dateStr,
-            message: `Value "${dateStr}" doesn't appear to be a valid date. Expected formats: YYYY-MM-DD, YYYYMMDD, MM/DD/YYYY, DD/MM/YYYY`,
+            message: `Value "${dateStr}" doesn't appear to be a valid date. Supported: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD, named months, etc.`,
             rowIndex: employee.rowIndex || 0,
             severity: 'error'
           });
@@ -846,258 +858,9 @@ export class MappingService {
     };
   }
 
-  /**
-   * Check if a value could be a date in the context of a date field
-   * More permissive than general date detection - includes various 8-digit formats
-   */
-  private isDateInContext(value: string): boolean {
-    const trimmed = value.trim();
-    
-    // Standard date patterns
-    const datePatterns = [
-      /^\d{4}-\d{2}-\d{2}$/,        // YYYY-MM-DD
-      /^\d{1,2}\/\d{1,2}\/\d{4}$/,  // MM/DD/YYYY or DD/MM/YYYY
-      /^\d{1,2}-\d{1,2}-\d{4}$/,    // MM-DD-YYYY or DD-MM-YYYY
-      /^\d{1,2}\.\d{1,2}\.\d{4}$/,  // MM.DD.YYYY or DD.MM.YYYY
-      /^\d{4}\/\d{1,2}\/\d{1,2}$/,  // YYYY/MM/DD
-      /^\d{4}\.\d{1,2}\.\d{1,2}$/,  // YYYY.MM.DD
-      /^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i, // 24 Jun 1974
-      /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$/i, // Jun 24, 1974
-    ];
+  // Removed unused date validation methods - now handled by DateParser class
 
-    // Check standard patterns first
-    if (datePatterns.some(pattern => pattern.test(trimmed))) {
-      return true;
-    }
-
-    // Check 8-digit formats with validation
-    if (/^\d{8}$/.test(trimmed)) {
-      return this.isValid8DigitDate(trimmed);
-    }
-
-    return false;
-  }
-
-  /**
-   * Check if an 8-digit string could be a valid date in any supported format
-   */
-  private isValid8DigitDate(dateStr: string): boolean {
-    const digits = dateStr;
-    
-    // Try YYYYMMDD format
-    const year1 = parseInt(digits.substring(0, 4), 10);
-    const month1 = parseInt(digits.substring(4, 6), 10);
-    const day1 = parseInt(digits.substring(6, 8), 10);
-    
-    if (this.isValidDateParts(year1, month1, day1)) {
-      return true;
-    }
-    
-    // Try DDMMYYYY format
-    const day2 = parseInt(digits.substring(0, 2), 10);
-    const month2 = parseInt(digits.substring(2, 4), 10);
-    const year2 = parseInt(digits.substring(4, 8), 10);
-    
-    if (this.isValidDateParts(year2, month2, day2)) {
-      return true;
-    }
-    
-    // Try MMDDYYYY format
-    const month3 = parseInt(digits.substring(0, 2), 10);
-    const day3 = parseInt(digits.substring(2, 4), 10);
-    const year3 = parseInt(digits.substring(4, 8), 10);
-    
-    if (this.isValidDateParts(year3, month3, day3)) {
-      return true;
-    }
-    
-    // Try YYYYDDMM format (less common but possible)
-    const year4 = parseInt(digits.substring(0, 4), 10);
-    const day4 = parseInt(digits.substring(4, 6), 10);
-    const month4 = parseInt(digits.substring(6, 8), 10);
-    
-    if (this.isValidDateParts(year4, month4, day4)) {
-      return true;
-    }
-    
-    return false;
-  }
-
-  /**
-   * Validate year, month, day parts
-   */
-  private isValidDateParts(year: number, month: number, day: number): boolean {
-    return year >= 1900 && year <= 2100 && 
-           month >= 1 && month <= 12 && 
-           day >= 1 && day <= 31;
-  }
-
-  /**
-   * Convert date string to ISO format (YYYY-MM-DD)
-   * Handles various common date formats including multiple 8-digit formats when in date field context
-   */
-  private convertDateToISO(dateStr: string): string | null {
-    const trimmed = dateStr.trim();
-    
-    // Already in YYYY-MM-DD format
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      return trimmed;
-    }
-    
-    // Handle 8-digit formats with intelligent detection
-    if (/^\d{8}$/.test(trimmed)) {
-      return this.convert8DigitDate(trimmed);
-    }
-    
-    // Handle MM/DD/YYYY format 
-    const mmddyyyyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (mmddyyyyMatch) {
-      const [, month, day, year] = mmddyyyyMatch;
-      const paddedMonth = month.padStart(2, '0');
-      const paddedDay = day.padStart(2, '0');
-      
-      // Validate month and day ranges
-      const monthNum = parseInt(month, 10);
-      const dayNum = parseInt(day, 10);
-      
-      if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
-        return null;
-      }
-      
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Handle DD/MM/YYYY format (European)
-    const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (ddmmyyyyMatch) {
-      const [, first, second, year] = ddmmyyyyMatch;
-      const firstNum = parseInt(first, 10);
-      const secondNum = parseInt(second, 10);
-      
-      // If first number > 12, it must be day (DD/MM format)
-      if (firstNum > 12) {
-        const paddedDay = first.padStart(2, '0');
-        const paddedMonth = second.padStart(2, '0');
-        
-        if (secondNum < 1 || secondNum > 12) {
-          return null;
-        }
-        
-        return `${year}-${paddedMonth}-${paddedDay}`;
-      }
-      // If second number > 12, it must be day (MM/DD format)  
-      else if (secondNum > 12) {
-        const paddedMonth = first.padStart(2, '0');
-        const paddedDay = second.padStart(2, '0');
-        
-        if (firstNum < 1 || firstNum > 12) {
-          return null;
-        }
-        
-        return `${year}-${paddedMonth}-${paddedDay}`;
-      }
-      // Ambiguous case - assume DD/MM (European standard)
-      else {
-        const paddedDay = first.padStart(2, '0');
-        const paddedMonth = second.padStart(2, '0');
-        
-        if (secondNum < 1 || secondNum > 12 || firstNum < 1 || firstNum > 31) {
-          return null;
-        }
-        
-        return `${year}-${paddedMonth}-${paddedDay}`;
-      }
-    }
-    
-    // Handle other formats with Date constructor as fallback
-    try {
-      const date = new Date(trimmed);
-      if (!isNaN(date.getTime())) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      }
-    } catch (error) {
-      // Fallback failed
-    }
-    
-    return null;
-  }
-
-  /**
-   * Convert 8-digit date string to ISO format with intelligent format detection
-   */
-  private convert8DigitDate(dateStr: string): string | null {
-    const digits = dateStr;
-    const validFormats: Array<{ year: number; month: number; day: number; format: string }> = [];
-    
-    // Try YYYYMMDD format
-    const year1 = parseInt(digits.substring(0, 4), 10);
-    const month1 = parseInt(digits.substring(4, 6), 10);
-    const day1 = parseInt(digits.substring(6, 8), 10);
-    
-    if (this.isValidDateParts(year1, month1, day1)) {
-      validFormats.push({ year: year1, month: month1, day: day1, format: 'YYYYMMDD' });
-    }
-    
-    // Try DDMMYYYY format
-    const day2 = parseInt(digits.substring(0, 2), 10);
-    const month2 = parseInt(digits.substring(2, 4), 10);
-    const year2 = parseInt(digits.substring(4, 8), 10);
-    
-    if (this.isValidDateParts(year2, month2, day2)) {
-      validFormats.push({ year: year2, month: month2, day: day2, format: 'DDMMYYYY' });
-    }
-    
-    // Try MMDDYYYY format
-    const month3 = parseInt(digits.substring(0, 2), 10);
-    const day3 = parseInt(digits.substring(2, 4), 10);
-    const year3 = parseInt(digits.substring(4, 8), 10);
-    
-    if (this.isValidDateParts(year3, month3, day3)) {
-      validFormats.push({ year: year3, month: month3, day: day3, format: 'MMDDYYYY' });
-    }
-    
-    // Try YYYYDDMM format
-    const year4 = parseInt(digits.substring(0, 4), 10);
-    const day4 = parseInt(digits.substring(4, 6), 10);
-    const month4 = parseInt(digits.substring(6, 8), 10);
-    
-    if (this.isValidDateParts(year4, month4, day4)) {
-      validFormats.push({ year: year4, month: month4, day: day4, format: 'YYYYDDMM' });
-    }
-    
-    if (validFormats.length === 0) {
-      return null;
-    }
-    
-    // If only one valid format, use it
-    if (validFormats.length === 1) {
-      const { year, month, day, format } = validFormats[0];
-      const paddedMonth = String(month).padStart(2, '0');
-      const paddedDay = String(day).padStart(2, '0');
-      console.log(`📅 Detected 8-digit date format ${format}: "${dateStr}" → "${year}-${paddedMonth}-${paddedDay}"`);
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Multiple valid formats - use priority order
-    // Priority: YYYYMMDD > DDMMYYYY > MMDDYYYY > YYYYDDMM
-    const formatPriority = ['YYYYMMDD', 'DDMMYYYY', 'MMDDYYYY', 'YYYYDDMM'];
-    
-    for (const priorityFormat of formatPriority) {
-      const match = validFormats.find(f => f.format === priorityFormat);
-      if (match) {
-        const { year, month, day, format } = match;
-        const paddedMonth = String(month).padStart(2, '0');
-        const paddedDay = String(day).padStart(2, '0');
-        console.log(`📅 Multiple valid formats for "${dateStr}", chose ${format}: → "${year}-${paddedMonth}-${paddedDay}"`);
-        return `${year}-${paddedMonth}-${paddedDay}`;
-      }
-    }
-    
-    return null;
-  }
+  // Removed convertDateToISO and convert8DigitDate methods - now handled by DateParser class
 }
 
 /**
@@ -1646,5 +1409,365 @@ export class ValidationService {
       },
       fieldMapping
     };
+  }
+}
+
+/**
+ * Comprehensive Date Parser for Excel Import
+ * Handles all common date formats with smart auto-detection
+ * Only operates on fields mapped to date fields
+ * Asks user only when truly ambiguous
+ */
+export class DateParser {
+  private static userDateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | null = null;
+  
+  /**
+   * Set user's preferred date format for ambiguous cases
+   */
+  static setUserDateFormat(format: 'DD/MM/YYYY' | 'MM/DD/YYYY'): void {
+    this.userDateFormat = format;
+    console.log(`📅 User date format set to: ${format}`);
+  }
+  
+  /**
+   * Reset user date format (for new uploads)
+   */
+  static resetUserDateFormat(): void {
+    this.userDateFormat = null;
+  }
+  
+  /**
+   * Check if a value could be a date in any supported format
+   */
+  static couldBeDate(value: string): boolean {
+    const trimmed = value.trim();
+    
+    // All supported date patterns
+    const patterns = [
+      /^\d{4}-\d{1,2}-\d{1,2}$/,          // YYYY-MM-DD, YYYY-M-D
+      /^\d{4}\/\d{1,2}\/\d{1,2}$/,        // YYYY/MM/DD, YYYY/M/D
+      /^\d{4}\.\d{1,2}\.\d{1,2}$/,        // YYYY.MM.DD, YYYY.M.D
+      /^\d{1,2}\/\d{1,2}\/\d{4}$/,        // MM/DD/YYYY, M/D/YYYY, DD/MM/YYYY, D/M/YYYY
+      /^\d{1,2}-\d{1,2}-\d{4}$/,          // MM-DD-YYYY, M-D-YYYY, DD-MM-YYYY, D-M-YYYY
+      /^\d{1,2}\.\d{1,2}\.\d{4}$/,        // MM.DD.YYYY, M.D.YYYY, DD.MM.YYYY, D.M.YYYY
+      /^\d{1,2}\/\d{1,2}\/\d{2}$/,        // MM/DD/YY, M/D/YY, DD/MM/YY, D/M/YY
+      /^\d{1,2}-\d{1,2}-\d{2}$/,          // MM-DD-YY, M-D-YY, DD-MM-YY, D-M-YY
+      /^\d{1,2}\.\d{1,2}\.\d{2}$/,        // MM.DD.YY, M.D.YY, DD.MM.YY, D.M.YY
+      /^\d{8}$/,                          // YYYYMMDD, DDMMYYYY, MMDDYYYY
+      /^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i, // 24 Jun 1974
+      /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$/i, // Jun 24, 1974
+    ];
+    
+    return patterns.some(pattern => pattern.test(trimmed));
+  }
+  
+  /**
+   * Detect if a date format can be auto-determined by scanning for unambiguous dates
+   * Returns detected format or null if ambiguous
+   */
+  static detectDateFormat(dateValues: string[]): 'DD/MM/YYYY' | 'MM/DD/YYYY' | null {
+    for (const dateStr of dateValues) {
+      const trimmed = dateStr.trim();
+      
+      // Check slash-separated dates for auto-detection
+      const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if (slashMatch) {
+        const [, first, second] = slashMatch;
+        const firstNum = parseInt(first, 10);
+        const secondNum = parseInt(second, 10);
+        
+        // If first number > 12, must be DD/MM format
+        if (firstNum > 12) {
+          return 'DD/MM/YYYY';
+        }
+        // If second number > 12, must be MM/DD format
+        else if (secondNum > 12) {
+          return 'MM/DD/YYYY';
+        }
+      }
+      
+      // Check dash-separated dates for auto-detection
+      const dashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+      if (dashMatch) {
+        const [, first, second] = dashMatch;
+        const firstNum = parseInt(first, 10);
+        const secondNum = parseInt(second, 10);
+        
+        if (firstNum > 12) {
+          return 'DD/MM/YYYY';
+        } else if (secondNum > 12) {
+          return 'MM/DD/YYYY';
+        }
+      }
+      
+      // Check dot-separated dates for auto-detection
+      const dotMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+      if (dotMatch) {
+        const [, first, second] = dotMatch;
+        const firstNum = parseInt(first, 10);
+        const secondNum = parseInt(second, 10);
+        
+        if (firstNum > 12) {
+          return 'DD/MM/YYYY';
+        } else if (secondNum > 12) {
+          return 'MM/DD/YYYY';
+        }
+      }
+    }
+    
+    return null; // Could not auto-detect
+  }
+  
+  /**
+   * Find ambiguous dates that need user clarification
+   * Returns array of sample ambiguous date values
+   */
+  static findAmbiguousDates(dateValues: string[]): string[] {
+    const ambiguous = new Set<string>();
+    
+    for (const dateStr of dateValues) {
+      const trimmed = dateStr.trim();
+      
+      // Check 8-digit dates for ambiguity
+      if (/^\d{8}$/.test(trimmed)) {
+        const validFormats = this.getValid8DigitFormats(trimmed);
+        if (validFormats.length > 1) {
+          // Check if the different interpretations actually give different dates
+          const dates = validFormats.map(f => `${f.year}-${String(f.month).padStart(2, '0')}-${String(f.day).padStart(2, '0')}`);
+          const uniqueDates = new Set(dates);
+          if (uniqueDates.size > 1) {
+            ambiguous.add(trimmed);
+          }
+        }
+      }
+      
+      // Check slash/dash/dot separated dates where both numbers <= 12
+      const separatorMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+      if (separatorMatch) {
+        const [, first, second] = separatorMatch;
+        const firstNum = parseInt(first, 10);
+        const secondNum = parseInt(second, 10);
+        
+        // Only ambiguous if both are <= 12 and different
+        if (firstNum <= 12 && secondNum <= 12 && firstNum !== secondNum) {
+          ambiguous.add(trimmed);
+        }
+      }
+    }
+    
+    return Array.from(ambiguous).slice(0, 5); // Max 5 samples
+  }
+  
+  /**
+   * Parse a date string to ISO format (YYYY-MM-DD)
+   * Uses smart detection and user preferences
+   */
+  static parseToISO(dateStr: string): string | null {
+    const trimmed = dateStr.trim();
+    
+    if (!trimmed) return null;
+    
+    // Already in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+    
+    // Handle YYYY-M-D format (pad to YYYY-MM-DD)
+    const yyyyMdMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (yyyyMdMatch) {
+      const [, year, month, day] = yyyyMdMatch;
+      const paddedMonth = month.padStart(2, '0');
+      const paddedDay = day.padStart(2, '0');
+      
+      if (this.isValidDateParts(parseInt(year), parseInt(month), parseInt(day))) {
+        return `${year}-${paddedMonth}-${paddedDay}`;
+      }
+    }
+    
+    // Handle 8-digit formats
+    if (/^\d{8}$/.test(trimmed)) {
+      return this.parse8DigitDate(trimmed);
+    }
+    
+    // Handle YYYY/MM/DD and YYYY.MM.DD formats (unambiguous)
+    const yyyyFirstMatch = trimmed.match(/^(\d{4})[\/\.](\d{1,2})[\/\.](\d{1,2})$/);
+    if (yyyyFirstMatch) {
+      const [, year, month, day] = yyyyFirstMatch;
+      const paddedMonth = month.padStart(2, '0');
+      const paddedDay = day.padStart(2, '0');
+      
+      if (this.isValidDateParts(parseInt(year), parseInt(month), parseInt(day))) {
+        return `${year}-${paddedMonth}-${paddedDay}`;
+      }
+    }
+    
+    // Handle separator-based dates (DD/MM/YYYY, MM/DD/YYYY, etc.)
+    const separatorMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    if (separatorMatch) {
+      return this.parseSeparatorDate(separatorMatch);
+    }
+    
+    // Handle named month formats via Date constructor
+    try {
+      const date = new Date(trimmed + ' UTC');
+      if (!isNaN(date.getTime())) {
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (error) {
+      // Fallback failed
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Parse separator-based dates with smart detection
+   */
+  private static parseSeparatorDate(match: RegExpMatchArray): string | null {
+    const [, first, second, year] = match;
+    const firstNum = parseInt(first, 10);
+    const secondNum = parseInt(second, 10);
+    
+    // Convert 2-digit years to 4-digit
+    let fullYear = year;
+    if (year.length === 2) {
+      const yearNum = parseInt(year, 10);
+      // Assume 00-30 means 2000-2030, 31-99 means 1931-1999
+      fullYear = (yearNum <= 30 ? 2000 + yearNum : 1900 + yearNum).toString();
+    }
+    
+    let day: string, month: string;
+    
+    // Auto-detection logic
+    if (firstNum > 12) {
+      // Must be DD/MM format
+      day = first;
+      month = second;
+    } else if (secondNum > 12) {
+      // Must be MM/DD format
+      month = first;
+      day = second;
+    } else {
+      // Ambiguous - use user preference or default
+      if (this.userDateFormat === 'MM/DD/YYYY') {
+        month = first;
+        day = second;
+      } else {
+        // Default to DD/MM (European convention)
+        day = first;
+        month = second;
+      }
+    }
+    
+    const paddedDay = day.padStart(2, '0');
+    const paddedMonth = month.padStart(2, '0');
+    
+    if (this.isValidDateParts(parseInt(fullYear), parseInt(month), parseInt(day))) {
+      return `${fullYear}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Parse 8-digit date with intelligent format detection
+   */
+  private static parse8DigitDate(dateStr: string): string | null {
+    const validFormats = this.getValid8DigitFormats(dateStr);
+    
+    if (validFormats.length === 0) {
+      return null;
+    }
+    
+    // If only one valid format, use it
+    if (validFormats.length === 1) {
+      const { year, month, day, format } = validFormats[0];
+      const paddedMonth = String(month).padStart(2, '0');
+      const paddedDay = String(day).padStart(2, '0');
+      console.log(`📅 Detected 8-digit date format ${format}: "${dateStr}" → "${year}-${paddedMonth}-${paddedDay}"`);
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+    
+    // Multiple valid formats - use user preference or priority order
+    if (this.userDateFormat === 'DD/MM/YYYY') {
+      // Prefer DDMMYYYY format
+      const ddmmyyyy = validFormats.find(f => f.format === 'DDMMYYYY');
+      if (ddmmyyyy) {
+        const { year, month, day } = ddmmyyyy;
+        const paddedMonth = String(month).padStart(2, '0');
+        const paddedDay = String(day).padStart(2, '0');
+        console.log(`📅 User prefers DD/MM, using DDMMYYYY: "${dateStr}" → "${year}-${paddedMonth}-${paddedDay}"`);
+        return `${year}-${paddedMonth}-${paddedDay}`;
+      }
+    }
+    
+    // Default priority: YYYYMMDD > DDMMYYYY > MMDDYYYY > YYYYDDMM
+    const formatPriority = ['YYYYMMDD', 'DDMMYYYY', 'MMDDYYYY', 'YYYYDDMM'];
+    
+    for (const priorityFormat of formatPriority) {
+      const match = validFormats.find(f => f.format === priorityFormat);
+      if (match) {
+        const { year, month, day, format } = match;
+        const paddedMonth = String(month).padStart(2, '0');
+        const paddedDay = String(day).padStart(2, '0');
+        console.log(`📅 Multiple valid formats for "${dateStr}", chose ${format}: → "${year}-${paddedMonth}-${paddedDay}"`);
+        return `${year}-${paddedMonth}-${paddedDay}`;
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Get all valid 8-digit date format interpretations
+   */
+  private static getValid8DigitFormats(dateStr: string): Array<{ year: number; month: number; day: number; format: string }> {
+    const validFormats: Array<{ year: number; month: number; day: number; format: string }> = [];
+    
+    // Try YYYYMMDD
+    const year1 = parseInt(dateStr.substring(0, 4), 10);
+    const month1 = parseInt(dateStr.substring(4, 6), 10);
+    const day1 = parseInt(dateStr.substring(6, 8), 10);
+    if (this.isValidDateParts(year1, month1, day1)) {
+      validFormats.push({ year: year1, month: month1, day: day1, format: 'YYYYMMDD' });
+    }
+    
+    // Try DDMMYYYY
+    const day2 = parseInt(dateStr.substring(0, 2), 10);
+    const month2 = parseInt(dateStr.substring(2, 4), 10);
+    const year2 = parseInt(dateStr.substring(4, 8), 10);
+    if (this.isValidDateParts(year2, month2, day2)) {
+      validFormats.push({ year: year2, month: month2, day: day2, format: 'DDMMYYYY' });
+    }
+    
+    // Try MMDDYYYY
+    const month3 = parseInt(dateStr.substring(0, 2), 10);
+    const day3 = parseInt(dateStr.substring(2, 4), 10);
+    const year3 = parseInt(dateStr.substring(4, 8), 10);
+    if (this.isValidDateParts(year3, month3, day3)) {
+      validFormats.push({ year: year3, month: month3, day: day3, format: 'MMDDYYYY' });
+    }
+    
+    // Try YYYYDDMM
+    const year4 = parseInt(dateStr.substring(0, 4), 10);
+    const day4 = parseInt(dateStr.substring(4, 6), 10);
+    const month4 = parseInt(dateStr.substring(6, 8), 10);
+    if (this.isValidDateParts(year4, month4, day4)) {
+      validFormats.push({ year: year4, month: month4, day: day4, format: 'YYYYDDMM' });
+    }
+    
+    return validFormats;
+  }
+  
+  /**
+   * Validate date parts are reasonable
+   */
+  private static isValidDateParts(year: number, month: number, day: number): boolean {
+    return year >= 1900 && year <= 2100 && 
+           month >= 1 && month <= 12 && 
+           day >= 1 && day <= 31;
   }
 } 

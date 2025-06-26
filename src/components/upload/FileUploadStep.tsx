@@ -8,11 +8,13 @@
  * - Data preview with sample rows
  * - Auto-mapping preview
  * - File format validation
+ * - Ambiguous date format detection with user confirmation modal
  */
 
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+// DateFormatModal will be used in mapping/validation steps
 
 // import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal'; // Commented out for production
 import { ExcelUtils, type ExcelParseResult } from '../../services/excelParser';
@@ -50,7 +52,11 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
   const [parseResult, setParseResult] = useState<ExcelParseResult | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   
+  // Date format modal will be handled in mapping/validation steps
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Date format checking will be handled during mapping/validation, not during initial parsing
 
   /**
    * Handle file selection (both drag & drop and click)
@@ -81,6 +87,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       });
 
       if (result.success && result.data && result.columnMappings) {
+        // No date format checking here - that happens later during mapping/validation
         setParseResult(result);
         
         // Validate the parsed data
@@ -109,8 +116,6 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       setProgress(0);
     }
   }, [onFileProcessed]);
-
-
 
   /**
    * Handle drag events
@@ -622,7 +627,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
         </div>
       </Card>
 
-
+      {/* Date Format Modal will be added to mapping/validation steps */}
     </div>
   );
-}; 
+};

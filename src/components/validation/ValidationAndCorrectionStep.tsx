@@ -6,7 +6,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button } from '../ui';
-import { MappingUtils, type ErrorPattern, type BulkCorrectionSummary } from '../../services/mappingService';
+import { DateFormatModal } from '../ui/DateFormatModal';
+import { MappingUtils, DateParser, type ErrorPattern, type BulkCorrectionSummary } from '../../services/mappingService';
 import { DataCorrectionStep } from './DataCorrectionStep';
 import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
 
@@ -247,10 +248,23 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   const [currentEmployees, setCurrentEmployees] = useState(employees);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingCorrections, setPendingCorrections] = useState<Map<string, string>>(new Map());
+  
+  // Date format modal state
+  const [showDateFormatModal, setShowDateFormatModal] = useState(false);
+  const [ambiguousDateSamples, setAmbiguousDateSamples] = useState<string[]>([]);
+  const [isCheckingDates, setIsCheckingDates] = useState(false);
+
+  // Update currentEmployees when employees prop changes
+  useEffect(() => {
+    setCurrentEmployees(employees);
+  }, [employees]);
 
   // Initialize and detect bulk correction patterns
   useEffect(() => {
     // ValidationAndCorrectionStep: Initializing with provided data
+    
+    // Reset DateParser for new validation session
+    DateParser.resetUserDateFormat();
     
     // Additional debugging: test getAvailableOptions directly
     MappingUtils.initialize(departments, employeeGroups, employeeTypes);
@@ -259,7 +273,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     // const testDepartments = MappingUtils.getAvailableOptions('departments');
     // const testEmployeeGroups = MappingUtils.getAvailableOptions('employeeGroups');
     
-    const summary = MappingUtils.detectCommonErrors(currentEmployees);
+    const summary = MappingUtils.detectCommonErrors(employees);
     // Detecting error patterns for bulk correction
     
     // Filter out patterns that are already resolved (either in state or not present in current data)
@@ -300,11 +314,12 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       patterns: unresolvedPatterns
     });
 
-    // If no bulk corrections needed, move to individual corrections
+    // If no bulk corrections needed, we'll handle date checking when user clicks continue
     if (unresolvedPatterns.length === 0) {
-      setCurrentPhase('individual-correction');
+      // No patterns to correct - user can proceed when ready
+      console.log('📋 No bulk corrections needed');
     }
-  }, [currentEmployees, resolvedPatterns, departments, employeeGroups, employeeTypes]);
+  }, [employees, resolvedPatterns, departments, employeeGroups, employeeTypes]);
 
   // Handle pending correction selection
   const handlePendingCorrection = (pattern: ErrorPattern, newValue: string) => {
@@ -334,6 +349,92 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   }, [correctionSummary, resolvedPatterns, pendingCorrections]);
 
 
+
+  /**
+   * Check for ambiguous dates ONLY in fields mapped to date fields
+   * This happens during validation phase, not initial parsing
+   */
+  const checkForAmbiguousDatesInMappedFields = (employees: any[]): string[] => {
+    const dateFields = ['hiredFrom', 'birthDate']; // Only these fields expect dates
+    const allDateValues: string[] = [];
+    
+    employees.forEach(employee => {
+      dateFields.forEach(field => {
+        const value = employee[field];
+        if (value && typeof value === 'string' && value.trim()) {
+          const trimmed = value.trim();
+          // Only consider values that could be dates
+          if (DateParser.couldBeDate(trimmed)) {
+            allDateValues.push(trimmed);
+          }
+        }
+      });
+    });
+    
+    // Find truly ambiguous dates
+    const ambiguous = DateParser.findAmbiguousDates(allDateValues);
+    console.log(`📅 Found ${ambiguous.length} ambiguous dates in mapped date fields:`, ambiguous);
+    
+    return ambiguous;
+  };
+
+  /**
+   * Re-convert all dates after user selects format
+   */
+  const reConvertDatesWithUserFormat = async (employees: any[]): Promise<any[]> => {
+    console.log('📅 Re-converting all dates with user-selected format...');
+    const convertedEmployees = [];
+    
+    for (const employee of employees) {
+      // Create a copy and re-run date conversion with user's format choice
+      const employeeCopy = { ...employee };
+      
+      // Re-process date fields
+      const dateFields = ['hiredFrom', 'birthDate'];
+      for (const field of dateFields) {
+        if (employeeCopy[field] && typeof employeeCopy[field] === 'string' && employeeCopy[field].trim()) {
+          const dateStr = employeeCopy[field].toString().trim();
+          
+          if (DateParser.couldBeDate(dateStr)) {
+            const convertedDate = DateParser.parseToISO(dateStr);
+            if (convertedDate) {
+              employeeCopy[field] = convertedDate;
+              console.log(`📅 Re-converted ${field}: "${dateStr}" → "${convertedDate}"`);
+            }
+          }
+        }
+      }
+      
+      convertedEmployees.push(employeeCopy);
+    }
+    
+    return convertedEmployees;
+  };
+
+  /**
+   * Handle date format selection from modal
+   */
+  const handleDateFormatSelection = async (format?: 'DD/MM/YYYY' | 'MM/DD/YYYY') => {
+    if (format) {
+      DateParser.setUserDateFormat(format);
+      console.log(`📅 User selected date format: ${format}`);
+      
+      // Re-convert all dates with the selected format
+      const reConvertedEmployees = await reConvertDatesWithUserFormat(currentEmployees);
+      setCurrentEmployees(reConvertedEmployees);
+      
+      setShowDateFormatModal(false);
+      setAmbiguousDateSamples([]);
+      
+      // Continue to individual corrections after date format is resolved
+      setCurrentPhase('individual-correction');
+    } else {
+      // User cancelled - go back to bulk correction
+      setShowDateFormatModal(false);
+      setAmbiguousDateSamples([]);
+      setCurrentPhase('bulk-correction');
+    }
+  };
 
   // Handle proceeding to individual corrections
   const handleProceedToIndividualCorrections = async () => {
@@ -376,11 +477,38 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       });
     }
     
-    // Moving to individual corrections phase
+    // Check for ambiguous dates in mapped date fields BEFORE proceeding to validation
+    setIsCheckingDates(true);
+    const ambiguousDates = checkForAmbiguousDatesInMappedFields(currentEmployees);
+    setIsCheckingDates(false);
+    
+    if (ambiguousDates.length > 0) {
+      // Found ambiguous dates - show modal for user to choose format
+      console.log(`📅 Found ${ambiguousDates.length} ambiguous dates, showing format selection modal`);
+      setAmbiguousDateSamples(ambiguousDates);
+      setShowDateFormatModal(true);
+      return; // Don't proceed until user selects format
+    }
+    
+    // No ambiguous dates or format already resolved - proceed to individual corrections
+    console.log('📅 No ambiguous dates found, proceeding to individual corrections');
     setCurrentPhase('individual-correction');
   };
 
 
+
+  // Render DateFormatModal if showing (must be first to override other phases)
+  if (showDateFormatModal) {
+    return (
+      <div className={`validation-correction-step ${className}`}>
+        <DateFormatModal
+          isOpen={showDateFormatModal}
+          onClose={handleDateFormatSelection}
+          samples={ambiguousDateSamples}
+        />
+      </div>
+    );
+  }
 
   // Render bulk correction phase
   if (currentPhase === 'bulk-correction') {
@@ -485,15 +613,17 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
                       
                       <Button
                         onClick={handleProceedToIndividualCorrections}
-                        disabled={!allBulkCorrectionsComplete || isProcessing}
+                        disabled={!allBulkCorrectionsComplete || isProcessing || isCheckingDates}
                         className="bg-blue-600 hover:bg-blue-700 text-white"
                       >
-                        {allBulkCorrectionsComplete ? 
-                          (pendingCorrections.size > 0 ? 
-                            'Apply & Continue →' :
-                            'Continue to Data Validation →'
-                          ) : 
-                          'Select corrections to continue'
+                        {isCheckingDates ? 
+                          'Checking date formats...' :
+                          allBulkCorrectionsComplete ? 
+                            (pendingCorrections.size > 0 ? 
+                              'Apply & Continue →' :
+                              'Continue to Data Validation →'
+                            ) : 
+                            'Select corrections to continue'
                         }
                       </Button>
                     </div>

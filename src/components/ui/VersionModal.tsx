@@ -13,6 +13,23 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.0',
+    date: '2025-01-26',
+    title: 'Smart Date Validation Overhaul',
+    features: [
+      'Preserve raw Excel values like "20230405" during parsing, only convert when mapped to date fields',
+      'Detect ambiguous dates: distinguish between unambiguous (2023-15-04) and ambiguous (20230405) formats',
+      'Validate dates only when columns are mapped to hiredFrom or birthDate fields',
+      'Support multiple date formats: YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD, DDMMYYYY, MMDDYYYY, YYYYDDMM, named months, 2-digit years',
+      'Auto-detect day vs month using numbers >12 when possible',
+      'Added DateFormatModal to ask users about ambiguous dates like "Is 20230405 April 5th or May 4th?"',
+      'Date format selection occurs after mapping step, before final validation',
+      'All dates converted to YYYY-MM-DD format for Planday API',
+      'Fixed infinite loop in bulk correction workflow that retriggered same page after fixes',
+      'Fixed DateFormatModal render order to appear above other UI elements'
+    ]
+  },
+  {
     version: '0.1.9',
     date: '2025-01-25',
     features: [

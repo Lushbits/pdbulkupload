@@ -31,6 +31,7 @@ export interface ExcelParseOptions {
   maxFileSize?: number;
   onProgress?: (progress: number) => void;
   customFields?: Array<{ name: string; description: string }>;
+  // Date parsing now handled in MappingService
 }
 
 export interface ExcelParseResult {
@@ -45,7 +46,7 @@ export interface ExcelParseResult {
  * Handles all Excel file processing operations
  */
 export class ExcelParser {
-  private static detectedDateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | null = null;
+  // Date format detection moved to MappingService
 
   /**
    * Parse Excel file and extract employee data
@@ -448,11 +449,7 @@ export class ExcelParser {
         }
       }
       
-      // Try to parse as date if it looks like a date
-      if (this.isDateString(trimmed)) {
-        return this.parseFormattedDateString(trimmed);
-      }
-      
+      // Return as-is - date parsing will happen later in MappingService
       return trimmed;
     }
 
@@ -460,189 +457,9 @@ export class ExcelParser {
     return value;
   }
 
-  /**
-   * Check if a string looks like a date (conservative approach)
-   * Excludes 8-digit numbers to avoid confusion with phone numbers
-   */
-  private static isDateString(value: string): boolean {
-    // Common date patterns that Excel might display
-    const datePatterns = [
-      /^\d{4}-\d{2}-\d{2}$/,        // YYYY-MM-DD
-      /^\d{1,2}\/\d{1,2}\/\d{4}$/,  // MM/DD/YYYY or DD/MM/YYYY
-      /^\d{1,2}-\d{1,2}-\d{4}$/,    // MM-DD-YYYY or DD-MM-YYYY
-      /^\d{1,2}\.\d{1,2}\.\d{4}$/,  // MM.DD.YYYY or DD.MM.YYYY
-      /^\d{4}\/\d{1,2}\/\d{1,2}$/,  // YYYY/MM/DD
-      /^\d{4}\.\d{1,2}\.\d{1,2}$/,  // YYYY.MM.DD
-      // Note: YYYYMMDD (8-digit) pattern excluded here to avoid phone number confusion
-      /^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i, // 24 Jun 1974
-      /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$/i, // Jun 24, 1974
-    ];
+  // Date parsing removed from ExcelParser - handled in MappingService
 
-    return datePatterns.some(pattern => pattern.test(value));
-  }
-
-  /**
-   * Parse formatted date string from Excel display text
-   * Handles various formats without timezone conversion issues
-   * Uses smart format detection to avoid DD/MM vs MM/DD ambiguity
-   */
-  private static parseFormattedDateString(dateStr: string): string | null {
-    const trimmed = dateStr.trim();
-    
-    // Already in YYYY-MM-DD format
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      return trimmed;
-    }
-    
-    // Handle YYYYMMDD format (compact, unambiguous format like 20230405)
-    const yyyymmddCompactMatch = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
-    if (yyyymmddCompactMatch) {
-      const [, year, month, day] = yyyymmddCompactMatch;
-      
-      // Validate month and day ranges
-      const monthNum = parseInt(month, 10);
-      const dayNum = parseInt(day, 10);
-      
-      if (monthNum < 1 || monthNum > 12) {
-        console.warn(`⚠️ Invalid month value in date: ${trimmed} (month: ${monthNum})`);
-        return null;
-      }
-      
-      if (dayNum < 1 || dayNum > 31) {
-        console.warn(`⚠️ Invalid day value in date: ${trimmed} (day: ${dayNum})`);
-        return null;
-      }
-      
-      return `${year}-${month}-${day}`;
-    }
-    
-    // Handle YYYY/MM/DD format
-    const yyyymmddMatch = trimmed.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-    if (yyyymmddMatch) {
-      const [, year, month, day] = yyyymmddMatch;
-      const paddedDay = day.padStart(2, '0');
-      const paddedMonth = month.padStart(2, '0');
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Handle YYYY.MM.DD format
-    const yyyymmddDotMatch = trimmed.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})$/);
-    if (yyyymmddDotMatch) {
-      const [, year, month, day] = yyyymmddDotMatch;
-      const paddedDay = day.padStart(2, '0');
-      const paddedMonth = month.padStart(2, '0');
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Handle DD.MM.YYYY format (common in German Excel)
-    const ddmmyyyyDotMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-    if (ddmmyyyyDotMatch) {
-      const [, day, month, year] = ddmmyyyyDotMatch;
-      const paddedDay = day.padStart(2, '0');
-      const paddedMonth = month.padStart(2, '0');
-      
-      // Validate month is <= 12
-      if (parseInt(month, 10) > 12) {
-        console.warn(`⚠️ Invalid month value in date: ${trimmed}`);
-        return null;
-      }
-      
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Handle DD-MM-YYYY format
-    const ddmmyyyyDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-    if (ddmmyyyyDashMatch) {
-      const [, day, month, year] = ddmmyyyyDashMatch;
-      const paddedDay = day.padStart(2, '0');
-      const paddedMonth = month.padStart(2, '0');
-      
-      // Validate month is <= 12
-      if (parseInt(month, 10) > 12) {
-        console.warn(`⚠️ Invalid month value in date: ${trimmed}`);
-        return null;
-      }
-      
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Handle MM-DD-YYYY format
-    const mmddyyyyDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-    if (mmddyyyyDashMatch) {
-      const [, month, day, year] = mmddyyyyDashMatch;
-      const paddedDay = day.padStart(2, '0');
-      const paddedMonth = month.padStart(2, '0');
-      
-      // Validate month is <= 12
-      if (parseInt(month, 10) > 12) {
-        console.warn(`⚠️ Invalid month value in date: ${trimmed}`);
-        return null;
-      }
-      
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Handle slash-separated dates (DD/MM/YYYY or MM/DD/YYYY) with smart detection
-    const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (slashMatch) {
-      const [, first, second, year] = slashMatch;
-      const firstNum = parseInt(first, 10);
-      const secondNum = parseInt(second, 10);
-      
-      let day: string, month: string;
-      
-      // Auto-detection logic for this specific date
-      if (firstNum > 12) {
-        day = first;
-        month = second;
-      }
-      // If second number > 12, it must be day (MM/DD format) 
-      else if (secondNum > 12) {
-        month = first;
-        day = second;
-      }
-      // Both <= 12 - use detected format or fallback to DD/MM
-      else {
-        if (this.detectedDateFormat === 'MM/DD/YYYY') {
-          month = first;
-          day = second;
-        } else {
-          // Default to DD/MM when ambiguous (European convention)
-          day = first;
-          month = second;
-        }
-      }
-      
-      const paddedDay = day.padStart(2, '0');
-      const paddedMonth = month.padStart(2, '0');
-      
-      // Validate month is <= 12
-      if (parseInt(month, 10) > 12) {
-        console.warn(`⚠️ Invalid month value in date: ${trimmed} (interpreted as ${this.detectedDateFormat || 'auto'})`);
-        return null;
-      }
-      
-      return `${year}-${paddedMonth}-${paddedDay}`;
-    }
-    
-    // Handle other common formats like "24 Jun 1974", "June 24, 1974", etc.
-    // Use a fallback Date constructor but be careful about timezone
-    try {
-      const date = new Date(trimmed + ' UTC'); // Add UTC to avoid timezone conversion
-      if (!isNaN(date.getTime())) {
-        const year = date.getUTCFullYear();
-        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(date.getUTCDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      }
-    } catch (error) {
-      console.warn(`⚠️ Could not parse date string: ${trimmed}`);
-    }
-    
-    // If all parsing fails, return null
-    console.warn(`⚠️ Unrecognized date format: ${trimmed}`);
-    return null;
-  }
+  // All date parsing logic moved to MappingService for proper context-aware handling
 
   /**
    * Generate automatic column mappings
