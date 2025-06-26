@@ -72,18 +72,22 @@ const ShippedItemRow: React.FC<{ item: RoadmapItem }> = ({ item }) => {
   const priorityInfo = getPriorityInfo(item.priorityId || '');
 
   return (
-    <div className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-b-0">
-      <span className="text-xs text-gray-500 min-w-[80px] pl-2">
-        {new Date(item.updated).toISOString().split('T')[0]}
-      </span>
-      {priorityInfo && (
-        <span className={`px-2 py-1 text-xs font-medium rounded ${priorityInfo.color}`}>
-          {priorityInfo.name}
+    <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-gray-500 min-w-[80px] pl-2">
+          {new Date(item.updated).toISOString().split('T')[0]}
         </span>
+        <span className="text-gray-900">
+          {item.title || 'Untitled'}
+        </span>
+      </div>
+      {priorityInfo && (
+        <div className="pr-2 flex items-center">
+          <span className={`px-2 py-1 text-xs font-medium rounded ${priorityInfo.color}`}>
+            {priorityInfo.name}
+          </span>
+        </div>
       )}
-      <span className="text-gray-900">
-        {item.title || 'Untitled'}
-      </span>
     </div>
   );
 };
