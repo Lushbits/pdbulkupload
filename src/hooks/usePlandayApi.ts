@@ -555,7 +555,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         uploadError: null,
       });
 
-      console.log('✅ Bulk upload completed successfully');
+              // Bulk upload completed successfully
       return results;
 
     } catch (error) {
@@ -614,7 +614,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         uploadError: null,
       });
 
-      console.log('✅ Atomic upload completed successfully');
+              // Atomic upload completed successfully
       return results;
 
     } catch (error) {

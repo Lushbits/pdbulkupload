@@ -172,7 +172,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       
       // Check if field definitions are loaded
       const status = ValidationService.getStatus();
-      console.log('🔍 ValidationService status:', status);
+              // ValidationService status check
       
       if (!status.isLoaded) {
         setUploadError('Portal field definitions not loaded yet. Please wait a moment and try again.');

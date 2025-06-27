@@ -196,7 +196,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   useEffect(() => {
     if (savedCustomValues && Object.keys(savedCustomValues).length > 0) {
       // Restore saved custom values when user returns from later step
-      console.log('🔄 Restoring saved custom values:', savedCustomValues);
+      // Restoring saved custom values
       setCustomValues(savedCustomValues);
     }
   }, [savedCustomValues]);
@@ -529,7 +529,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   };
 
   const handleCustomFieldChange = (oldFieldName: string, newFieldName: string) => {
-    console.log(`🔄 Custom field change: "${oldFieldName}" → "${newFieldName}"`);
+    // Custom field changed
     if (newFieldName !== oldFieldName) {
       const newCustomValues = { ...customValues };
       const value = newCustomValues[oldFieldName];
@@ -573,7 +573,6 @@ const MappingStep: React.FC<MappingStepProps> = ({
    * Handle modal operations
    */
   const openFieldModal = (columnName: string) => {
-    console.log(`🔍 Opening field modal for column: ${columnName}`);
     setModalState({ isOpen: true, columnName });
   };
 
@@ -582,7 +581,6 @@ const MappingStep: React.FC<MappingStepProps> = ({
   };
 
   const openCustomValueFieldModal = (fieldName: string) => {
-    console.log(`🔍 Opening custom value field modal for: ${fieldName}`);
     setCustomValueModalState({ isOpen: true, fieldName });
   };
 
@@ -607,7 +605,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
       !error.includes(`Column "${columnName}"`)
     ));
 
-    console.log(`✅ Mapped column "${columnName}" to field "${fieldName}"`);
+    // Column mapped successfully
   };
 
   /**
@@ -618,7 +616,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
     
     // If currently mapped to a real field, we need to unmap it first to make it available for other columns
     if (currentMapping && currentMapping !== '__IGNORE__') {
-      console.log(`Unmapping "${currentMapping}" from "${columnName}" before ignoring`);
+      // Unmapping field to make it available for other columns
     }
     
     // Set to ignore (this will free up the previously mapped field for other columns)

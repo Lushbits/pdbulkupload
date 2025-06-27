@@ -631,7 +631,6 @@ export class MappingService {
             
             if (convertedDate) {
               converted[field] = convertedDate;
-              console.log(`📅 Converted ${field}: "${dateStr}" → "${convertedDate}"`);
             } else {
               errors.push({
                 field: field as any,
@@ -759,12 +758,13 @@ export class MappingService {
       console.warn(`⚠️ Custom field warnings for employee at row ${employee.rowIndex || 0}:`, customFieldResult.warnings);
     }
     
-    console.log(`🔧 Custom field conversion completed for row ${employee.rowIndex || 0}:`, {
-      originalCustomFields: Object.keys(employee).filter(k => k.startsWith('custom_')).length,
-      convertedCustomFields: Object.keys(customFieldResult.convertedFields).length,
-      errors: customFieldResult.errors.length,
-      warnings: customFieldResult.warnings.length
-    });
+    // Log only if there are errors or warnings for debugging
+    if (customFieldResult.errors.length > 0 || customFieldResult.warnings.length > 0) {
+      console.warn(`🔧 Custom field issues for row ${employee.rowIndex || 0}:`, {
+        errors: customFieldResult.errors.length,
+        warnings: customFieldResult.warnings.length
+      });
+    }
 
     return {
       isValid: errors.length === 0,
@@ -2307,7 +2307,7 @@ export class ValidationService {
     try {
       const cellPhoneResult = FieldDefinitionValidator.validateFieldValue('cellPhoneCountryCode', normalizedInput);
       if (cellPhoneResult.isValid) {
-        console.log(`✅ Country code "${normalizedInput}" validated using field definitions`);
+        // Country code validation successful (removed verbose logging)
         return { isValidCountryCode: true };
       }
       
@@ -2337,7 +2337,7 @@ export class ValidationService {
     
     // If it's already a valid code, return true
     if (validCodes.has(normalizedInput)) {
-      console.log(`✅ Country code "${normalizedInput}" validated using hardcoded fallback`);
+      // Country code validation successful (removed verbose logging)
       return { isValidCountryCode: true };
     }
     
@@ -2554,6 +2554,39 @@ export class ValidationService {
       fieldMapping
     };
   }
+
+  /**
+   * Get all fields that are of type optionalDate (both standard and custom fields)
+   * Used for global date format detection across the entire dataset
+   */
+  static getAllDateFields(): string[] {
+    if (!this.fieldDefinitions) {
+      // Fallback to known standard date fields if field definitions not loaded
+      return ['hiredFrom', 'birthDate'];
+    }
+
+    const dateFields: string[] = [];
+
+    // Check standard fields for optionalDate type
+    for (const [fieldName, fieldConfig] of Object.entries(this.fieldDefinitions.properties)) {
+      if (!fieldName.startsWith('custom_')) {
+        // Check if the field is of type optionalDate
+        if (fieldConfig.$ref === '#/definitions/optionalDate') {
+          dateFields.push(fieldName);
+        }
+      }
+    }
+
+    // Check custom fields for optionalDate type
+    const customFields = this.getCustomFieldsWithTypes();
+    customFields.forEach(customField => {
+      if (customField.fieldType === 'optionalDate') {
+        dateFields.push(customField.fieldName);
+      }
+    });
+
+    return dateFields;
+  }
 }
 
 /**
@@ -2573,7 +2606,7 @@ export class FieldDefinitionValidator {
 
   /**
    * Extract enum values for any field (not just custom fields)
-   * Supports employee types, country codes, and custom dropdown fields
+   * Supports employee types, country codes, custom dropdown fields, and complex object sub-fields
    */
   static getFieldEnumValues(fieldName: string): { ids: any[], values: string[] } | null {
     if (!this.fieldDefinitions) {
@@ -2581,10 +2614,47 @@ export class FieldDefinitionValidator {
       return null;
     }
 
-    const fieldConfig = this.fieldDefinitions.properties[fieldName];
-    if (!fieldConfig) {
-      console.warn(`⚠️ Field "${fieldName}" not found in field definitions`);
-      return null;
+    let fieldConfig: any;
+    
+    // Handle complex object sub-fields (e.g., "bankAccount.accountNumber")
+    if (fieldName.includes('.')) {
+      const parts = fieldName.split('.');
+      let currentConfig = this.fieldDefinitions.properties[parts[0]];
+      
+      if (!currentConfig) {
+        console.warn(`⚠️ Parent field "${parts[0]}" not found in field definitions`);
+        return null;
+      }
+      
+      // Navigate through each part of the dotted path
+      for (let i = 1; i < parts.length; i++) {
+        // Resolve $ref if present
+        if (currentConfig.$ref && this.fieldDefinitions.definitions) {
+          const refName = currentConfig.$ref.replace('#/definitions/', '');
+          currentConfig = this.fieldDefinitions.definitions[refName];
+          if (!currentConfig) {
+            console.warn(`⚠️ Definition "${refName}" not found for field path "${fieldName}"`);
+            return null;
+          }
+        }
+        
+        // Navigate to the next property
+        if (currentConfig.properties && currentConfig.properties[parts[i]]) {
+          currentConfig = currentConfig.properties[parts[i]];
+        } else {
+          // Sub-field not found, return null silently (no warning for missing sub-fields)
+          return null;
+        }
+      }
+      
+      fieldConfig = currentConfig;
+    } else {
+      // Handle simple field names (existing logic)
+      fieldConfig = this.fieldDefinitions.properties[fieldName];
+      if (!fieldConfig) {
+        console.warn(`⚠️ Field "${fieldName}" not found in field definitions`);
+        return null;
+      }
     }
 
     // Handle direct reference to definitions (most common pattern)

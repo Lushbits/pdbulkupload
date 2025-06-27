@@ -273,7 +273,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           }}
           onBack={() => {
             // Reset state when going back to Column Mapping
-            console.log('🔄 User navigating back to Column Mapping - preserving bulk corrections');
+            // User navigating back to Column Mapping - preserving bulk corrections
             setSelectedDateFormats({});
             
             setCurrentStep(WorkflowStep.ColumnMapping);
@@ -289,22 +289,16 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           departments={departments}
           employeeGroups={employeeGroups}
           employeeTypes={employeeTypes}
-          resolvedPatterns={(() => {
-            console.log('🔍 WorkflowApp passing resolvedBulkCorrectionPatterns to ValidationAndCorrectionStep:', Array.from(resolvedBulkCorrectionPatterns.entries()));
-            return resolvedBulkCorrectionPatterns;
-          })()}
+          resolvedPatterns={resolvedBulkCorrectionPatterns}
           onPatternsResolved={(patterns) => {
-            console.log('🔍 WorkflowApp receiving patterns from ValidationAndCorrectionStep:', Array.from(patterns.entries()));
             setResolvedBulkCorrectionPatterns(patterns);
           }}
           onComplete={(correctedEmployees) => {
-            console.log('✅ ValidationAndCorrectionStep completed with corrected employees');
             setEmployees(correctedEmployees);
             handleNextStep(); // Go to final preview
           }}
           onBack={() => {
             // Reset state when going back to Column Mapping
-            console.log('🔄 User navigating back to Column Mapping - preserving bulk corrections');
             setSelectedDateFormats({});
             
             setCurrentStep(WorkflowStep.ColumnMapping);

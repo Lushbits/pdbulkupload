@@ -13,6 +13,16 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.5',
+    date: '2025-06-27',
+    features: [
+      'Date format verification rework: moved from modal popup to dedicated page step for improved UX and workflow clarity',
+      'Console log cleanup: removed excessive debug logging across validation, mapping, and workflow components for cleaner console output',
+      'Fixed bankAccount field console warnings: enhanced FieldDefinitionValidator.getFieldEnumValues() to handle complex object sub-fields like "bankAccount.accountNumber"',
+      'Improved mapping step feedback: reduced verbose logging while preserving error reporting functionality'
+    ]
+  },
+  {
     version: '0.2.4',
     date: '2025-06-27',
     features: [

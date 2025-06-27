@@ -6,9 +6,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button } from '../ui';
-import { DateFormatModal } from '../ui/DateFormatModal';
-import { MappingUtils, DateParser, type ErrorPattern, type BulkCorrectionSummary } from '../../services/mappingService';
+import { MappingUtils, DateParser, ValidationService, type ErrorPattern, type BulkCorrectionSummary } from '../../services/mappingService';
 import { DataCorrectionStep } from './DataCorrectionStep';
+import { DateFormatSelectionStep } from './DateFormatSelectionStep';
 import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
 
 interface ValidationAndCorrectionStepProps {
@@ -252,7 +252,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   plandayApi,
   className = ''
 }) => {
-  const [currentPhase, setCurrentPhase] = useState<'bulk-correction' | 'individual-correction' | 'complete'>('bulk-correction');
+  const [currentPhase, setCurrentPhase] = useState<'bulk-correction' | 'date-format-selection' | 'individual-correction' | 'complete'>('bulk-correction');
   const [correctionSummary, setCorrectionSummary] = useState<BulkCorrectionSummary | null>(null);
   const [originalCorrectionSummary, setOriginalCorrectionSummary] = useState<BulkCorrectionSummary | null>(null); // Preserve original summary
   const [resolvedPatterns, setResolvedPatterns] = useState<Map<string, string>>(initialResolvedPatterns || new Map());
@@ -265,8 +265,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     dateFormatCompleted: false
   }); // Track which helpers have been completed in this forward journey
   
-  // Date format modal state
-  const [showDateFormatModal, setShowDateFormatModal] = useState(false);
+  // Date format selection state (replacing modal)
   const [ambiguousDateSamples, setAmbiguousDateSamples] = useState<string[]>([]);
 
 
@@ -291,8 +290,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   // Initialize and detect bulk correction patterns
   useEffect(() => {
     // ValidationAndCorrectionStep: Initializing with provided data
-    console.log('🔄 ValidationAndCorrectionStep initializing');
-    console.log('🔍 Initial resolved patterns received:', initialResolvedPatterns ? Array.from(initialResolvedPatterns.entries()) : 'none');
+    // (removed excessive debug logging for cleaner console output)
     
     // Reset DateParser for new validation session
     DateParser.resetUserDateFormat();
@@ -302,7 +300,6 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     
     // Fresh detection from current data - always re-evaluate
     const summary = MappingUtils.detectCommonErrors(employees);
-    console.log('🔍 Detecting error patterns for bulk correction - found', summary.patterns.length, 'patterns');
     
     // Store original summary if this is the first time
     if (!originalCorrectionSummary) {
@@ -314,26 +311,18 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
   // Separate useEffect for state initialization - runs when initialResolvedPatterns changes
   useEffect(() => {
-    console.log('🔄 State initialization useEffect - triggered by initialResolvedPatterns change');
-    console.log('🔍 initialResolvedPatterns:', initialResolvedPatterns ? Array.from(initialResolvedPatterns.entries()) : 'none');
     
     if (initialResolvedPatterns && initialResolvedPatterns.size > 0) {
-      console.log('🔄 Return visit: restoring previous corrections as editable pending corrections');
-      console.log('🔍 Restoring patterns:', Array.from(initialResolvedPatterns.keys()));
-      
       // Convert resolved patterns back to pending corrections for editing
       const newPendingCorrections = new Map<string, string>();
       for (const [patternKey, correctionValue] of initialResolvedPatterns.entries()) {
         newPendingCorrections.set(patternKey, correctionValue);
-        console.log(`🔄 Restored correction: ${patternKey} → ${correctionValue}`);
       }
-      console.log('🔄 Setting pending corrections:', Array.from(newPendingCorrections.entries()));
       setPendingCorrections(newPendingCorrections);
       
       // Clear resolved patterns so they show as editable pending corrections
       setResolvedPatterns(new Map());
     } else {
-      console.log('🆕 First visit: no previous corrections to restore');
       // Clear both pending and resolved patterns for fresh start
       setPendingCorrections(new Map());
       setResolvedPatterns(new Map());
@@ -344,15 +333,11 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   const handlePendingCorrection = (pattern: ErrorPattern, newValue: string) => {
     const patternKey = `${pattern.field}:${pattern.invalidName}`;
     
-    console.log('🎯 handlePendingCorrection called:', patternKey, '→', newValue);
-    
     if (newValue) {
       // Setting pending correction
-      console.log('✅ Setting pending correction:', patternKey, '→', newValue);
       setPendingCorrections(prev => new Map(prev.set(patternKey, newValue)));
     } else {
       // Clearing pending correction OR unresolving a resolved pattern
-      console.log('❌ Clearing pending correction:', patternKey);
       setPendingCorrections(prev => {
         const newMap = new Map(prev);
         newMap.delete(patternKey);
@@ -361,7 +346,6 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       
       // If this pattern was resolved, unresolve it so user can modify the correction
       if (resolvedPatterns.has(patternKey)) {
-        console.log(`🔄 Unresolving pattern for modification: ${patternKey}`);
         const newResolvedPatterns = new Map(resolvedPatterns);
         newResolvedPatterns.delete(patternKey);
         setResolvedPatterns(newResolvedPatterns);
@@ -385,15 +369,19 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
 
   /**
-   * Check for ambiguous dates ONLY in fields mapped to date fields
-   * This happens during validation phase, not initial parsing
+   * Check for ambiguous dates across ALL optionalDate fields in the entire dataset
+   * Uses improved global detection - only shows modal if truly ambiguous after auto-detection
    */
   const checkForAmbiguousDatesInMappedFields = (employees: any[]): string[] => {
-    const dateFields = ['hiredFrom', 'birthDate']; // Only these fields expect dates
+    // Get ALL fields that are of type optionalDate (both standard and custom)
+    const allDateFields = ValidationService.getAllDateFields();
+    // Detected optionalDate fields for date format checking
+    
+    // Collect ALL date values from ALL optionalDate fields across the entire dataset
     const allDateValues: string[] = [];
     
     employees.forEach(employee => {
-      dateFields.forEach(field => {
+      allDateFields.forEach(field => {
         const value = employee[field];
         if (value && typeof value === 'string' && value.trim()) {
           const trimmed = value.trim();
@@ -405,27 +393,40 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       });
     });
     
-    // Find truly ambiguous dates
+    // Found date values across date fields for format analysis
+    
+    // STEP 1: Try global auto-detection first
+    const detectedFormat = DateParser.detectDateFormat(allDateValues);
+    
+    if (detectedFormat) {
+      // Auto-detection successful - set the format and return no ambiguous dates
+      DateParser.setUserDateFormat(detectedFormat);
+      return [];
+    }
+    
+    // STEP 2: Auto-detection failed - find truly ambiguous dates for user clarification
     const ambiguous = DateParser.findAmbiguousDates(allDateValues);
-    console.log(`📅 Found ${ambiguous.length} ambiguous dates in mapped date fields:`, ambiguous);
     
     return ambiguous;
   };
 
   /**
    * Re-convert all dates after user selects format
+   * Uses dynamic detection of all optionalDate fields
    */
   const reConvertDatesWithUserFormat = async (employees: any[]): Promise<any[]> => {
-    console.log('📅 Re-converting all dates with user-selected format...');
+    
+    // Get ALL fields that are of type optionalDate (both standard and custom)
+    const allDateFields = ValidationService.getAllDateFields();
+    
     const convertedEmployees = [];
     
     for (const employee of employees) {
       // Create a copy and re-run date conversion with user's format choice
       const employeeCopy = { ...employee };
       
-      // Re-process date fields
-      const dateFields = ['hiredFrom', 'birthDate'];
-      for (const field of dateFields) {
+      // Re-process all optionalDate fields
+      for (const field of allDateFields) {
         if (employeeCopy[field] && typeof employeeCopy[field] === 'string' && employeeCopy[field].trim()) {
           const dateStr = employeeCopy[field].toString().trim();
           
@@ -433,7 +434,6 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
             const convertedDate = DateParser.parseToISO(dateStr);
             if (convertedDate) {
               employeeCopy[field] = convertedDate;
-              console.log(`📅 Re-converted ${field}: "${dateStr}" → "${convertedDate}"`);
             }
           }
         }
@@ -446,12 +446,11 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   };
 
   /**
-   * Handle date format selection from modal
+   * Handle date format selection from page step
    */
   const handleDateFormatSelection = async (format?: 'DD/MM/YYYY' | 'MM/DD/YYYY') => {
     if (format) {
       DateParser.setUserDateFormat(format);
-      console.log(`📅 User selected date format: ${format}`);
       
       // Re-convert all dates with the selected format
       const reConvertedEmployees = await reConvertDatesWithUserFormat(currentEmployees);
@@ -460,7 +459,6 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       // Mark date format as completed
       setHelperCompletionState(prev => ({ ...prev, dateFormatCompleted: true }));
       
-      setShowDateFormatModal(false);
       setAmbiguousDateSamples([]);
       
       // Continue to individual corrections after date format is resolved
@@ -468,7 +466,6 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       setCurrentPhase('individual-correction');
     } else {
       // User cancelled - go back to bulk correction
-      setShowDateFormatModal(false);
       setAmbiguousDateSamples([]);
       setCurrentPhase('bulk-correction');
     }
@@ -476,25 +473,16 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
   // Handle proceeding to individual corrections
   const handleProceedToIndividualCorrections = async () => {
-    console.log('🚀 handleProceedToIndividualCorrections called');
-    console.log('🔍 Current pendingCorrections:', Array.from(pendingCorrections.entries()));
-    console.log('🔍 Current resolvedPatterns:', Array.from(resolvedPatterns.entries()));
-    
     // If there are pending corrections, apply them and immediately proceed (first-time completion)
     let employeesToUse = currentEmployees;
     let newResolvedPatterns = new Map(resolvedPatterns);
     let hadPendingCorrections = pendingCorrections.size > 0;
     
-    console.log('🔍 hadPendingCorrections:', hadPendingCorrections);
-    console.log('🔍 pendingCorrections.size:', pendingCorrections.size);
-    
     if (pendingCorrections.size > 0) {
-      console.log('🔧 First-time completion: applying corrections and proceeding immediately');
       
       try {
         // Apply each pending correction
         for (const [patternKey, newValue] of pendingCorrections.entries()) {
-          console.log(`🔧 Processing correction: ${patternKey} → ${newValue}`);
           const pattern = correctionSummary?.patterns.find(p => 
             `${p.field}:${p.invalidName}` === patternKey
           );
@@ -502,53 +490,39 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
           if (pattern) {
             employeesToUse = MappingUtils.applyBulkCorrection(employeesToUse, pattern, newValue);
             newResolvedPatterns.set(patternKey, newValue);
-            console.log(`✅ Applied correction: ${patternKey} → ${newValue}`);
           } else {
             console.warn(`⚠️ Pattern not found for correction: ${patternKey}`);
           }
         }
-        
-        console.log('✅ Successfully applied all pending corrections - proceeding immediately');
         
         // Clear pending corrections after applying them
         setPendingCorrections(new Map());
       } catch (error) {
         console.error('❌ Error applying pending corrections:', error);
       }
-    } else {
-      console.log('ℹ️ No pending corrections to apply');
     }
-    
-    console.log('🔍 newResolvedPatterns after processing:', Array.from(newResolvedPatterns.entries()));
-    console.log('🔍 newResolvedPatterns.size:', newResolvedPatterns.size);
     
     // Mark bulk corrections as completed
     setHelperCompletionState(prev => ({ ...prev, bulkCorrectionsCompleted: true }));
     
     // CRITICAL: Save resolved patterns to parent state BEFORE checking dates
     // This ensures bulk corrections are saved even if we have ambiguous dates
-    console.log('🔍 Checking save conditions - hadPendingCorrections:', hadPendingCorrections, 'newResolvedPatterns.size:', newResolvedPatterns.size);
     if (hadPendingCorrections || newResolvedPatterns.size > 0) {
-      console.log('💾 Saving resolved patterns to parent state:', Array.from(newResolvedPatterns.entries()));
       onPatternsResolved?.(newResolvedPatterns);
-    } else {
-      console.log('❌ Not saving patterns - no pending corrections and no existing resolved patterns');
     }
     
     // ALWAYS check for ambiguous dates when proceeding forward
     const ambiguousDates = checkForAmbiguousDatesInMappedFields(employeesToUse);
     
     if (ambiguousDates.length > 0 && !helperCompletionState.dateFormatCompleted) {
-      // Found ambiguous dates - show modal for user to choose format
-      console.log(`📅 Found ${ambiguousDates.length} ambiguous dates, showing format selection modal`);
+      // Found ambiguous dates - show date format selection page
       setAmbiguousDateSamples(ambiguousDates);
       setCurrentEmployees(employeesToUse);
-      setShowDateFormatModal(true);
+      setCurrentPhase('date-format-selection');
       return; // Early return is OK now - patterns already saved above
     }
     
     // No ambiguous dates - proceed directly to individual corrections
-    console.log('📅 No ambiguous dates found, proceeding directly to individual corrections');
     setCurrentEmployees(employeesToUse);
     setHasNavigatedToIndividualCorrection(true);
     setCurrentPhase('individual-correction');
@@ -556,14 +530,15 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
 
 
-  // Render DateFormatModal if showing (must be first to override other phases)
-  if (showDateFormatModal) {
+  // Render date format selection page
+  if (currentPhase === 'date-format-selection') {
     return (
       <div className={`validation-correction-step ${className}`}>
-        <DateFormatModal
-          isOpen={showDateFormatModal}
-          onClose={handleDateFormatSelection}
+        <DateFormatSelectionStep
           samples={ambiguousDateSamples}
+          onComplete={handleDateFormatSelection}
+          onBack={onBack}
+          className={className}
         />
       </div>
     );
@@ -705,13 +680,13 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
         plandayApi={plandayApi}
         onComplete={(correctedEmployees) => {
           setCurrentEmployees(correctedEmployees);
-          console.log('✅ Individual corrections complete, proceeding with', correctedEmployees.length, 'corrected employees');
+          // Individual corrections completed
           // ValidationAndCorrectionStep - calling onComplete with corrected employees
           onComplete(correctedEmployees); // Pass the corrected employees directly instead of relying on state
         }}
         onBack={() => {
           // Backward navigation: skip helpers and go directly to Column Mapping
-          console.log('🔄 Individual correction back navigation - going directly to Column Mapping (skipping helpers)');
+          // Navigate back to column mapping
           onBack();
         }}
         className={className}

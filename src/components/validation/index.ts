@@ -3,4 +3,5 @@
  */
 
 export { DataValidationStep } from './DataValidationStep';
-export { DataCorrectionStep } from './DataCorrectionStep'; 
+export { DataCorrectionStep } from './DataCorrectionStep';
+export { DateFormatSelectionStep } from './DateFormatSelectionStep'; 
