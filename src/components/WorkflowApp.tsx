@@ -11,11 +11,12 @@ import { AuthenticationStep } from './auth/AuthenticationStep';
 import { FileUploadStep } from './upload/FileUploadStep';
 import MappingStep from './mapping/MappingStep';
 import ValidationAndCorrectionStep from './validation/ValidationAndCorrectionStep';
+
 import FinalPreviewStep from './results/FinalPreviewStep';
 import BulkUploadStep from './results/BulkUploadStep';
 import ResultsVerificationStep from './results/ResultsVerificationStep';
 import { usePlandayApi } from '../hooks/usePlandayApi';
-import { APP_METADATA, WorkflowStep } from '../constants';
+import { APP_METADATA, WorkflowStep, MAIN_WORKFLOW_STEPS } from '../constants';
 import type { 
   ParsedExcelData, 
   ExcelColumnMapping, 
@@ -42,9 +43,13 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   // Enhanced mapping data (will be used in later steps)
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [mappedColumns, setMappedColumns] = useState<ColumnMapping>({});
+  const [customValues, setCustomValues] = useState<{ [fieldName: string]: string }>({});
   
-  // Bulk correction state - persists across navigation
-  const [resolvedBulkCorrectionPatterns, setResolvedBulkCorrectionPatterns] = useState<Set<string>>(new Set());
+  // Bulk correction state - persists across navigation but resets when going back to mapping
+  const [resolvedBulkCorrectionPatterns, setResolvedBulkCorrectionPatterns] = useState<Map<string, string>>(new Map());
+  
+  // Date format selection state
+  const [_selectedDateFormats, setSelectedDateFormats] = useState<{[columnName: string]: string}>({});
   
   // Upload results state for verification step
   const [uploadResults, setUploadResults] = useState<EmployeeUploadResult[]>([]);
@@ -101,18 +106,18 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   }, [currentStep, onStepChange]);
 
   /**
-   * Demo function to simulate step progression
+   * Move to the next step in the workflow
    */
   const handleNextStep = () => {
-    const steps = Object.values(WorkflowStep) as WorkflowStepType[];
-    const workflowSteps = steps.filter(step => step !== 'documentation'); // Exclude documentation
-    const currentIndex = workflowSteps.indexOf(currentStep as typeof workflowSteps[number]);
+    const mainSteps = MAIN_WORKFLOW_STEPS.map(step => step.key);
+    const currentIndex = mainSteps.indexOf(currentStep as typeof mainSteps[number]);
     
-    if (currentIndex < workflowSteps.length - 1) {
+    if (currentIndex < mainSteps.length - 1) {
       // Mark current step as completed
       setCompletedSteps(prev => [...prev, currentStep]);
-      // Move to next step
-      setCurrentStep(workflowSteps[currentIndex + 1]);
+      
+      // Move to next main step
+      setCurrentStep(mainSteps[currentIndex + 1]);
     }
   };
 
@@ -127,7 +132,9 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
     setColumnMappings([]);
     setEmployees([]);
     setMappedColumns({});
-    setResolvedBulkCorrectionPatterns(new Set());
+    setCustomValues({});
+    setResolvedBulkCorrectionPatterns(new Map());
+    setSelectedDateFormats({});
     setUploadResults([]);
     setOriginalEmployees([]);
     
@@ -257,32 +264,49 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           excelData={excelData}
           initialColumnMappings={columnMappings}
           savedMappings={Object.keys(mappedColumns).length > 0 ? mappedColumns : undefined}
-          onComplete={(mappedEmployees, mappings) => {
+          savedCustomValues={Object.keys(customValues).length > 0 ? customValues : undefined}
+          onComplete={(mappedEmployees, mappings, customVals) => {
             setEmployees(mappedEmployees);
             setMappedColumns(mappings);
+            setCustomValues(customVals);
             handleNextStep(); // This will go to ValidationCorrection step
           }}
           onBack={() => {
-            setCurrentStep(WorkflowStep.FileUpload);
-            setCompletedSteps([WorkflowStep.Authentication]);
+            // Reset state when going back to Column Mapping
+            console.log('🔄 User navigating back to Column Mapping - preserving bulk corrections');
+            setSelectedDateFormats({});
+            
+            setCurrentStep(WorkflowStep.ColumnMapping);
+            setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
           }}
         />
       )}
 
       {currentStep === WorkflowStep.ValidationCorrection && employees.length > 0 && (
         <ValidationAndCorrectionStep
+          key={`validation-${currentStep}-${employees.length}`} // Removed patterns.size to prevent re-mount when patterns are saved
           employees={employees}
           departments={departments}
           employeeGroups={employeeGroups}
           employeeTypes={employeeTypes}
-          resolvedPatterns={resolvedBulkCorrectionPatterns}
-          onPatternsResolved={setResolvedBulkCorrectionPatterns}
+          resolvedPatterns={(() => {
+            console.log('🔍 WorkflowApp passing resolvedBulkCorrectionPatterns to ValidationAndCorrectionStep:', Array.from(resolvedBulkCorrectionPatterns.entries()));
+            return resolvedBulkCorrectionPatterns;
+          })()}
+          onPatternsResolved={(patterns) => {
+            console.log('🔍 WorkflowApp receiving patterns from ValidationAndCorrectionStep:', Array.from(patterns.entries()));
+            setResolvedBulkCorrectionPatterns(patterns);
+          }}
           onComplete={(correctedEmployees) => {
-            // ValidationAndCorrectionStep completed with corrected employees
+            console.log('✅ ValidationAndCorrectionStep completed with corrected employees');
             setEmployees(correctedEmployees);
             handleNextStep(); // Go to final preview
           }}
           onBack={() => {
+            // Reset state when going back to Column Mapping
+            console.log('🔄 User navigating back to Column Mapping - preserving bulk corrections');
+            setSelectedDateFormats({});
+            
             setCurrentStep(WorkflowStep.ColumnMapping);
             setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
           }}
@@ -332,6 +356,8 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setColumnMappings([]);
             setEmployees([]);
             setMappedColumns({});
+            setCustomValues({});
+            setResolvedBulkCorrectionPatterns(new Map());
             setUploadResults([]);
             setOriginalEmployees([]);
           }}
@@ -353,6 +379,8 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setColumnMappings([]);
             setEmployees([]);
             setMappedColumns({});
+            setCustomValues({});
+            setResolvedBulkCorrectionPatterns(new Map());
             setUploadResults([]);
             setOriginalEmployees([]);
           }}
@@ -363,6 +391,8 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
       {currentStep !== WorkflowStep.Authentication && 
        currentStep !== WorkflowStep.FileUpload && 
        currentStep !== WorkflowStep.ColumnMapping && 
+       currentStep !== WorkflowStep.BulkCorrections && 
+       currentStep !== WorkflowStep.DateFormat && 
        currentStep !== WorkflowStep.ValidationCorrection && 
        currentStep !== WorkflowStep.FinalPreview && 
        currentStep !== WorkflowStep.BulkUpload && 

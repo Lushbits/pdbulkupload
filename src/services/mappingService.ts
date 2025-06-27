@@ -15,7 +15,8 @@ import type {
   PlandayEmployeeGroup,
   PlandayEmployeeType,
   ValidationError,
-  PlandayFieldDefinitionsSchema
+  PlandayFieldDefinitionsSchema,
+  PlandayEmployeeCreateRequest
 } from '../types/planday';
 
 export interface MappingResult {
@@ -40,6 +41,30 @@ export interface BulkCorrectionSummary {
   affectedRows: number;
   canBulkFix: number; // Number of errors that have good suggestions
 }
+
+export interface CustomFieldConversionResult {
+  convertedValue: any;
+  errors: ValidationError[];
+  warnings: string[];
+}
+
+export interface CustomFieldInfo {
+  fieldName: string;
+  fieldType: CustomFieldType;
+  description?: string;
+  isRequired: boolean;
+  enumValues?: string[]; // For dropdown/select fields
+  enumOptions?: Array<{ value: any; label: string }>; // For more complex enums with labels
+}
+
+export type CustomFieldType = 
+  | 'optionalString'
+  | 'optionalBoolean' 
+  | 'optionalNumeric'
+  | 'optionalDate'
+  | 'optionalImage'
+  | 'optionalEnum' // New type for dropdown/select fields
+  | 'unknown';
 
 /**
  * Core Mapping Service Class
@@ -668,6 +693,27 @@ export class MappingService {
       converted.email = converted.userName;
     }
 
+    // Handle custom field type conversion using ValidationService
+    const customFieldResult = ValidationService.convertAllCustomFields(employee, employee.rowIndex || 0);
+    
+    // Apply converted custom field values
+    Object.assign(converted, customFieldResult.convertedFields);
+    
+    // Add any custom field conversion errors
+    errors.push(...customFieldResult.errors);
+    
+    // Log warnings for custom field conversions
+    if (customFieldResult.warnings.length > 0) {
+      console.warn(`⚠️ Custom field warnings for employee at row ${employee.rowIndex || 0}:`, customFieldResult.warnings);
+    }
+    
+    console.log(`🔧 Custom field conversion completed for row ${employee.rowIndex || 0}:`, {
+      originalCustomFields: Object.keys(employee).filter(k => k.startsWith('custom_')).length,
+      convertedCustomFields: Object.keys(customFieldResult.convertedFields).length,
+      errors: customFieldResult.errors.length,
+      warnings: customFieldResult.warnings.length
+    });
+
     return {
       isValid: errors.length === 0,
       converted,
@@ -861,6 +907,46 @@ export class MappingService {
   // Removed unused date validation methods - now handled by DateParser class
 
   // Removed convertDateToISO and convert8DigitDate methods - now handled by DateParser class
+
+  /**
+   * Create a clean payload for Planday API from converted employee data
+   * This ensures consistency between preview and actual upload
+   */
+  static createApiPayload(converted: any): PlandayEmployeeCreateRequest {
+    const cleanPayload: any = {};
+    
+    // Define internal fields that should be excluded from the API payload
+    const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+    
+    // Include all fields from the converted employee, excluding internal ones
+    Object.entries(converted).forEach(([key, value]) => {
+      // Skip internal fields and undefined/empty values
+      if (!internalFields.has(key) && value != null && value !== '') {
+        // For array fields, only include if they have elements
+        if (Array.isArray(value)) {
+          if (value.length > 0) {
+            cleanPayload[key] = value;
+          }
+        } else {
+          cleanPayload[key] = value;
+        }
+      }
+    });
+    
+    // Ensure required fields have defaults if needed
+    if (!cleanPayload.email && cleanPayload.userName) {
+      cleanPayload.email = cleanPayload.userName;
+    }
+    
+    // Ensure we have a default gender if not provided
+    if (!cleanPayload.gender) {
+      cleanPayload.gender = 'Male';
+    }
+    
+    return cleanPayload as PlandayEmployeeCreateRequest;
+  }
+
+
 }
 
 /**
@@ -947,6 +1033,14 @@ export const MappingUtils = {
    */
   generateTemplate() {
     return mappingService.generateTemplate();
+  },
+
+  /**
+   * Create a clean payload for Planday API from converted employee data
+   * This ensures consistency between preview and actual upload
+   */
+  createApiPayload(converted: any): PlandayEmployeeCreateRequest {
+    return MappingService.createApiPayload(converted);
   }
 };
 
@@ -964,32 +1058,10 @@ export class ValidationService {
   static initialize(fieldDefinitions: PlandayFieldDefinitionsSchema): void {
     this.fieldDefinitions = fieldDefinitions;
     
-    // Add detailed logging to debug field processing inconsistencies
-    const requiredFields = this.getRequiredFields();
-    const customFields = this.getCustomFields();
-    const readOnlyFields = this.getReadOnlyFields();
-    const uniqueFields = this.getUniqueFields();
+    // Debug logging disabled to reduce console noise
     
-    console.log('🔍 Field Processing Debug - ValidationService.initialize:', {
-      portalId: fieldDefinitions.portalId,
-      rawApiRequiredFields: fieldDefinitions.required,
-      processedRequiredFields: requiredFields,
-      rawApiReadOnlyFields: fieldDefinitions.readOnly,
-      processedReadOnlyFields: readOnlyFields,
-      rawApiUniqueFields: fieldDefinitions.unique,
-      processedUniqueFields: uniqueFields,
-      rawApiFieldNames: Object.keys(fieldDefinitions.properties),
-      detectedCustomFields: customFields.map(cf => ({ name: cf.name, description: cf.description })),
-      businessLogicOverrides: {
-        forcedRequiredFields: ['userName', 'departments']
-      },
-      fieldClassification: {
-        totalApiFields: Object.keys(fieldDefinitions.properties).length,
-        standardFields: Object.keys(fieldDefinitions.properties).filter(f => !f.startsWith('custom_')).length,
-        customFields: Object.keys(fieldDefinitions.properties).filter(f => f.startsWith('custom_')).length,
-        requiredFieldOverrides: requiredFields.filter(field => !fieldDefinitions.required.includes(field))
-      }
-    });
+    // Debug logging disabled to reduce console noise
+    // Field processing debug logging disabled to reduce console noise
   }
 
   /**
@@ -1067,6 +1139,7 @@ export class ValidationService {
 
   /**
    * Get custom fields with their descriptions
+   * Excludes read-only fields (disabled/inactive custom fields)
    */
   static getCustomFields(): Array<{ name: string; description: string }> {
     if (!this.fieldDefinitions) {
@@ -1079,14 +1152,608 @@ export class ValidationService {
     for (const [fieldName, fieldConfig] of Object.entries(this.fieldDefinitions.properties)) {
       // Use Planday's actual custom field convention: fields starting with 'custom_'
       if (fieldName.startsWith('custom_')) {
-        customFields.push({
-          name: fieldName,
-          description: fieldConfig.description || fieldName
-        });
+        const isReadOnly = this.fieldDefinitions.readOnly.includes(fieldName);
+        
+        // Filter out read-only fields (these are disabled/inactive custom fields)
+        if (!isReadOnly) {
+          customFields.push({
+            name: fieldName,
+            description: fieldConfig.description || fieldName
+          });
+        }
       }
     }
 
     return customFields;
+  }
+
+  /**
+   * Get custom fields with their type information
+   * Excludes read-only fields (disabled/inactive custom fields)
+   */
+  static getCustomFieldsWithTypes(): CustomFieldInfo[] {
+    if (!this.fieldDefinitions) {
+      return [];
+    }
+
+    const customFields: CustomFieldInfo[] = [];
+    
+    for (const [fieldName, fieldConfig] of Object.entries(this.fieldDefinitions.properties)) {
+      if (fieldName.startsWith('custom_')) {
+        const fieldType = this.detectCustomFieldType(fieldConfig.$ref, fieldConfig);
+        const isReadOnly = this.fieldDefinitions.readOnly.includes(fieldName);
+        
+        // Filter out read-only fields (these are disabled/inactive custom fields)
+        if (!isReadOnly) {
+          // Extract enum values for dropdown fields
+          let enumValues: string[] | undefined;
+          let enumOptions: Array<{ value: any; label: string }> | undefined;
+          
+          if (fieldType === 'optionalEnum') {
+            const extracted = this.extractEnumValues(fieldConfig);
+            enumValues = extracted.values;
+            enumOptions = extracted.options;
+          }
+          
+          customFields.push({
+            fieldName,
+            fieldType,
+            description: fieldConfig.description,
+            isRequired: this.fieldDefinitions.required.includes(fieldName),
+            enumValues,
+            enumOptions
+          });
+        }
+      }
+    }
+
+    return customFields;
+  }
+
+  /**
+   * Detect field type from $ref value and field configuration
+   * Enhanced to handle enum/dropdown fields and custom definitions
+   */
+  private static detectCustomFieldType(ref?: string, fieldConfig?: any): CustomFieldType {
+    if (!ref) {
+      return 'unknown';
+    }
+    
+    // Check if field has enum values directly (dropdown/select field)
+    if (fieldConfig && (fieldConfig.enum || fieldConfig.values || 
+        (fieldConfig.anyOf && fieldConfig.anyOf.some((option: any) => option.enum || option.values)))) {
+      return 'optionalEnum';
+    }
+    
+    // Check if it's a custom definition (like #/definitions/optionalCustom196907)
+    if (ref.startsWith('#/definitions/optionalCustom') && this.fieldDefinitions) {
+      const definitionKey = ref.replace('#/definitions/', '');
+      const definition = this.fieldDefinitions.definitions[definitionKey];
+      
+      if (definition) {
+        // Check if the definition contains enum values
+        if (definition.enum || definition.values || 
+            (definition.anyOf && definition.anyOf.some((option: any) => option.enum || option.values))) {
+          return 'optionalEnum';
+        }
+      }
+    }
+    
+    switch (ref) {
+      case '#/definitions/optionalString':
+        return 'optionalString';
+      case '#/definitions/optionalBoolean':
+        return 'optionalBoolean';
+      case '#/definitions/optionalNumeric':
+        return 'optionalNumeric';
+      case '#/definitions/optionalDate':
+        return 'optionalDate';
+      case '#/definitions/optionalImage':
+        return 'optionalImage';
+      
+      // Additional common patterns that might indicate active fields
+      case '#/definitions/string':
+        return 'optionalString'; // Treat required string as optional string for bulk upload
+      case '#/definitions/numeric':
+      case '#/definitions/number':
+        return 'optionalNumeric';
+      case '#/definitions/boolean':
+        return 'optionalBoolean';
+      case '#/definitions/date':
+        return 'optionalDate';
+        
+      default:
+        return 'unknown';
+    }
+  }
+
+  /**
+   * Convert and validate a custom field value
+   */
+  static convertCustomFieldValue(
+    fieldName: string, 
+    value: any, 
+    rowIndex: number = 0
+  ): CustomFieldConversionResult {
+    const result: CustomFieldConversionResult = {
+      convertedValue: value,
+      errors: [],
+      warnings: []
+    };
+
+    // Handle empty/null values
+    if (value === null || value === undefined || value === '') {
+      result.convertedValue = null;
+      return result;
+    }
+
+    // Get field type
+    const fieldInfo = this.getCustomFieldInfo(fieldName);
+    if (!fieldInfo) {
+      result.warnings.push(`Custom field "${fieldName}" not found in field definitions`);
+      return result;
+    }
+
+    // Convert based on type
+    try {
+      switch (fieldInfo.fieldType) {
+        case 'optionalString':
+          result.convertedValue = this.convertToString(value);
+          break;
+          
+        case 'optionalBoolean':
+          result.convertedValue = this.convertToBoolean(value, fieldName, rowIndex, result);
+          break;
+          
+        case 'optionalNumeric':
+          result.convertedValue = this.convertToNumber(value, fieldName, rowIndex, result);
+          break;
+          
+        case 'optionalDate':
+          result.convertedValue = this.convertToDate(value, fieldName, rowIndex, result);
+          break;
+          
+        case 'optionalEnum':
+          result.convertedValue = this.convertToEnum(value, fieldName, rowIndex, result, fieldInfo);
+          break;
+          
+        case 'optionalImage':
+          // Images not supported for bulk upload
+          result.convertedValue = null;
+          result.warnings.push(`Image field "${fieldName}" is not supported for bulk upload - value ignored`);
+          break;
+          
+        default:
+          // Unknown type - pass through as string with warning
+          result.convertedValue = String(value);
+          result.warnings.push(`Unknown custom field type for "${fieldName}" - treating as string`);
+      }
+    } catch (error) {
+      result.errors.push({
+        field: fieldName,
+        value: value,
+        message: `Failed to convert custom field "${fieldName}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+        rowIndex,
+        severity: 'error'
+      });
+      result.convertedValue = null;
+    }
+
+    return result;
+  }
+
+  /**
+   * Convert and validate all custom fields in an employee record
+   */
+  static convertAllCustomFields(employee: any, rowIndex: number = 0): {
+    convertedFields: Record<string, any>;
+    errors: ValidationError[];
+    warnings: string[];
+  } {
+    const convertedFields: Record<string, any> = {};
+    const allErrors: ValidationError[] = [];
+    const allWarnings: string[] = [];
+
+    // Process all custom fields in the employee record
+    Object.keys(employee).forEach(fieldName => {
+      if (fieldName.startsWith('custom_')) {
+        const conversionResult = this.convertCustomFieldValue(fieldName, employee[fieldName], rowIndex);
+        
+        convertedFields[fieldName] = conversionResult.convertedValue;
+        allErrors.push(...conversionResult.errors);
+        allWarnings.push(...conversionResult.warnings);
+      }
+    });
+
+    return {
+      convertedFields,
+      errors: allErrors,
+      warnings: allWarnings
+    };
+  }
+
+  /**
+   * Get field type information for a specific custom field
+   */
+  private static getCustomFieldInfo(fieldName: string): CustomFieldInfo | null {
+    if (!this.fieldDefinitions || !fieldName.startsWith('custom_')) {
+      return null;
+    }
+
+    const fieldConfig = this.fieldDefinitions.properties[fieldName];
+    if (!fieldConfig) {
+      return null;
+    }
+
+    const fieldType = this.detectCustomFieldType(fieldConfig.$ref, fieldConfig);
+    
+    // Extract enum values for dropdown fields
+    let enumValues: string[] | undefined;
+    let enumOptions: Array<{ value: any; label: string }> | undefined;
+    
+    if (fieldType === 'optionalEnum') {
+      const extracted = this.extractEnumValues(fieldConfig);
+      enumValues = extracted.values;
+      enumOptions = extracted.options;
+    }
+
+    return {
+      fieldName,
+      fieldType,
+      description: fieldConfig.description,
+      isRequired: this.fieldDefinitions.required.includes(fieldName),
+      enumValues,
+      enumOptions
+    };
+  }
+
+  /**
+   * Convert value to string
+   */
+  private static convertToString(value: any): string {
+    return String(value).trim();
+  }
+
+  /**
+   * Convert value to boolean with flexible parsing
+   */
+  private static convertToBoolean(
+    value: any, 
+    fieldName: string, 
+    rowIndex: number,
+    result: CustomFieldConversionResult
+  ): boolean | null {
+    const strValue = String(value).toLowerCase().trim();
+    
+    // True values
+    if (['true', '1', 'yes', 'y', 'on', 'enabled', 'active'].includes(strValue)) {
+      return true;
+    }
+    
+    // False values  
+    if (['false', '0', 'no', 'n', 'off', 'disabled', 'inactive'].includes(strValue)) {
+      return false;
+    }
+    
+    // Invalid boolean value
+    result.errors.push({
+      field: fieldName,
+      value: value,
+      message: `Invalid boolean value "${value}" for custom field "${fieldName}". Use: true/false, 1/0, yes/no, y/n, on/off, enabled/disabled, active/inactive`,
+      rowIndex,
+      severity: 'error'
+    });
+    
+    return null;
+  }
+
+  /**
+   * Convert value to number with validation
+   */
+  private static convertToNumber(
+    value: any, 
+    fieldName: string, 
+    rowIndex: number,
+    result: CustomFieldConversionResult
+  ): number | null {
+    // Handle string numbers with potential formatting
+    let cleanValue = String(value).trim();
+    
+    // Remove common formatting (commas, spaces)
+    cleanValue = cleanValue.replace(/[,\s]/g, '');
+    
+    const numValue = Number(cleanValue);
+    
+    if (isNaN(numValue)) {
+      result.errors.push({
+        field: fieldName,
+        value: value,
+        message: `Invalid numeric value "${value}" for custom field "${fieldName}". Must be a valid number`,
+        rowIndex,
+        severity: 'error'
+      });
+      return null;
+    }
+    
+    // Check for reasonable numeric range (avoid extremely large numbers that might be data entry errors)
+    if (!isFinite(numValue)) {
+      result.errors.push({
+        field: fieldName,
+        value: value,
+        message: `Numeric value "${value}" for custom field "${fieldName}" is too large or infinite`,
+        rowIndex,
+        severity: 'error'
+      });
+      return null;
+    }
+    
+    return numValue;
+  }
+
+  /**
+   * Convert value to ISO date format
+   */
+  private static convertToDate(
+    value: any, 
+    fieldName: string, 
+    rowIndex: number,
+    result: CustomFieldConversionResult
+  ): string | null {
+    const dateStr = String(value).trim();
+    
+    // Use existing DateParser logic
+    if (!DateParser.couldBeDate(dateStr)) {
+      result.errors.push({
+        field: fieldName,
+        value: value,
+        message: `Value "${value}" for custom field "${fieldName}" doesn't appear to be a valid date. Supported formats: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD, named months, etc.`,
+        rowIndex,
+        severity: 'error'
+      });
+      return null;
+    }
+    
+    // Check for ambiguous dates
+    const ambiguousDates = DateParser.findAmbiguousDates([dateStr]);
+    if (ambiguousDates.length > 0) {
+      result.errors.push({
+        field: fieldName,
+        value: value,
+        message: `Ambiguous date format "${value}" for custom field "${fieldName}". Please resolve date format ambiguity first`,
+        rowIndex,
+        severity: 'error'
+      });
+      return null;
+    }
+    
+    // Convert to ISO format
+    const convertedDate = DateParser.parseToISO(dateStr);
+    if (!convertedDate) {
+      result.errors.push({
+        field: fieldName,
+        value: value,
+        message: `Invalid date format "${value}" for custom field "${fieldName}". Supported formats: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD, named months, etc.`,
+        rowIndex,
+        severity: 'error'
+      });
+      return null;
+    }
+    
+    return convertedDate;
+  }
+
+  /**
+   * Convert value to enum with validation against allowed options
+   */
+  private static convertToEnum(
+    value: any, 
+    fieldName: string, 
+    rowIndex: number,
+    result: CustomFieldConversionResult,
+    fieldInfo: CustomFieldInfo
+  ): any {
+    const strValue = String(value).trim();
+    
+    if (!fieldInfo.enumValues || fieldInfo.enumValues.length === 0) {
+      result.warnings.push(`No enum values found for dropdown field "${fieldName}" - treating as string`);
+      return strValue;
+    }
+    
+    // Check for exact match (case-sensitive first)
+    if (fieldInfo.enumValues.includes(strValue)) {
+      return strValue;
+    }
+    
+    // Check for case-insensitive match
+    const lowerValue = strValue.toLowerCase();
+    const caseInsensitiveMatch = fieldInfo.enumValues.find(enumValue => 
+      String(enumValue).toLowerCase() === lowerValue
+    );
+    
+    if (caseInsensitiveMatch) {
+      result.warnings.push(`Found case-insensitive match for "${strValue}" → "${caseInsensitiveMatch}" in field "${fieldName}"`);
+      return caseInsensitiveMatch;
+    }
+    
+    // Check if it's a numeric value that matches enum options
+    if (fieldInfo.enumOptions) {
+      const numericValue = Number(strValue);
+      if (!isNaN(numericValue)) {
+        const numericMatch = fieldInfo.enumOptions.find(option => option.value === numericValue);
+        if (numericMatch) {
+          return numericMatch.value;
+        }
+      }
+      
+      // Check if input matches any label
+      const labelMatch = fieldInfo.enumOptions.find(option => 
+        String(option.label).toLowerCase() === lowerValue
+      );
+      if (labelMatch) {
+        result.warnings.push(`Found label match for "${strValue}" → "${labelMatch.value}" (${labelMatch.label}) in field "${fieldName}"`);
+        return labelMatch.value;
+      }
+    }
+    
+    // No match found - this is an error
+    const availableValues = fieldInfo.enumOptions 
+      ? fieldInfo.enumOptions.map(opt => `${opt.value} (${opt.label})`).join(', ')
+      : fieldInfo.enumValues.join(', ');
+      
+    result.errors.push({
+      field: fieldName,
+      value: value,
+      message: `Invalid value "${strValue}" for dropdown field "${fieldName}". Must be one of: ${availableValues}`,
+      rowIndex,
+      severity: 'error'
+    });
+    
+    return null;
+  }
+
+  /**
+   * Extract enum values from field configuration
+   * Handles both simple enum arrays, complex anyOf structures, and custom definitions
+   */
+  private static extractEnumValues(fieldConfig: any): {
+    values: string[];
+    options: Array<{ value: any; label: string }>;
+  } {
+    const values: string[] = [];
+    const options: Array<{ value: any; label: string }> = [];
+    
+    let configToCheck = fieldConfig;
+    
+    // If the field references a custom definition, look it up in definitions
+    if (fieldConfig.$ref && fieldConfig.$ref.startsWith('#/definitions/optionalCustom') && this.fieldDefinitions) {
+      const definitionKey = fieldConfig.$ref.replace('#/definitions/', '');
+      const definition = this.fieldDefinitions.definitions[definitionKey];
+      
+      if (definition) {
+        configToCheck = definition;
+      }
+    }
+    
+    // Direct enum/values properties
+    if (configToCheck.enum) {
+      values.push(...configToCheck.enum);
+      configToCheck.enum.forEach((value: any) => {
+        options.push({ value, label: String(value) });
+      });
+    }
+    
+    if (configToCheck.values) {
+      values.push(...configToCheck.values);
+      configToCheck.values.forEach((value: any) => {
+        options.push({ value, label: String(value) });
+      });
+    }
+    
+    // anyOf structure (like employeeType with enum and values)
+    if (configToCheck.anyOf && Array.isArray(configToCheck.anyOf)) {
+      configToCheck.anyOf.forEach((option: any) => {
+        if (option.enum) {
+          values.push(...option.enum);
+          
+          // If there are corresponding values/labels, use them
+          if (option.values && option.values.length === option.enum.length) {
+            option.enum.forEach((enumValue: any, index: number) => {
+              options.push({ 
+                value: enumValue, 
+                label: option.values[index] || String(enumValue) 
+              });
+            });
+          } else {
+            // No labels, use enum values as labels
+            option.enum.forEach((enumValue: any) => {
+              options.push({ value: enumValue, label: String(enumValue) });
+            });
+          }
+        }
+        
+        if (option.values) {
+          values.push(...option.values);
+          option.values.forEach((value: any) => {
+            if (!options.some(opt => opt.value === value)) {
+              options.push({ value, label: String(value) });
+            }
+          });
+        }
+      });
+    }
+    
+    // Remove duplicates
+    const uniqueValues = [...new Set(values)];
+    const uniqueOptions = options.filter((option, index, self) => 
+      index === self.findIndex(opt => opt.value === option.value)
+    );
+    
+    return {
+      values: uniqueValues,
+      options: uniqueOptions
+    };
+  }
+
+  /**
+   * Get human-readable type name for UI display
+   */
+  static getFieldTypeDisplayName(fieldType: CustomFieldType): string {
+    switch (fieldType) {
+      case 'optionalString':
+        return 'Text';
+      case 'optionalBoolean':
+        return 'Yes/No (Boolean)';
+      case 'optionalNumeric':
+        return 'Number';
+      case 'optionalDate':
+        return 'Date';
+      case 'optionalEnum':
+        return 'Dropdown/Select';
+      case 'optionalImage':
+        return 'Image (not supported)';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  /**
+   * Get user-friendly conversion hints for a field type
+   */
+  static getConversionHints(fieldType: CustomFieldType): string[] {
+    switch (fieldType) {
+      case 'optionalString':
+        return ['Any text value'];
+        
+      case 'optionalBoolean':
+        return [
+          'Use: true/false, 1/0, yes/no, y/n',
+          'Also: on/off, enabled/disabled, active/inactive'
+        ];
+        
+      case 'optionalNumeric':
+        return [
+          'Use numeric values (integers or decimals)',
+          'Commas and spaces will be removed automatically'
+        ];
+        
+      case 'optionalDate':
+        return [
+          'Supported formats: YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY',
+          'Also: YYYY/MM/DD, YYYYMMDD, named months'
+        ];
+        
+      case 'optionalEnum':
+        return [
+          'Must use one of the predefined dropdown options',
+          'Case-insensitive matching supported'
+        ];
+        
+      case 'optionalImage':
+        return ['Image uploads not supported in bulk import'];
+        
+      default:
+        return ['Unknown field type - will be treated as text'];
+    }
   }
 
   /**

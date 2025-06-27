@@ -1,5 +1,5 @@
 import React from 'react';
-import { WORKFLOW_STEPS } from '../../constants';
+import { MAIN_WORKFLOW_STEPS } from '../../constants';
 import type { WorkflowStep as WorkflowStepType } from '../../types/planday';
 
 /**
@@ -97,9 +97,9 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
       {/* Desktop Progress Indicator */}
       <div className="hidden md:block">
         <div className="flex items-center justify-center">
-          {WORKFLOW_STEPS.map((step, index) => {
+          {MAIN_WORKFLOW_STEPS.map((step, index) => {
             const status = getStepStatus(step.key);
-            const isLast = index === WORKFLOW_STEPS.length - 1;
+            const isLast = index === MAIN_WORKFLOW_STEPS.length - 1;
 
             return (
               <div key={step.key} className="flex items-center">
@@ -128,7 +128,7 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
                 {!isLast && (
                   <div className="mx-4 w-16">
                     <div className={`h-0.5 transition-colors duration-300 ${
-                      getConnectorClasses(step.key, WORKFLOW_STEPS[index + 1].key)
+                      getConnectorClasses(step.key, MAIN_WORKFLOW_STEPS[index + 1].key)
                     }`} />
                   </div>
                 )}
@@ -141,9 +141,9 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
       {/* Mobile Progress Indicator */}
       <div className="md:hidden">
         <div className="space-y-4">
-          {WORKFLOW_STEPS.map((step, index) => {
+          {MAIN_WORKFLOW_STEPS.map((step, index) => {
             const status = getStepStatus(step.key);
-            const isLast = index === WORKFLOW_STEPS.length - 1;
+            const isLast = index === MAIN_WORKFLOW_STEPS.length - 1;
 
             return (
               <div key={step.key} className="flex items-start">
@@ -156,7 +156,7 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
                   {/* Vertical Connector */}
                   {!isLast && (
                     <div className={`w-0.5 h-8 mt-2 transition-colors duration-300 ${
-                      getConnectorClasses(step.key, WORKFLOW_STEPS[index + 1].key)
+                      getConnectorClasses(step.key, MAIN_WORKFLOW_STEPS[index + 1].key)
                     }`} />
                   )}
                 </div>
@@ -192,7 +192,7 @@ export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
         <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
           <span>Progress</span>
           <span>
-            {completedSteps.length + (currentStep ? 1 : 0)} of {WORKFLOW_STEPS.length} steps
+            {completedSteps.length + (currentStep ? 1 : 0)} of {MAIN_WORKFLOW_STEPS.length} steps
           </span>
         </div>
         

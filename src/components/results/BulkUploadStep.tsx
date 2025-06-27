@@ -3,7 +3,8 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import type { Employee, BulkUploadProgress, EmployeeUploadResult, PlandayEmployeeCreateRequest } from '../../types/planday';
 import { usePlandayApi } from '../../hooks/usePlandayApi';
-import { MappingUtils, ValidationService } from '../../services/mappingService';
+import { MappingUtils } from '../../services/mappingService';
+import { ValidationService } from '../../services/mappingService';
 
 
 
@@ -81,28 +82,8 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         // Use the converted data from validation
         const converted = validation.converted;
         
-        const plandayEmployee: PlandayEmployeeCreateRequest = {
-          firstName: converted.firstName || employee.firstName || '',
-          lastName: converted.lastName || employee.lastName || '',
-          userName: converted.userName || employee.userName || '',
-          email: converted.userName || employee.userName || '', // Add email field (same as userName)
-          departments: converted.departments || [], // Should be array of IDs
-          employeeGroups: converted.employeeGroups || [],
-          employeeTypeId: converted.employeeTypeId, // Include the corrected employee type ID
-          cellPhone: converted.cellPhone || employee.cellPhone,
-          cellPhoneCountryCode: converted.cellPhoneCountryCode,
-          cellPhoneCountryId: converted.cellPhoneCountryId,
-          phone: converted.phone || employee.phone,
-          phoneCountryCode: converted.phoneCountryCode,
-          phoneCountryId: converted.phoneCountryId,
-          street1: converted.street1 || employee.street1,
-          city: converted.city || employee.city,
-          zip: converted.zip || employee.zip,
-          gender: converted.gender || employee.gender || 'Male', // Add default gender for testing
-          hiredFrom: converted.hiredFrom || employee.hiredFrom,
-          birthDate: converted.birthDate || employee.birthDate,
-          ssn: converted.ssn || employee.ssn,
-        };
+        // Use the centralized payload creation function to ensure consistency with preview
+        const plandayEmployee = MappingUtils.createApiPayload(converted);
         
         validatedEmployees.push(plandayEmployee);
         

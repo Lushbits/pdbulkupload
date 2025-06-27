@@ -22,7 +22,8 @@ interface MappingStepProps {
   excelData?: ParsedExcelData; // Full Excel data including discarded columns info
   initialColumnMappings?: ExcelColumnMapping[]; // Auto-mappings from Excel parser
   savedMappings?: ColumnMapping; // Previously saved user mappings (when returning from later steps)
-  onComplete: (employees: Employee[], mappings: ColumnMapping) => void;
+  savedCustomValues?: { [fieldName: string]: string }; // Previously saved custom values (when returning from later steps)
+  onComplete: (employees: Employee[], mappings: ColumnMapping, customValues: { [fieldName: string]: string }) => void;
   onBack: () => void;
   className?: string;
 }
@@ -49,6 +50,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   // excelData, // Not currently used - reserved for future features
   initialColumnMappings,
   savedMappings,
+  savedCustomValues,
   onComplete,
   onBack,
   className = ''
@@ -189,6 +191,15 @@ const MappingStep: React.FC<MappingStepProps> = ({
       }
     }
   }, [initialColumnMappings, savedMappings, plandayFields]);
+
+  // Initialize custom values from saved custom values (if returning from later step)
+  useEffect(() => {
+    if (savedCustomValues && Object.keys(savedCustomValues).length > 0) {
+      // Restore saved custom values when user returns from later step
+      console.log('🔄 Restoring saved custom values:', savedCustomValues);
+      setCustomValues(savedCustomValues);
+    }
+  }, [savedCustomValues]);
 
   // Get available fields for dropdown (excluding already mapped fields)
   const getAvailableFields = (currentColumnName: string): PlandayField[] => {
@@ -582,7 +593,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   const handleSubmit = () => {
     if (mappingErrors.length === 0) {
       const mappedEmployees = applyColumnMappings(employees, columnMappings);
-      onComplete(mappedEmployees, columnMappings);
+      onComplete(mappedEmployees, columnMappings, customValues);
     }
   };
 

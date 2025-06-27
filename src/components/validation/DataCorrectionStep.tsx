@@ -241,6 +241,15 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       const countryCodeErrors = ValidationService.validateCountryCodeFields(employee, index);
       errors.push(...countryCodeErrors);
 
+      // Custom field validation using centralized ValidationService
+      const customFieldResult = ValidationService.convertAllCustomFields(employee, index);
+      errors.push(...customFieldResult.errors);
+      
+      // Log warnings for custom field conversions
+      if (customFieldResult.warnings.length > 0) {
+        console.warn(`⚠️ Custom field warnings for employee at row ${index}:`, customFieldResult.warnings);
+      }
+
       // NOTE: Department/employee group validation is handled in the bulk correction phase
       // Individual validation should only check format/field-level issues, not name-to-ID mapping
 
@@ -350,6 +359,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     const { rowIndex, field, value } = editingCell;
     const oldValue = employees[rowIndex]?.[field];
     
+    // Cell edit detected - validation will trigger via useEffect
+    
     setEmployees(prev => {
       const updated = [...prev];
       updated[rowIndex] = {
@@ -358,6 +369,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       };
       return updated;
     });
+
+    // Custom field validation now handled in validateAllEmployees for consistency
 
     // If userName field was modified, re-check duplicates for the new email
     if (field === 'userName' && value !== oldValue) {
@@ -618,12 +631,18 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     const customField = customFields.find(f => f.name === fieldName);
     
     if (customField && customField.description) {
-      // For custom fields, show human-readable description
+      // For custom fields, show just the human-readable description
       return customField.description;
     }
     
     // For standard fields, show raw field names (consistent with modal and mapping)
     return fieldName;
+  };
+
+  // Helper function to clean up redundant error messages
+  const cleanErrorMessage = (message: string): string => {
+    // Fix redundant dropdown values like "XXL (XXL), XL (XL)" -> "XXL, XL"
+    return message.replace(/(\w+) \(\1\)/g, '$1');
   };
 
   /**
@@ -633,6 +652,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     const employeeKey = `employee-${rowIndex}`;
     const errors = validationErrors.get(employeeKey) || [];
     const fieldErrors = errors.filter(e => e.field === field);
+    
+    // Render validation indicator if errors exist for this field
     
     if (fieldErrors.length === 0) return null;
 
@@ -969,7 +990,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                               : 'bg-yellow-100 text-yellow-800'
                           }`}
                         >
-                          <strong className="font-mono">{error.field}:</strong> {error.message}
+                          <strong className="font-mono">{getFieldDisplayName(error.field)}:</strong> {cleanErrorMessage(error.message)}
                         </div>
                       ))}
                     </div>
@@ -984,7 +1005,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       <Card className="p-6 mt-6">
         <div className="flex items-center justify-between">
           <Button variant="outline" onClick={onBack}>
-            ← Back to Bulk Correction
+            ← Back to Mapping
           </Button>
           
           <div className="flex items-center space-x-4">

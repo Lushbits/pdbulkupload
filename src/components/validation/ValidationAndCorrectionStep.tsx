@@ -16,8 +16,8 @@ interface ValidationAndCorrectionStepProps {
   departments: any[];
   employeeGroups: any[];
   employeeTypes: any[];
-  resolvedPatterns?: Set<string>;
-  onPatternsResolved?: (patterns: Set<string>) => void;
+  resolvedPatterns?: Map<string, string>;
+  onPatternsResolved?: (patterns: Map<string, string>) => void;
   onComplete: (correctedEmployees: any[]) => void;
   onBack: () => void;
   plandayApi: UsePlandayApiReturn;
@@ -70,18 +70,28 @@ const CorrectionCard: React.FC<CorrectionCardProps> = ({
     return (
       <Card className="mb-4 border-l-4 border-l-green-400 bg-green-50">
         <div className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
-              <span className="text-white text-sm">✓</span>
-            </div>
-            <div className="flex-1">
-              <div className="text-sm text-green-800 font-medium">
-                "{pattern.invalidName}" has been mapped successfully
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm">✓</span>
               </div>
-              <div className="text-xs text-green-600">
-                {pattern.count} rows corrected
+              <div className="flex-1">
+                <div className="text-sm text-green-800 font-medium">
+                  "{pattern.invalidName}" has been mapped successfully
+                </div>
+                <div className="text-xs text-green-600">
+                  {pattern.count} rows corrected
+                </div>
               </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onPendingCorrection(pattern, '')} // Clear the resolved state to allow modification
+              className="text-green-700 hover:text-green-800 border-green-300 hover:bg-green-100"
+            >
+              Modify
+            </Button>
           </div>
         </div>
       </Card>
@@ -244,24 +254,45 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 }) => {
   const [currentPhase, setCurrentPhase] = useState<'bulk-correction' | 'individual-correction' | 'complete'>('bulk-correction');
   const [correctionSummary, setCorrectionSummary] = useState<BulkCorrectionSummary | null>(null);
-  const [resolvedPatterns, setResolvedPatterns] = useState<Set<string>>(initialResolvedPatterns || new Set());
+  const [originalCorrectionSummary, setOriginalCorrectionSummary] = useState<BulkCorrectionSummary | null>(null); // Preserve original summary
+  const [resolvedPatterns, setResolvedPatterns] = useState<Map<string, string>>(initialResolvedPatterns || new Map());
   const [currentEmployees, setCurrentEmployees] = useState(employees);
-  const [isProcessing, setIsProcessing] = useState(false);
+
   const [pendingCorrections, setPendingCorrections] = useState<Map<string, string>>(new Map());
+  const [hasNavigatedToIndividualCorrection, setHasNavigatedToIndividualCorrection] = useState(false); // Track navigation
+  const [helperCompletionState, setHelperCompletionState] = useState({
+    bulkCorrectionsCompleted: false,
+    dateFormatCompleted: false
+  }); // Track which helpers have been completed in this forward journey
   
   // Date format modal state
   const [showDateFormatModal, setShowDateFormatModal] = useState(false);
   const [ambiguousDateSamples, setAmbiguousDateSamples] = useState<string[]>([]);
-  const [isCheckingDates, setIsCheckingDates] = useState(false);
+
 
   // Update currentEmployees when employees prop changes
   useEffect(() => {
     setCurrentEmployees(employees);
   }, [employees]);
 
+  // Only reset helper completion state when truly starting fresh (not on every re-render)
+  useEffect(() => {
+    console.log('🔄 Setting initial phase and helper state');
+    setHelperCompletionState({
+      bulkCorrectionsCompleted: false,
+      dateFormatCompleted: false
+    });
+    setHasNavigatedToIndividualCorrection(false);
+    setCurrentPhase('bulk-correction'); // Always start with bulk correction phase when coming forward
+    
+    console.log('🔍 Component initialized, employees.length:', employees.length);
+  }, []); // Only run on mount, not on every prop change
+
   // Initialize and detect bulk correction patterns
   useEffect(() => {
     // ValidationAndCorrectionStep: Initializing with provided data
+    console.log('🔄 ValidationAndCorrectionStep initializing');
+    console.log('🔍 Initial resolved patterns received:', initialResolvedPatterns ? Array.from(initialResolvedPatterns.entries()) : 'none');
     
     // Reset DateParser for new validation session
     DateParser.resetUserDateFormat();
@@ -269,84 +300,87 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     // Additional debugging: test getAvailableOptions directly
     MappingUtils.initialize(departments, employeeGroups, employeeTypes);
     
-    // Initialize mapping utils with provided data
-    // const testDepartments = MappingUtils.getAvailableOptions('departments');
-    // const testEmployeeGroups = MappingUtils.getAvailableOptions('employeeGroups');
-    
+    // Fresh detection from current data - always re-evaluate
     const summary = MappingUtils.detectCommonErrors(employees);
-    // Detecting error patterns for bulk correction
+    console.log('🔍 Detecting error patterns for bulk correction - found', summary.patterns.length, 'patterns');
     
-    // Filter out patterns that are already resolved (either in state or not present in current data)
-    const unresolvedPatterns = summary.patterns.filter(pattern => {
-      const patternKey = `${pattern.field}:${pattern.invalidName}`;
-      const isInResolvedState = resolvedPatterns.has(patternKey);
-      
-      // If it's already in resolved state, skip it
-      if (isInResolvedState) {
-        // Pattern already resolved
-        return false;
-      }
-      
-      return true;
-    });
-    
-    // Update resolved patterns based on what's actually missing from the data
-    // This ensures that if corrections were applied previously, they stay resolved
-    const updatedResolvedPatterns = new Set(resolvedPatterns);
-    summary.patterns.forEach(pattern => {
-      const patternKey = `${pattern.field}:${pattern.invalidName}`;
-      // If the pattern was detected but the count is now 0 or very low, mark as resolved
-      if (pattern.count === 0) {
-        updatedResolvedPatterns.add(patternKey);
-        // Auto-marking as resolved (no occurrences)
-      }
-    });
-    
-    if (updatedResolvedPatterns.size !== resolvedPatterns.size) {
-      setResolvedPatterns(updatedResolvedPatterns);
-      onPatternsResolved?.(updatedResolvedPatterns);
+    // Store original summary if this is the first time
+    if (!originalCorrectionSummary) {
+      setOriginalCorrectionSummary(summary);
     }
     
-    // Processing unresolved patterns for correction
-    
-    setCorrectionSummary({
-      ...summary,
-      patterns: unresolvedPatterns
-    });
+    setCorrectionSummary(summary);
+  }, [employees, departments, employeeGroups, employeeTypes]); // Removed conflicting dependencies
 
-    // If no bulk corrections needed, we'll handle date checking when user clicks continue
-    if (unresolvedPatterns.length === 0) {
-      // No patterns to correct - user can proceed when ready
-      console.log('📋 No bulk corrections needed');
+  // Separate useEffect for state initialization - runs when initialResolvedPatterns changes
+  useEffect(() => {
+    console.log('🔄 State initialization useEffect - triggered by initialResolvedPatterns change');
+    console.log('🔍 initialResolvedPatterns:', initialResolvedPatterns ? Array.from(initialResolvedPatterns.entries()) : 'none');
+    
+    if (initialResolvedPatterns && initialResolvedPatterns.size > 0) {
+      console.log('🔄 Return visit: restoring previous corrections as editable pending corrections');
+      console.log('🔍 Restoring patterns:', Array.from(initialResolvedPatterns.keys()));
+      
+      // Convert resolved patterns back to pending corrections for editing
+      const newPendingCorrections = new Map<string, string>();
+      for (const [patternKey, correctionValue] of initialResolvedPatterns.entries()) {
+        newPendingCorrections.set(patternKey, correctionValue);
+        console.log(`🔄 Restored correction: ${patternKey} → ${correctionValue}`);
+      }
+      console.log('🔄 Setting pending corrections:', Array.from(newPendingCorrections.entries()));
+      setPendingCorrections(newPendingCorrections);
+      
+      // Clear resolved patterns so they show as editable pending corrections
+      setResolvedPatterns(new Map());
+    } else {
+      console.log('🆕 First visit: no previous corrections to restore');
+      // Clear both pending and resolved patterns for fresh start
+      setPendingCorrections(new Map());
+      setResolvedPatterns(new Map());
     }
-  }, [employees, resolvedPatterns, departments, employeeGroups, employeeTypes]);
+  }, [initialResolvedPatterns]); // Run whenever initialResolvedPatterns changes
 
   // Handle pending correction selection
   const handlePendingCorrection = (pattern: ErrorPattern, newValue: string) => {
     const patternKey = `${pattern.field}:${pattern.invalidName}`;
     
+    console.log('🎯 handlePendingCorrection called:', patternKey, '→', newValue);
+    
     if (newValue) {
       // Setting pending correction
+      console.log('✅ Setting pending correction:', patternKey, '→', newValue);
       setPendingCorrections(prev => new Map(prev.set(patternKey, newValue)));
     } else {
-      // Clearing pending correction
+      // Clearing pending correction OR unresolving a resolved pattern
+      console.log('❌ Clearing pending correction:', patternKey);
       setPendingCorrections(prev => {
         const newMap = new Map(prev);
         newMap.delete(patternKey);
         return newMap;
       });
+      
+      // If this pattern was resolved, unresolve it so user can modify the correction
+      if (resolvedPatterns.has(patternKey)) {
+        console.log(`🔄 Unresolving pattern for modification: ${patternKey}`);
+        const newResolvedPatterns = new Map(resolvedPatterns);
+        newResolvedPatterns.delete(patternKey);
+        setResolvedPatterns(newResolvedPatterns);
+        onPatternsResolved?.(newResolvedPatterns);
+      }
     }
   };
 
 
 
-  // Check if all bulk corrections are complete (either resolved or have pending corrections)
+  // Check if all bulk corrections are complete (all patterns have pending corrections)
   const allBulkCorrectionsComplete = useMemo(() => {
-    return correctionSummary?.patterns.every(pattern => {
+    const patternsToCheck = correctionSummary?.patterns || [];
+      
+    return patternsToCheck.every(pattern => {
       const patternKey = `${pattern.field}:${pattern.invalidName}`;
-      return resolvedPatterns.has(patternKey) || pendingCorrections.has(patternKey);
-    }) ?? true;
-  }, [correctionSummary, resolvedPatterns, pendingCorrections]);
+      return pendingCorrections.has(patternKey);
+    });
+  }, [correctionSummary, pendingCorrections]);
 
 
 
@@ -423,10 +457,14 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       const reConvertedEmployees = await reConvertDatesWithUserFormat(currentEmployees);
       setCurrentEmployees(reConvertedEmployees);
       
+      // Mark date format as completed
+      setHelperCompletionState(prev => ({ ...prev, dateFormatCompleted: true }));
+      
       setShowDateFormatModal(false);
       setAmbiguousDateSamples([]);
       
       // Continue to individual corrections after date format is resolved
+      setHasNavigatedToIndividualCorrection(true); // Mark that we've navigated to individual corrections
       setCurrentPhase('individual-correction');
     } else {
       // User cancelled - go back to bulk correction
@@ -438,60 +476,81 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
   // Handle proceeding to individual corrections
   const handleProceedToIndividualCorrections = async () => {
-    // If there are pending corrections, apply them first and wait for completion
+    console.log('🚀 handleProceedToIndividualCorrections called');
+    console.log('🔍 Current pendingCorrections:', Array.from(pendingCorrections.entries()));
+    console.log('🔍 Current resolvedPatterns:', Array.from(resolvedPatterns.entries()));
+    
+    // If there are pending corrections, apply them and immediately proceed (first-time completion)
+    let employeesToUse = currentEmployees;
+    let newResolvedPatterns = new Map(resolvedPatterns);
+    let hadPendingCorrections = pendingCorrections.size > 0;
+    
+    console.log('🔍 hadPendingCorrections:', hadPendingCorrections);
+    console.log('🔍 pendingCorrections.size:', pendingCorrections.size);
+    
     if (pendingCorrections.size > 0) {
-      await new Promise<void>((resolve) => {
-        setIsProcessing(true);
-        // Applying pending corrections
-        
-        try {
-          let updatedEmployees = currentEmployees;
-          const newResolvedPatterns = new Set(resolvedPatterns);
+      console.log('🔧 First-time completion: applying corrections and proceeding immediately');
+      
+      try {
+        // Apply each pending correction
+        for (const [patternKey, newValue] of pendingCorrections.entries()) {
+          console.log(`🔧 Processing correction: ${patternKey} → ${newValue}`);
+          const pattern = correctionSummary?.patterns.find(p => 
+            `${p.field}:${p.invalidName}` === patternKey
+          );
           
-          // Apply each pending correction
-          for (const [patternKey, newValue] of pendingCorrections.entries()) {
-            const pattern = correctionSummary?.patterns.find(p => 
-              `${p.field}:${p.invalidName}` === patternKey
-            );
-            
-            if (pattern) {
-              updatedEmployees = MappingUtils.applyBulkCorrection(updatedEmployees, pattern, newValue);
-              newResolvedPatterns.add(patternKey);
-              // Applied correction to rows
-            }
+          if (pattern) {
+            employeesToUse = MappingUtils.applyBulkCorrection(employeesToUse, pattern, newValue);
+            newResolvedPatterns.set(patternKey, newValue);
+            console.log(`✅ Applied correction: ${patternKey} → ${newValue}`);
+          } else {
+            console.warn(`⚠️ Pattern not found for correction: ${patternKey}`);
           }
-          
-          setCurrentEmployees(updatedEmployees);
-          setResolvedPatterns(newResolvedPatterns);
-          onPatternsResolved?.(newResolvedPatterns);
-          setPendingCorrections(new Map()); // Clear all pending corrections
-          
-          // Successfully applied all pending corrections
-          resolve();
-        } catch (error) {
-          console.error('❌ Error applying pending corrections:', error);
-          resolve();
-        } finally {
-          setIsProcessing(false);
         }
-      });
+        
+        console.log('✅ Successfully applied all pending corrections - proceeding immediately');
+        
+        // Clear pending corrections after applying them
+        setPendingCorrections(new Map());
+      } catch (error) {
+        console.error('❌ Error applying pending corrections:', error);
+      }
+    } else {
+      console.log('ℹ️ No pending corrections to apply');
     }
     
-    // Check for ambiguous dates in mapped date fields BEFORE proceeding to validation
-    setIsCheckingDates(true);
-    const ambiguousDates = checkForAmbiguousDatesInMappedFields(currentEmployees);
-    setIsCheckingDates(false);
+    console.log('🔍 newResolvedPatterns after processing:', Array.from(newResolvedPatterns.entries()));
+    console.log('🔍 newResolvedPatterns.size:', newResolvedPatterns.size);
     
-    if (ambiguousDates.length > 0) {
+    // Mark bulk corrections as completed
+    setHelperCompletionState(prev => ({ ...prev, bulkCorrectionsCompleted: true }));
+    
+    // CRITICAL: Save resolved patterns to parent state BEFORE checking dates
+    // This ensures bulk corrections are saved even if we have ambiguous dates
+    console.log('🔍 Checking save conditions - hadPendingCorrections:', hadPendingCorrections, 'newResolvedPatterns.size:', newResolvedPatterns.size);
+    if (hadPendingCorrections || newResolvedPatterns.size > 0) {
+      console.log('💾 Saving resolved patterns to parent state:', Array.from(newResolvedPatterns.entries()));
+      onPatternsResolved?.(newResolvedPatterns);
+    } else {
+      console.log('❌ Not saving patterns - no pending corrections and no existing resolved patterns');
+    }
+    
+    // ALWAYS check for ambiguous dates when proceeding forward
+    const ambiguousDates = checkForAmbiguousDatesInMappedFields(employeesToUse);
+    
+    if (ambiguousDates.length > 0 && !helperCompletionState.dateFormatCompleted) {
       // Found ambiguous dates - show modal for user to choose format
       console.log(`📅 Found ${ambiguousDates.length} ambiguous dates, showing format selection modal`);
       setAmbiguousDateSamples(ambiguousDates);
+      setCurrentEmployees(employeesToUse);
       setShowDateFormatModal(true);
-      return; // Don't proceed until user selects format
+      return; // Early return is OK now - patterns already saved above
     }
     
-    // No ambiguous dates or format already resolved - proceed to individual corrections
-    console.log('📅 No ambiguous dates found, proceeding to individual corrections');
+    // No ambiguous dates - proceed directly to individual corrections
+    console.log('📅 No ambiguous dates found, proceeding directly to individual corrections');
+    setCurrentEmployees(employeesToUse);
+    setHasNavigatedToIndividualCorrection(true);
     setCurrentPhase('individual-correction');
   };
 
@@ -540,11 +599,11 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
                 Bulk Corrections Required
               </h4>
               <div className="text-sm text-gray-600">
-                {resolvedPatterns.size} of {correctionSummary.patterns.length} fixed
+                {`${pendingCorrections.size} of ${correctionSummary.patterns.length} corrections set`}
               </div>
             </div>
 
-            {correctionSummary.patterns.length === 0 ? (
+            {correctionSummary.patterns.length === 0 && !hasNavigatedToIndividualCorrection ? (
               <div className="text-center py-8">
                 <div className="text-green-600 text-4xl mb-4">✅</div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -582,7 +641,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
                       key={patternKey}
                       pattern={pattern}
                       validOptions={validOptions}
-                      isResolved={resolvedPatterns.has(patternKey)}
+                      isResolved={false} // Never show as resolved - always show as editable pending corrections
                       pendingCorrection={pendingCorrection}
                       onPendingCorrection={handlePendingCorrection}
                     />
@@ -602,28 +661,26 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
                     
                     <div className="flex items-center gap-4">
                       <span className="text-sm text-gray-600">
-                        {allBulkCorrectionsComplete ? 
-                          (pendingCorrections.size > 0 ? 
-                            `${pendingCorrections.size} corrections ready to apply` :
-                            'All corrections complete!'
-                          ) :
-                          `${correctionSummary.patterns.length - resolvedPatterns.size - pendingCorrections.size} corrections remaining`
-                        }
+                        {(() => {
+                          const totalPatterns = correctionSummary.patterns.length;
+                          const remainingCorrections = totalPatterns - pendingCorrections.size;
+                          
+                          if (allBulkCorrectionsComplete) {
+                            return 'All corrections set!';
+                          } else {
+                            return `${remainingCorrections} corrections remaining`;
+                          }
+                        })()}
                       </span>
                       
                       <Button
                         onClick={handleProceedToIndividualCorrections}
-                        disabled={!allBulkCorrectionsComplete || isProcessing || isCheckingDates}
+                        disabled={!allBulkCorrectionsComplete}
                         className="bg-blue-600 hover:bg-blue-700 text-white"
                       >
-                        {isCheckingDates ? 
-                          'Checking date formats...' :
-                          allBulkCorrectionsComplete ? 
-                            (pendingCorrections.size > 0 ? 
-                              'Apply & Continue →' :
-                              'Continue to Data Validation →'
-                            ) : 
-                            'Select corrections to continue'
+                        {allBulkCorrectionsComplete ? 
+                          'Continue to Data Validation →' : 
+                          'Select corrections to continue'
                         }
                       </Button>
                     </div>
@@ -652,7 +709,11 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
           // ValidationAndCorrectionStep - calling onComplete with corrected employees
           onComplete(correctedEmployees); // Pass the corrected employees directly instead of relying on state
         }}
-        onBack={() => setCurrentPhase('bulk-correction')}
+        onBack={() => {
+          // Backward navigation: skip helpers and go directly to Column Mapping
+          console.log('🔄 Individual correction back navigation - going directly to Column Mapping (skipping helpers)');
+          onBack();
+        }}
         className={className}
       />
     );

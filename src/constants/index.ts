@@ -24,6 +24,10 @@ export const WorkflowStep = {
   Authentication: 'authentication',
   FileUpload: 'upload',
   ColumnMapping: 'mapping',
+  // Helper steps (conditional, between mapping and validation)
+  BulkCorrections: 'bulk-corrections',
+  DateFormat: 'date-format',
+  // Main validation step
   ValidationCorrection: 'validation-correction',
   FinalPreview: 'preview',
   BulkUpload: 'uploading',
@@ -87,10 +91,10 @@ export const TOKEN_CONFIG = {
 } as const;
 
 /**
- * Workflow Steps Configuration
- * Step-by-step progress indicator as per PRD requirements
+ * Main Workflow Steps Configuration (Blue Steps)
+ * These are the 7 core steps shown in progress indicator
  */
-export const WORKFLOW_STEPS = [
+export const MAIN_WORKFLOW_STEPS = [
   { key: 'authentication' as const, label: 'Authentication', description: 'Connect to Planday' },
   { key: 'upload' as const, label: 'Upload', description: 'Upload Excel file' },
   { key: 'mapping' as const, label: 'Mapping', description: 'Map columns' },
@@ -99,6 +103,18 @@ export const WORKFLOW_STEPS = [
   { key: 'uploading' as const, label: 'Upload', description: 'Bulk upload' },
   { key: 'results' as const, label: 'Results', description: 'View results' },
 ] as const;
+
+/**
+ * Helper Steps (Yellow/Green Steps)
+ * These are conditional steps between mapping and validation
+ */
+export const HELPER_STEPS = [
+  { key: 'bulk-corrections' as const, label: 'Fix Invalid Names', description: 'Map invalid department/group names' },
+  { key: 'date-format' as const, label: 'Date Format', description: 'Resolve ambiguous dates' },
+] as const;
+
+// Legacy export for backwards compatibility
+export const WORKFLOW_STEPS = MAIN_WORKFLOW_STEPS;
 
 /**
  * Auto-detection Rules for Column Mapping

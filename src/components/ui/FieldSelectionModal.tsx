@@ -11,6 +11,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Button } from './Button';
+import { ValidationService } from '../../services/mappingService';
 
 interface PlandayField {
   name: string;
@@ -232,13 +233,25 @@ interface FieldButtonProps {
 }
 
 const FieldButton: React.FC<FieldButtonProps> = ({ field, isSelected, onClick, isInCustomSection = false }) => {
+  // Get custom field type information if available
+  const customFieldInfo = field.isCustom 
+    ? ValidationService.getCustomFieldsWithTypes().find(cf => cf.fieldName === field.name)
+    : null;
+  
   // Calculate if we need badges (excluding Custom when in custom section, Required and Read-only which go inline)
   const badges = [];
   if (field.isCustom && !isInCustomSection) badges.push({ text: 'Custom', color: 'bg-purple-100 text-purple-700' });
   if (field.isUnique) badges.push({ text: 'Unique', color: 'bg-blue-100 text-blue-700' });
   
+  // Add custom field type badge if available
+  if (customFieldInfo && isInCustomSection) {
+    const typeName = ValidationService.getFieldTypeDisplayName(customFieldInfo.fieldType);
+    badges.push({ text: typeName, color: 'bg-yellow-100 text-yellow-700' });
+  }
+  
   const hasBadges = badges.length > 0;
   const hasDescription = field.description && !isInCustomSection;
+  const hasConversionHints = customFieldInfo && isInCustomSection;
 
   return (
     <button
@@ -286,9 +299,21 @@ const FieldButton: React.FC<FieldButtonProps> = ({ field, isSelected, onClick, i
         </div>
       )}
       
+      {/* Custom field conversion hints */}
+      {hasConversionHints && (
+        <div className={`text-xs mt-1 ${isSelected ? 'pr-5' : 'pr-2'} ${isSelected ? 'text-green-600' : 'text-gray-400'}`}>
+          {ValidationService.getConversionHints(customFieldInfo!.fieldType).map((hint, index) => (
+            <div key={index} className="flex items-start gap-1">
+              <span className="text-xs">•</span>
+              <span>{hint}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      
       {/* Field badges - excluding required and read-only which are now inline */}
       {hasBadges && (
-        <div className={`flex flex-wrap gap-1 ${hasDescription ? 'mt-1' : 'mt-1'}`}>
+        <div className={`flex flex-wrap gap-1 ${hasDescription || hasConversionHints ? 'mt-1' : 'mt-1'}`}>
           {badges.map((badge, index) => (
             <span
               key={index}

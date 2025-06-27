@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Card } from '../ui';
 import type { Employee } from '../../types/planday';
-import { mappingService, ValidationService } from '../../services/mappingService';
+import { mappingService, ValidationService, MappingUtils } from '../../services/mappingService';
 
 interface FinalPreviewStepProps {
   employees: Employee[];
@@ -64,31 +64,8 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
       const result = await mappingService.validateAndConvert(employees[0]);
       const converted = result.converted;
     
-      // Create a clean payload by including all non-internal fields from the converted employee
-      const cleanPayload: any = {};
-      
-      // Define internal fields that should be excluded from the API payload
-      const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
-      
-      // Include all fields from the converted employee, excluding internal ones
-      Object.entries(converted).forEach(([key, value]) => {
-        // Skip internal fields and undefined/empty values
-        if (!internalFields.has(key) && value != null && value !== '') {
-          // For array fields, only include if they have elements
-          if (Array.isArray(value)) {
-            if (value.length > 0) {
-              cleanPayload[key] = value;
-            }
-          } else {
-            cleanPayload[key] = value;
-          }
-        }
-      });
-      
-      // Ensure required fields have defaults if needed
-      if (!cleanPayload.email && cleanPayload.userName) {
-        cleanPayload.email = cleanPayload.userName;
-      }
+      // Use the centralized payload creation function to ensure consistency with upload
+      const cleanPayload = MappingUtils.createApiPayload(converted);
 
       setConvertedEmployee(cleanPayload);
     };

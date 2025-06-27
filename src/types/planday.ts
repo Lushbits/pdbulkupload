@@ -350,11 +350,15 @@ export const WorkflowStep = {
   Results: 'results',
 } as const;
 
-// Workflow step type - matches constants/index.ts WorkflowStep
+// Workflow step type - matches constants/index.ts WorkflowStep  
 export type WorkflowStep = 
   | 'authentication'
   | 'upload'
   | 'mapping'
+  // Helper steps (conditional, between mapping and validation)
+  | 'bulk-corrections'
+  | 'date-format'
+  // Main validation step
   | 'validation-correction'
   | 'preview'
   | 'uploading'

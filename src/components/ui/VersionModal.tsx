@@ -13,8 +13,17 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.2',
+    date: '2025-06-27',
+    features: [
+      'Custom fields improvements',
+      'Improved navigation and state management when going back to mapping step',
+      'Testing focus: custom fields'
+    ]
+  },
+  {
     version: '0.2.1',
-    date: '2025-01-26',
+    date: '2025-06-26',
     title: 'Status Page Integration',
     features: [
       'Added /status page with Notion API integration',
@@ -28,8 +37,7 @@ const versionHistory = [
   },
   {
     version: '0.2.0',
-    date: '2025-01-26',
-    title: 'Smart Date Validation Overhaul',
+    date: '2025-06-26',
     features: [
       'Preserve raw Excel values like "20230405" during parsing, only convert when mapped to date fields',
       'Detect ambiguous dates: distinguish between unambiguous (2023-15-04) and ambiguous (20230405) formats',
@@ -45,7 +53,7 @@ const versionHistory = [
   },
   {
     version: '0.1.9',
-    date: '2025-01-25',
+    date: '2025-06-25',
     features: [
       'Simplified phone number logic: removed landline phone field support, now only supports cellPhone',
       'Made cellPhoneCountryCode mandatory when cellPhone is mapped - no more auto-detection guesswork',
@@ -57,7 +65,7 @@ const versionHistory = [
   },
   {
     version: '0.1.8',
-    date: '2025-01-25',
+    date: '2025-06-25',
     features: [
       'Enhanced 8-digit date format support: now handles YYYYMMDD, DDMMYYYY, MMDDYYYY, and YYYYDDMM formats with intelligent detection',
       'Context-aware date conversion: preserves ambiguous values during Excel parsing, then converts based on user field mapping intent'
@@ -65,7 +73,7 @@ const versionHistory = [
   },
   {
     version: '0.1.7',
-    date: '2025-01-25',
+    date: '2025-06-25',
     features: [
       'Fixed Excel date parsing "off by one day" issue by reading formatted display text instead of converting Excel serial numbers',
       'Fixed Results Verification step showing incorrect employee data and improved table transparency'
@@ -73,7 +81,7 @@ const versionHistory = [
   },
   {
     version: '0.1.6',
-    date: '2025-01-24',
+    date: '2025-06-24',
     features: [
       'Enhanced field display consistency: raw API field names for standard fields, human-readable descriptions for custom fields',
       'Added monospace font styling to all field displays for improved "data-like" appearance throughout the application',
@@ -89,7 +97,7 @@ const versionHistory = [
   },
   {
     version: '0.1.5',
-    date: '2025-01-23',
+    date: '2025-06-23',
     features: [
       'Fixed critical bug: duplicate detection now works for portals with more than 50 employees',
       'Enhanced phone number validation with automatic country code detection for 27+ countries',
