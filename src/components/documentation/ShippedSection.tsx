@@ -148,24 +148,19 @@ export const ShippedSection: React.FC<ShippedSectionProps> = ({ roadmapItems }) 
   // Filter shipped items: status "In production" (status ID 'h]z\\')
   const shippedItems = roadmapItems.filter(item => item.statusId === 'h]z\\');
 
-  // Helper function to sort items by priority
-  const sortByPriority = (items: RoadmapItem[]) => {
-    const priorityOrder = ['>Cxn', 'priority_high', 'priority_medium', 'priority_low'];
+  // Helper function to sort items by date (latest first)
+  const sortByDate = (items: RoadmapItem[]) => {
     return items.sort((a, b) => {
-      const aPriorityIndex = priorityOrder.indexOf(a.priorityId || '');
-      const bPriorityIndex = priorityOrder.indexOf(b.priorityId || '');
-      
-      // If priority not found, put at end
-      const aIndex = aPriorityIndex === -1 ? priorityOrder.length : aPriorityIndex;
-      const bIndex = bPriorityIndex === -1 ? priorityOrder.length : bPriorityIndex;
-      
-      return aIndex - bIndex;
+      const aDate = new Date(a.updated).getTime();
+      const bDate = new Date(b.updated).getTime();
+      // Sort in descending order (newest first)
+      return bDate - aDate;
     });
   };
 
   // Separate features and bugfixes
-  const shippedFeatures = sortByPriority(shippedItems.filter(item => item.categoryId === 'f<[|'));
-  const shippedBugfixes = sortByPriority(shippedItems.filter(item => item.categoryId === 'jhtk'));
+  const shippedFeatures = sortByDate(shippedItems.filter(item => item.categoryId === 'f<[|'));
+  const shippedBugfixes = sortByDate(shippedItems.filter(item => item.categoryId === 'jhtk'));
 
   // Don't render if no shipped items
   if (shippedItems.length === 0) {
