@@ -139,6 +139,19 @@ export class DateParser {
           ambiguous.add(trimmed);
         }
       }
+      
+      // Check YYYY-first dates for MM/DD vs DD/MM ambiguity
+      const yyyyFirstMatch = trimmed.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+      if (yyyyFirstMatch) {
+        const [, , first, second] = yyyyFirstMatch;
+        const firstNum = parseInt(first, 10);
+        const secondNum = parseInt(second, 10);
+        
+        // Only ambiguous if both are <= 12 and different
+        if (firstNum <= 12 && secondNum <= 12 && firstNum !== secondNum) {
+          ambiguous.add(trimmed);
+        }
+      }
     }
     
     return Array.from(ambiguous).slice(0, 5); // Max 5 samples
