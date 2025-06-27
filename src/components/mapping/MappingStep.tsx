@@ -12,7 +12,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { FieldSelectionModal } from '../ui/FieldSelectionModal';
-import { AUTO_MAPPING_RULES } from '../../constants';
+import { AUTO_MAPPING_RULES } from '../../constants/autoMappingRules';
 import { ValidationService, FieldDefinitionValidator } from '../../services/mappingService';
 import type { Employee, ColumnMapping, ExcelColumnMapping, ParsedExcelData } from '../../types/planday';
 

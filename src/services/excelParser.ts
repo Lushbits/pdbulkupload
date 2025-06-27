@@ -24,7 +24,8 @@ import type {
   ExcelColumnMapping,
   ValidationError,
 } from '../types/planday';
-import { VALIDATION_CONFIG, AUTO_MAPPING_RULES } from '../constants';
+import { VALIDATION_CONFIG } from '../constants';
+import { AUTO_MAPPING_RULES } from '../constants/autoMappingRules';
 
 export interface ExcelParseOptions {
   maxRows?: number;

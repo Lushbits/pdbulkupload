@@ -1077,6 +1077,7 @@ export class MappingService {
    * Create a clean payload for Planday API from converted employee data
    * This ensures consistency between preview and actual upload
    * Handles conversion of flattened complex object sub-fields back to nested objects
+   * Includes comprehensive validation to catch type mismatches before API submission
    */
   static createApiPayload(converted: any): PlandayEmployeeCreateRequest {
     const cleanPayload: any = {};
@@ -1132,9 +1133,63 @@ export class MappingService {
       cleanPayload.gender = 'Male';
     }
     
-    // API Payload created with complex object reconstruction
+    // ✅ CRITICAL PAYLOAD VALIDATION - Catch type mismatches before API submission
+    this.validatePayloadTypes(cleanPayload);
     
     return cleanPayload as PlandayEmployeeCreateRequest;
+  }
+
+  /**
+   * Validate API payload types against field definitions
+   * Throws error if critical type mismatches are found (like string employeeTypeId)
+   */
+  private static validatePayloadTypes(payload: any): void {
+    const validationErrors: string[] = [];
+    
+    // Critical validation: employeeTypeId must be numeric if present
+    if (payload.employeeTypeId !== undefined) {
+      if (typeof payload.employeeTypeId === 'string') {
+        // This should NEVER happen after proper conversion
+        validationErrors.push(`❌ CRITICAL: employeeTypeId is string "${payload.employeeTypeId}" but API expects numeric ID. This indicates a conversion failure.`);
+      } else if (!Number.isInteger(payload.employeeTypeId)) {
+        validationErrors.push(`❌ CRITICAL: employeeTypeId "${payload.employeeTypeId}" is not a valid integer.`);
+      }
+    }
+    
+    // Validate array fields contain only numbers (departments, employeeGroups)
+    ['departments', 'employeeGroups'].forEach(field => {
+      if (payload[field] && Array.isArray(payload[field])) {
+        const invalidIds = payload[field].filter((id: any) => !Number.isInteger(id));
+        if (invalidIds.length > 0) {
+          validationErrors.push(`❌ CRITICAL: ${field} contains non-numeric IDs: ${invalidIds.join(', ')}. API expects numeric IDs only.`);
+        }
+      }
+    });
+    
+    // Validate field definitions constraints if available
+    if (FieldDefinitionValidator.isEnumField('employeeTypeId') && payload.employeeTypeId !== undefined) {
+      const validation = FieldDefinitionValidator.validateFieldValue('employeeTypeId', payload.employeeTypeId);
+      if (!validation.isValid) {
+        validationErrors.push(`❌ CRITICAL: employeeTypeId "${payload.employeeTypeId}" failed field definition validation: ${validation.error}`);
+      }
+    }
+    
+    // Throw error if any critical validation failures found
+    if (validationErrors.length > 0) {
+      const errorMessage = [
+        '🛑 PAYLOAD VALIDATION FAILED - Upload aborted to prevent API errors:',
+        ...validationErrors,
+        '',
+        '💡 This indicates a bug in the conversion logic that should be reported.',
+        '📋 Payload that failed validation:',
+        JSON.stringify(payload, null, 2)
+      ].join('\n');
+      
+      console.error(errorMessage);
+      throw new Error(`Payload validation failed: ${validationErrors.join('; ')}`);
+    }
+    
+    console.log('✅ Payload validation passed - all field types are correct');
   }
 
 
@@ -1375,13 +1430,14 @@ export class ValidationService {
     // Fields to exclude from mapping UI because they are auto-populated, read-only, or deprecated
     const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
 
-    // Add standard fields (excluding complex object parents, read-only fields, and excluded fields)
+    // Add standard fields (excluding complex object parents and hardcoded excluded fields)
+    // Note: We allow read-only fields during bulk import since users should be able to set initial values
     Object.keys(this.fieldDefinitions.properties)
       .filter(field => 
         !field.startsWith('custom_') && 
         !complexParentFields.has(field) &&
-        !this.isReadOnly(field) &&
         !excludedFields.includes(field)
+        // Removed !this.isReadOnly(field) - allow read-only fields during bulk import
       )
       .forEach(field => {
         fields.push({
@@ -1393,9 +1449,9 @@ export class ValidationService {
         });
       });
 
-    // Add complex object sub-fields instead of parent objects (excluding read-only ones)
+    // Add complex object sub-fields instead of parent objects (allow read-only during bulk import)
     complexSubFields.forEach(subField => {
-      if (!this.isReadOnly(subField.fullFieldPath) && !excludedFields.includes(subField.fullFieldPath)) {
+      if (!excludedFields.includes(subField.fullFieldPath)) {
         fields.push({
           field: subField.fullFieldPath,
           displayName: subField.displayName,
@@ -2567,22 +2623,38 @@ export class FieldDefinitionValidator {
       return { isValid: true, convertedValue: value };
     }
 
-    // Check for exact value match (for string enums like country codes)
-    if (enumData.values.includes(strValue)) {
+    // Check for exact value match and return corresponding ID if available
+    const valueIndex = enumData.values.indexOf(strValue);
+    if (valueIndex !== -1) {
+      // For ID/value pairs (like employee types), return the corresponding ID
+      if (enumData.ids.length === enumData.values.length) {
+        return { isValid: true, convertedValue: enumData.ids[valueIndex] };
+      }
+      // For value-only enums (like country codes), return the value
       return { isValid: true, convertedValue: strValue };
     }
 
     // Check for case-insensitive value match
     const lowerValue = strValue.toLowerCase();
-    const caseInsensitiveMatch = enumData.values.find(enumValue => 
+    const caseInsensitiveIndex = enumData.values.findIndex(enumValue => 
       String(enumValue).toLowerCase() === lowerValue
     );
     
-    if (caseInsensitiveMatch) {
+    if (caseInsensitiveIndex !== -1) {
+      const matchedValue = enumData.values[caseInsensitiveIndex];
+      // For ID/value pairs, return the corresponding ID
+      if (enumData.ids.length === enumData.values.length) {
+        return { 
+          isValid: true, 
+          convertedValue: enumData.ids[caseInsensitiveIndex],
+          suggestion: `Case-insensitive match: "${strValue}" → "${matchedValue}" (ID: ${enumData.ids[caseInsensitiveIndex]})`
+        };
+      }
+      // For value-only enums, return the corrected value
       return { 
         isValid: true, 
-        convertedValue: caseInsensitiveMatch,
-        suggestion: `Case-insensitive match: "${strValue}" → "${caseInsensitiveMatch}"`
+        convertedValue: matchedValue,
+        suggestion: `Case-insensitive match: "${strValue}" → "${matchedValue}"`
       };
     }
 

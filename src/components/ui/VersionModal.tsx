@@ -13,6 +13,14 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.4',
+    date: '2025-06-27',
+    features: [
+      'Fixed auto-mapping rules for cellPhoneCountryCode: added more specific patterns to detect country codes in phone fields',
+      'Read-only fields are now included back in to the mapping interface as they are most likely not read-only on POST Employee Create',
+    ]
+  },
+  {
     version: '0.2.3',
     date: '2025-06-27',
     features: [
