@@ -13,7 +13,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { FieldSelectionModal } from '../ui/FieldSelectionModal';
 import { AUTO_MAPPING_RULES } from '../../constants';
-import { ValidationService } from '../../services/mappingService';
+import { ValidationService, FieldDefinitionValidator } from '../../services/mappingService';
 import type { Employee, ColumnMapping, ExcelColumnMapping, ParsedExcelData } from '../../types/planday';
 
 interface MappingStepProps {
@@ -88,8 +88,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
     const fields: PlandayField[] = [];
     const processedFields = new Set<string>();
 
-    // Fields to exclude from mapping UI because they are auto-populated
-    const excludedFields = ['email', 'phone']; // email is auto-populated from userName, phone field is removed (only cellPhone supported)
+    // Fields to exclude from mapping UI because they are auto-populated or deprecated
+    const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
 
     // Add required fields (excluding auto-populated ones)
     requiredFields.forEach(fieldName => {
@@ -202,6 +202,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   }, [savedCustomValues]);
 
   // Get available fields for dropdown (excluding already mapped fields)
+  // Now includes flattened complex object sub-fields
   const getAvailableFields = (currentColumnName: string): PlandayField[] => {
     // Get all fields that are mapped to other columns (exclude current column and __IGNORE__)
     const mappedFields = new Set();
@@ -217,25 +218,37 @@ const MappingStep: React.FC<MappingStepProps> = ({
     // Check if cellPhone is mapped (for conditional requirements)
     const isCellPhoneMapped = mappedFields.has('cellPhone') || customMappedFields.has('cellPhone');
     
-    return plandayFields.filter(field => {
+    // Get all available fields including flattened complex object sub-fields
+    const allAvailableFields = ValidationService.getAllAvailableFields();
+    
+    return allAvailableFields.filter(field => {
       // Include field if:
       // 1. It's not mapped by another column AND
       // 2. It doesn't have a custom value set
-      return !mappedFields.has(field.name) && !customMappedFields.has(field.name);
+      return !mappedFields.has(field.field) && !customMappedFields.has(field.field);
     }).map(field => {
-      // Apply conditional requirements
+      // Convert to PlandayField format and apply conditional requirements
+      const plandayField: PlandayField = {
+        name: field.field,
+        displayName: field.displayName,
+        description: field.description,
+        isRequired: field.isRequired,
+        isReadOnly: ValidationService.isReadOnly(field.field),
+        isUnique: ValidationService.isUnique(field.field),
+        isCustom: field.isCustom
+      };
+      
       // cellPhoneCountryCode becomes required when cellPhone is mapped
-      if (field.name === 'cellPhoneCountryCode' && isCellPhoneMapped) {
-        return {
-          ...field,
-          isRequired: true
-        };
+      if (field.field === 'cellPhoneCountryCode' && isCellPhoneMapped) {
+        plandayField.isRequired = true;
       }
-      return field;
+      
+      return plandayField;
     });
   };
 
   // Get available fields for custom values (excluding already mapped fields)
+  // Now includes flattened complex object sub-fields
   const getAvailableFieldsForCustom = (currentFieldName?: string): PlandayField[] => {
     const mappedFields = new Set(Object.values(columnMappings).filter(Boolean));
     const customMappedFields = new Set(Object.keys(customValues));
@@ -243,19 +256,30 @@ const MappingStep: React.FC<MappingStepProps> = ({
     // Check if cellPhone is mapped (for conditional requirements)
     const isCellPhoneMapped = mappedFields.has('cellPhone') || customMappedFields.has('cellPhone');
     
-    return plandayFields.filter(field => {
+    // Get all available fields including flattened complex object sub-fields
+    const allAvailableFields = ValidationService.getAllAvailableFields();
+    
+    return allAvailableFields.filter(field => {
       // Include if not mapped in either regular or custom mappings, or if it's the current custom mapping
-      return (!mappedFields.has(field.name) && !customMappedFields.has(field.name)) || field.name === currentFieldName;
+      return (!mappedFields.has(field.field) && !customMappedFields.has(field.field)) || field.field === currentFieldName;
     }).map(field => {
-      // Apply conditional requirements
+      // Convert to PlandayField format and apply conditional requirements
+      const plandayField: PlandayField = {
+        name: field.field,
+        displayName: field.displayName,
+        description: field.description,
+        isRequired: field.isRequired,
+        isReadOnly: ValidationService.isReadOnly(field.field),
+        isUnique: ValidationService.isUnique(field.field),
+        isCustom: field.isCustom
+      };
+      
       // cellPhoneCountryCode becomes required when cellPhone is mapped
-      if (field.name === 'cellPhoneCountryCode' && isCellPhoneMapped) {
-        return {
-          ...field,
-          isRequired: true
-        };
+      if (field.field === 'cellPhoneCountryCode' && isCellPhoneMapped) {
+        plandayField.isRequired = true;
       }
-      return field;
+      
+      return plandayField;
     });
   };
 
@@ -290,7 +314,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
           continue;
         }
         
-        const bestMatch = findBestColumnMatch(headers, patterns);
+        const bestMatch = findBestColumnMatch(headers, patterns, fieldName);
         if (bestMatch && !usedColumns.has(bestMatch)) {
           autoDetectedMappings[bestMatch] = fieldName;
           usedFields.add(fieldName);
@@ -308,9 +332,23 @@ const MappingStep: React.FC<MappingStepProps> = ({
   }, [columnMappings, customValues]);
 
   /**
-   * Find best matching column for a field using fuzzy matching
+   * Find best matching column for a field using priority system:
+   * 1. First check for exact field name matches (field-agnostic)
+   * 2. Then fall back to pattern-based fuzzy matching
    */
-  const findBestColumnMatch = (headers: string[], patterns: readonly string[]): string | null => {
+  const findBestColumnMatch = (headers: string[], patterns: readonly string[], fieldName: string): string | null => {
+    // PRIORITY 1: Check for exact field name matches (case-insensitive)
+    for (const header of headers) {
+      const normalizedHeader = header.toLowerCase().trim();
+      const normalizedFieldName = fieldName.toLowerCase();
+      
+      // Exact match with field name gets highest priority
+      if (normalizedHeader === normalizedFieldName) {
+        return header;
+      }
+    }
+
+    // PRIORITY 2: Use pattern-based fuzzy matching as fallback
     let bestMatch: string | null = null;
     let bestScore = 0;
 
@@ -320,7 +358,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
       for (const pattern of patterns) {
         const normalizedPattern = pattern.toLowerCase();
         
-        // Exact match gets highest score
+        // Exact pattern match gets highest score
         if (normalizedHeader === normalizedPattern) {
           return header;
         }
@@ -814,7 +852,8 @@ const MappingStep: React.FC<MappingStepProps> = ({
                     
                     {/* Field description */}
                     {mappedField && mappedField !== '__IGNORE__' && (
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-gray-500 mt-1 space-y-1">
+                        {/* Field badges */}
                         {(() => {
                           const field = plandayFields.find(f => f.name === mappedField);
                           const badges = [];
@@ -822,7 +861,32 @@ const MappingStep: React.FC<MappingStepProps> = ({
                           if (field?.isUnique) badges.push('Must be unique');
                           if (field?.isReadOnly) badges.push('Read-only');
                           if (field?.isCustom) badges.push('Custom field');
-                          return badges.length > 0 ? badges.join(' • ') : '';
+                          return badges.length > 0 ? (
+                            <div>{badges.join(' • ')}</div>
+                          ) : null;
+                        })()}
+                        
+                        {/* Enum options hint */}
+                        {(() => {
+                          try {
+                            const enumOptions = FieldDefinitionValidator.getFieldOptions(mappedField);
+                            if (enumOptions.length > 0) {
+                              const optionsText = enumOptions.slice(0, 4).map(opt => opt.name).join(', ');
+                              return (
+                                <div className="flex items-start gap-1">
+                                  <span className="text-blue-500">📋</span>
+                                  <span>
+                                    <span className="font-medium">Options: </span>
+                                    {optionsText}
+                                    {enumOptions.length > 4 && ` (+${enumOptions.length - 4} more)`}
+                                  </span>
+                                </div>
+                              );
+                            }
+                          } catch (error) {
+                            // No enum options available
+                          }
+                          return null;
                         })()}
                       </div>
                     )}
@@ -938,14 +1002,40 @@ const MappingStep: React.FC<MappingStepProps> = ({
                       
                       {/* Field description */}
                       {isFieldSelected && (
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-gray-500 mt-1 space-y-1">
+                          {/* Field badges */}
                           {(() => {
                             const badges = [];
                             if (selectedField.isRequired) badges.push('Required');
                             if (selectedField.isUnique) badges.push('Must be unique');
                             if (selectedField.isReadOnly) badges.push('Read-only');
                             if (selectedField.isCustom) badges.push('Custom field');
-                            return badges.length > 0 ? badges.join(' • ') : '';
+                            return badges.length > 0 ? (
+                              <div>{badges.join(' • ')}</div>
+                            ) : null;
+                          })()}
+                          
+                          {/* Enum options hint */}
+                          {(() => {
+                            try {
+                              const enumOptions = FieldDefinitionValidator.getFieldOptions(selectedField.name);
+                              if (enumOptions.length > 0) {
+                                const optionsText = enumOptions.slice(0, 4).map(opt => opt.name).join(', ');
+                                return (
+                                  <div className="flex items-start gap-1">
+                                    <span className="text-blue-500">📋</span>
+                                    <span>
+                                      <span className="font-medium">Options: </span>
+                                      {optionsText}
+                                      {enumOptions.length > 4 && ` (+${enumOptions.length - 4} more)`}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                            } catch (error) {
+                              // No enum options available
+                            }
+                            return null;
                           })()}
                         </div>
                       )}

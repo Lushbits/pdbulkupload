@@ -29,13 +29,7 @@ function App() {
       getCustomFields: () => ValidationService.getCustomFields(),
     };
     
-    console.log('🔍 Debugging functions exposed to window.debugPlanday:', {
-      diagnoseFieldInconsistencies: 'Check for field inconsistencies',
-      getPlandayApi: 'Get the full Planday API hook instance',
-      getFieldDefinitions: 'Get raw field definitions from API',
-      getRequiredFields: 'Get processed required fields list',
-      getCustomFields: 'Get detected custom fields'
-    });
+    // Debug functions are available at window.debugPlanday for development
     
     return () => {
       // @ts-ignore

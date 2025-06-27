@@ -137,6 +137,12 @@ export const AUTO_MAPPING_RULES = {
     'mobile', 'cell phone', 'cell', 'mobile phone', 'cellular',
     'mobile number', 'cell number', 'gsm'
   ],
+  cellPhoneCountryCode: [
+    'country code', 'country', 'phone country', 'mobile country',
+    'cell country code', 'mobile country code', 'phone country code',
+    'country code mobile', 'country code cell', 'iso country', 'iso code',
+    'land', 'pais', 'pays', 'country iso'
+  ],
   hiredFrom: [
     'hire date', 'start date', 'employment date', 'date hired',
     'start of employment', 'employment start', 'join date',

@@ -147,6 +147,7 @@ export class MappingService {
 
   /**
    * Resolve single employee type name to ID (no comma separation)
+   * Now uses field definitions as primary source with API fallback
    */
   resolveEmployeeType(input: string): MappingResult {
     const result: MappingResult = {
@@ -160,35 +161,75 @@ export class MappingService {
       return result;
     }
 
-    // Employee types are single values only - no comma splitting
     const name = input.trim();
+
+    // 1. Try field definitions validation first (PRIMARY SOURCE)
+    if (FieldDefinitionValidator.isEnumField('employeeTypeId')) {
+      const validationResult = FieldDefinitionValidator.validateFieldValue('employeeTypeId', name);
+      
+      if (validationResult.isValid) {
+        result.ids.push(validationResult.convertedValue);
+        if (validationResult.suggestion) {
+          result.warnings.push(validationResult.suggestion);
+        }
+        return result;
+      } else {
+        // Get available options from field definitions for better error messages
+        const options = FieldDefinitionValidator.getFieldOptions('employeeTypeId');
+        const availableNames = options.map(opt => opt.name);
+        
+        // Try fuzzy matching against field definition values
+        const normalizedName = this.normalizeName(name);
+        const normalizedOptions = availableNames.map(name => this.normalizeName(name));
+        const suggestion = this.findBestMatch(normalizedName, normalizedOptions);
+        
+        if (suggestion.match && suggestion.confidence > 0.7) {
+          const originalName = availableNames[normalizedOptions.indexOf(suggestion.match)];
+          result.errors.push(`"${name}" not found. Did you mean "${originalName}"?`);
+          result.suggestions.push(suggestion.match);
+        } else if (suggestion.match && suggestion.confidence > 0.4) {
+          const topMatches = this.getTopMatches(normalizedName, normalizedOptions, 3);
+          const originalMatches = topMatches.map(match => availableNames[normalizedOptions.indexOf(match)]);
+          result.errors.push(`"${name}" not found. Possible matches: ${originalMatches.join(', ')}`);
+        } else {
+          result.errors.push(`"${name}" not found in available employee types`);
+        }
+        
+        return result;
+      }
+    }
+
+    // 2. FALLBACK: Use API data if field definitions not available (LEGACY SUPPORT)
+    console.warn('⚠️ Field definitions not available for employeeTypeId, using API fallback');
+    
     const normalizedName = this.normalizeName(name);
     const availableNames = Array.from(this.employeeTypesByName.keys());
 
-    // 1. Try exact match (case-insensitive)
+    // Try exact match (case-insensitive)
     const id = this.employeeTypesByName.get(normalizedName);
     if (id) {
       result.ids.push(id);
+      result.warnings.push('Using API fallback for employee type validation');
       return result;
     }
 
-    // 2. Try numeric ID as fallback
+    // Try numeric ID as fallback
     const numericId = parseInt(name);
     if (!isNaN(numericId) && this.employeeTypesById.has(numericId)) {
       result.ids.push(numericId);
-      result.warnings.push(`Using numeric ID ${numericId} for "${name}"`);
+      result.warnings.push(`Using numeric ID ${numericId} for "${name}" (API fallback)`);
       return result;
     }
 
-    // 3. Try fuzzy matching for typos
+    // Try fuzzy matching for typos
     const suggestion = this.findBestMatch(normalizedName, availableNames);
     if (suggestion.match && suggestion.confidence > 0.7) {
-      result.errors.push(`"${name}" not found. Did you mean "${this.getOriginalEmployeeTypeName(suggestion.match)}"?`);
+      result.errors.push(`"${name}" not found. Did you mean "${this.getOriginalEmployeeTypeName(suggestion.match)}"? (API fallback)`);
       result.suggestions.push(suggestion.match);
     } else if (suggestion.match && suggestion.confidence > 0.4) {
-      result.errors.push(`"${name}" not found. Possible matches: ${this.getTopMatches(normalizedName, availableNames, 3).map(m => this.getOriginalEmployeeTypeName(m)).join(', ')}`);
+      result.errors.push(`"${name}" not found. Possible matches: ${this.getTopMatches(normalizedName, availableNames, 3).map(m => this.getOriginalEmployeeTypeName(m)).join(', ')} (API fallback)`);
     } else {
-      result.errors.push(`"${name}" not found in available employee types`);
+      result.errors.push(`"${name}" not found in available employee types (API fallback)`);
     }
 
     return result;
@@ -530,6 +571,7 @@ export class MappingService {
 
   /**
    * Get available options with IDs for reference
+   * Uses field definitions for employee types when available
    */
   getAvailableOptions(type: 'departments' | 'employeeGroups' | 'employeeTypes'): Array<{id: number, name: string}> {
     let result: Array<{id: number, name: string}>;
@@ -538,8 +580,18 @@ export class MappingService {
       result = this.departments.map(d => ({id: d.id, name: d.name}));
     } else if (type === 'employeeGroups') {
       result = this.employeeGroups.map(g => ({id: g.id, name: g.name}));
+    } else if (type === 'employeeTypes') {
+      // Try field definitions first (PRIMARY SOURCE)
+      if (FieldDefinitionValidator.isEnumField('employeeTypeId')) {
+        result = FieldDefinitionValidator.getFieldOptions('employeeTypeId');
+        // Using field definitions for employee type options
+      } else {
+        // Fallback to API data
+        result = this.employeeTypes.map(t => ({id: t.id, name: t.name}));
+        console.warn('⚠️ Field definitions not available for employeeTypeId, using API fallback for options');
+      }
     } else {
-      result = this.employeeTypes.map(t => ({id: t.id, name: t.name}));
+      result = [];
     }
 
     return result;
@@ -733,7 +785,7 @@ export class MappingService {
       headers: [
         'firstName',
         'lastName', 
-        'userName',
+        'email', // More user-friendly than "userName"
         'departments',
         'employeeGroups',
         'hiredFrom'
@@ -755,71 +807,100 @@ export class MappingService {
     headers: string[];
     examples: string[][];
     instructions: Record<string, string>;
-    fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
+    fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string; isComplexSubField?: boolean }>;
   } {
-    // Get field information from validation service
-    const requiredFields = ValidationService.getRequiredFields();
-    const customFields = ValidationService.getCustomFields();
-    const allApiFields = ValidationService.getAllFieldNames();
-    const fieldDefinitionsStatus = ValidationService.getStatus();
+    // Get flattened field information including complex object sub-fields
+    const allAvailableFields = ValidationService.getAllAvailableFields();
     
-    console.log('🔍 Template Generation Debug:', {
-      requiredFields,
-      customFieldsCount: customFields.length,
-      customFields: customFields.map(cf => ({ name: cf.name, description: cf.description })),
-      allApiFieldsCount: allApiFields.length,
-      fieldDefinitionsStatus
-    });
+    // Template generation using complex object flattening
     
-    // Build ordered field list dynamically based on actual API fields
-    const fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }> = [];
+    // Build ordered field list using flattened fields with logical ordering
+    const fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string; isComplexSubField?: boolean }> = [];
     const processedFields = new Set<string>();
     
-    // Fields to exclude from templates because they are auto-populated
-    const excludedFields = ['email', 'phone']; // email is auto-populated from userName, phone field removed (only cellPhone supported)
+    // Fields to exclude from templates because they are auto-populated or deprecated
+    const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
     
-    // Add required fields first (excluding auto-populated ones)
-    requiredFields.forEach(field => {
-      if (allApiFields.includes(field) && !processedFields.has(field) && !excludedFields.includes(field)) {
+    // Create field map for easy lookup
+    const fieldMap = new Map<string, any>();
+    allAvailableFields.forEach(field => {
+      fieldMap.set(field.field, field);
+    });
+    
+    // Define logical order for common fields (most important first)
+    const logicalFieldOrder = [
+      'firstName',
+      'lastName', 
+      'userName', // Will be displayed as "email"
+      'cellPhone',
+      'cellPhoneCountryCode',
+      'departments',
+      'employeeGroups',
+      'employeeTypeId',
+      'hiredFrom',
+      'gender',
+      'birthDate',
+      'street1',
+      'city',
+      'zip',
+      'jobTitle',
+      'ssn',
+      'payrollId'
+    ];
+    
+    // Helper function to get user-friendly display name
+    const getDisplayName = (fieldName: string, originalDisplayName: string): string => {
+      if (fieldName === 'userName') {
+        return 'email'; // More user-friendly than "userName"
+      }
+      return originalDisplayName;
+    };
+    
+    // Add fields in logical order first
+    logicalFieldOrder.forEach(fieldName => {
+      const field = fieldMap.get(fieldName);
+      if (field && !excludedFields.includes(field.field) && !processedFields.has(field.field)) {
         fieldOrder.push({
-          field,
-          displayName: field, // Use raw field name for standard fields
-          isRequired: true,
-          isCustom: field.startsWith('custom_'),
-          description: field.startsWith('custom_') ? 
-            customFields.find(cf => cf.name === field)?.description : undefined
+          field: field.field,
+          displayName: getDisplayName(field.field, field.displayName),
+          isRequired: field.isRequired,
+          isCustom: field.isCustom,
+          description: field.description,
+          isComplexSubField: field.isComplexSubField
         });
-        processedFields.add(field);
+        processedFields.add(field.field);
       }
     });
     
-    // Add remaining non-custom fields (standard optional fields, excluding auto-populated ones)
-    allApiFields
-      .filter(field => !field.startsWith('custom_') && !processedFields.has(field) && !excludedFields.includes(field))
-      .sort() // Alphabetical order for consistent output
+    // Add remaining standard fields (complex sub-fields and other fields not in logical order)
+    allAvailableFields
+      .filter(field => !field.isCustom && !processedFields.has(field.field) && !excludedFields.includes(field.field))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName)) // Alphabetical order for remaining fields
       .forEach(field => {
         fieldOrder.push({
-          field,
-          displayName: field, // Use raw field name for standard fields
-          isRequired: false,
-          isCustom: false
+          field: field.field,
+          displayName: getDisplayName(field.field, field.displayName),
+          isRequired: field.isRequired,
+          isCustom: false,
+          isComplexSubField: field.isComplexSubField
         });
-        processedFields.add(field);
+        processedFields.add(field.field);
       });
     
     // Add custom fields at the end
-    customFields.forEach(customField => {
-      if (!processedFields.has(customField.name)) {
+    allAvailableFields
+      .filter(field => field.isCustom && !processedFields.has(field.field))
+      .forEach(field => {
         fieldOrder.push({
-          field: customField.name,
-          displayName: customField.description || customField.name,
-          isRequired: ValidationService.isRequired(customField.name),
+          field: field.field,
+          displayName: field.displayName,
+          isRequired: field.isRequired,
           isCustom: true,
-          description: customField.description
+          description: field.description,
+          isComplexSubField: false
         });
-        processedFields.add(customField.name);
-      }
-    });
+        processedFields.add(field.field);
+      });
     
     // Generate headers (only include relevant fields)
     const headers = fieldOrder.map(f => f.displayName);
@@ -835,7 +916,23 @@ export class MappingService {
     // Add field-specific instructions
     fieldOrder.forEach(field => {
       if (field.isCustom && field.description) {
-        instructions[field.field] = field.description;
+        // Enhanced custom field instructions with enum options
+        let instruction = field.description;
+        
+        // Add enum options if available for custom fields
+        try {
+          if (FieldDefinitionValidator.isEnumField(field.field)) {
+            const enumOptions = FieldDefinitionValidator.getFieldOptions(field.field);
+            if (enumOptions.length > 0) {
+              const optionsList = enumOptions.map(opt => opt.name).join(', ');
+              instruction += `. Available options: ${optionsList}`;
+            }
+          }
+        } catch (error) {
+          // Keep original description if enum detection fails
+        }
+        
+        instructions[field.field] = instruction;
       } else {
         // Standard field instructions
         switch (field.field) {
@@ -853,6 +950,48 @@ export class MappingService {
             break;
           case 'employeeGroups':
             instructions[field.field] = `Employee group names from your portal. Use comma-separated names for multiple groups. Available: ${mappingService.getAvailableNames('employeeGroups').join(', ')}`;
+            break;
+          case 'employeeTypeId':
+            // Use field definitions for employee type options
+            try {
+              const employeeTypeOptions = FieldDefinitionValidator.getFieldOptions('employeeTypeId');
+              if (employeeTypeOptions.length > 0) {
+                const optionsList = employeeTypeOptions.map(opt => opt.name).join(', ');
+                instructions[field.field] = `Employee type from your portal. Available: ${optionsList}`;
+              } else {
+                instructions[field.field] = 'Employee type ID (use values from your Planday portal)';
+              }
+            } catch (error) {
+              instructions[field.field] = 'Employee type ID (use values from your Planday portal)';
+            }
+            break;
+          case 'cellPhoneCountryCode':
+            // Use field definitions for country code options
+            try {
+              const countryOptions = FieldDefinitionValidator.getFieldOptions('cellPhoneCountryCode');
+              if (countryOptions.length > 0) {
+                const exampleCodes = countryOptions.slice(0, 8).map(opt => opt.name).join(', ');
+                instructions[field.field] = `Country code (ISO 3166-1 alpha-2). Examples: ${exampleCodes}`;
+              } else {
+                instructions[field.field] = 'Country code (ISO 3166-1 alpha-2, e.g., DK, SE, NO, UK)';
+              }
+            } catch (error) {
+              instructions[field.field] = 'Country code (ISO 3166-1 alpha-2, e.g., DK, SE, NO, UK)';
+            }
+            break;
+          case 'gender':
+            // Use field definitions for gender options
+            try {
+              const genderOptions = FieldDefinitionValidator.getFieldOptions('gender');
+              if (genderOptions.length > 0) {
+                const optionsList = genderOptions.map(opt => opt.name).join(', ');
+                instructions[field.field] = `Gender. Available: ${optionsList}`;
+              } else {
+                instructions[field.field] = 'Gender (Male/Female)';
+              }
+            } catch (error) {
+              instructions[field.field] = 'Gender (Male/Female)';
+            }
             break;
           case 'cellPhone':
             instructions[field.field] = 'Mobile phone number (optional)';
@@ -872,9 +1011,6 @@ export class MappingService {
           case 'zip':
             instructions[field.field] = 'ZIP/Postal code';
             break;
-          case 'gender':
-            instructions[field.field] = 'Gender (Male/Female)';
-            break;
           case 'jobTitle':
             instructions[field.field] = 'Job title or position';
             break;
@@ -887,11 +1023,40 @@ export class MappingService {
           case 'ssn':
             instructions[field.field] = 'Social Security Number (if required by your portal)';
             break;
-          case 'bankAccount':
-            instructions[field.field] = 'Bank account information (if required by your portal)';
-            break;
+
           default:
-            instructions[field.field] = `Enter appropriate value for ${field.field}`;
+            // Handle complex object sub-fields
+            if (field.isComplexSubField && field.field.includes('.')) {
+              const [parentField, subField] = field.field.split('.');
+              if (parentField === 'bankAccount') {
+                if (subField === 'accountNumber') {
+                  instructions[field.field] = 'Bank account number';
+                } else if (subField === 'registrationNumber') {
+                  instructions[field.field] = 'Bank registration number';
+                } else {
+                  instructions[field.field] = `Bank account ${subField}`;
+                }
+              } else {
+                instructions[field.field] = `${parentField} ${subField}`;
+              }
+                         } else {
+               // Check if this field has enum options from field definitions
+               try {
+                 if (FieldDefinitionValidator.isEnumField(field.field)) {
+                   const enumOptions = FieldDefinitionValidator.getFieldOptions(field.field);
+                   if (enumOptions.length > 0) {
+                     const optionsList = enumOptions.slice(0, 10).map(opt => opt.name).join(', ');
+                     instructions[field.field] = `Select from available options: ${optionsList}`;
+                   } else {
+                     instructions[field.field] = `Enter appropriate value for ${field.field}`;
+                   }
+                 } else {
+                   instructions[field.field] = `Enter appropriate value for ${field.field}`;
+                 }
+               } catch (error) {
+                 instructions[field.field] = `Enter appropriate value for ${field.field}`;
+               }
+             }
         }
       }
     });
@@ -911,9 +1076,11 @@ export class MappingService {
   /**
    * Create a clean payload for Planday API from converted employee data
    * This ensures consistency between preview and actual upload
+   * Handles conversion of flattened complex object sub-fields back to nested objects
    */
   static createApiPayload(converted: any): PlandayEmployeeCreateRequest {
     const cleanPayload: any = {};
+    const complexObjects: Record<string, any> = {};
     
     // Define internal fields that should be excluded from the API payload
     const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
@@ -922,14 +1089,36 @@ export class MappingService {
     Object.entries(converted).forEach(([key, value]) => {
       // Skip internal fields and undefined/empty values
       if (!internalFields.has(key) && value != null && value !== '') {
-        // For array fields, only include if they have elements
-        if (Array.isArray(value)) {
-          if (value.length > 0) {
+        // Handle complex object sub-fields (e.g., "bankAccount.accountNumber")
+        if (key.includes('.') && ValidationService.isComplexObjectSubField(key)) {
+          const [parentField, subField] = key.split('.');
+          
+          // Initialize parent object if it doesn't exist
+          if (!complexObjects[parentField]) {
+            complexObjects[parentField] = {};
+          }
+          
+          // Add sub-field to parent object
+          complexObjects[parentField][subField] = value;
+        } else {
+          // Handle regular fields
+          // For array fields, only include if they have elements
+          if (Array.isArray(value)) {
+            if (value.length > 0) {
+              cleanPayload[key] = value;
+            }
+          } else {
             cleanPayload[key] = value;
           }
-        } else {
-          cleanPayload[key] = value;
         }
+      }
+    });
+    
+    // Add constructed complex objects to payload
+    Object.entries(complexObjects).forEach(([parentField, nestedObject]) => {
+      // Only include complex objects that have at least one populated sub-field
+      if (Object.keys(nestedObject).length > 0) {
+        cleanPayload[parentField] = nestedObject;
       }
     });
     
@@ -942,6 +1131,8 @@ export class MappingService {
     if (!cleanPayload.gender) {
       cleanPayload.gender = 'Male';
     }
+    
+    // API Payload created with complex object reconstruction
     
     return cleanPayload as PlandayEmployeeCreateRequest;
   }
@@ -1053,15 +1244,181 @@ export class ValidationService {
   private static hasLoggedRequiredFields: boolean = false;
 
   /**
-   * Initialize with field definitions from Planday API
+   * Initialize validation service with field definitions
    */
   static initialize(fieldDefinitions: PlandayFieldDefinitionsSchema): void {
     this.fieldDefinitions = fieldDefinitions;
+    this.hasLoggedRequiredFields = false;
     
-    // Debug logging disabled to reduce console noise
+    if (!this.hasLoggedRequiredFields) {
+      // ValidationService initialized with field definitions
+      this.hasLoggedRequiredFields = true;
+    }
+  }
+
+  /**
+   * Detect and flatten complex object fields into user-friendly sub-fields
+   * Converts complex objects like bankAccount into separate mappable fields
+   */
+  static getComplexObjectSubFields(): Array<{ 
+    parentField: string; 
+    subField: string; 
+    displayName: string; 
+    fullFieldPath: string;
+    isRequired: boolean;
+  }> {
+    if (!this.fieldDefinitions) {
+      return [];
+    }
+
+    const subFields: Array<{ 
+      parentField: string; 
+      subField: string; 
+      displayName: string; 
+      fullFieldPath: string;
+      isRequired: boolean;
+    }> = [];
+
+    // Check each field in the schema
+    Object.entries(this.fieldDefinitions.properties).forEach(([fieldName, fieldConfig]) => {
+      if (fieldConfig && typeof fieldConfig === 'object') {
+        let objectConfig = fieldConfig;
+        
+        // If the field has a $ref, resolve it from definitions
+        if (fieldConfig.$ref && this.fieldDefinitions?.definitions) {
+          const refName = fieldConfig.$ref.replace('#/definitions/', '');
+          const resolvedConfig = this.fieldDefinitions.definitions[refName];
+          if (resolvedConfig && typeof resolvedConfig === 'object') {
+            objectConfig = resolvedConfig;
+          }
+        }
+        
+        // Check if this is a complex object field (has nested properties)
+        if (objectConfig.type === 'object' && objectConfig.properties) {
+          // Extract sub-fields from the object
+          Object.entries(objectConfig.properties).forEach(([subFieldName, _subFieldConfig]) => {
+            const displayName = this.generateSubFieldDisplayName(fieldName, subFieldName);
+            const fullFieldPath = `${fieldName}.${subFieldName}`;
+            
+            subFields.push({
+              parentField: fieldName,
+              subField: subFieldName,
+              displayName,
+              fullFieldPath,
+              isRequired: this.isRequired(fieldName) // Inherit parent's required status
+            });
+          });
+        }
+      }
+    });
+
+    // Detected complex object sub-fields
+    return subFields;
+  }
+
+  /**
+   * Generate user-friendly display names for sub-fields
+   */
+  private static generateSubFieldDisplayName(parentField: string, subField: string): string {
+    // Convert camelCase to Title Case
+    const formatFieldName = (name: string): string => {
+      return name
+        .replace(/([A-Z])/g, ' $1') // Add space before capitals
+        .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
+        .trim();
+    };
+
+    const parentTitle = formatFieldName(parentField);
+    const subTitle = formatFieldName(subField);
+
+    return `${parentTitle} - ${subTitle}`;
+  }
+
+  /**
+   * Check if a field path represents a complex object sub-field
+   */
+  static isComplexObjectSubField(fieldPath: string): boolean {
+    return fieldPath.includes('.') && this.getComplexObjectSubFields().some(
+      sub => sub.fullFieldPath === fieldPath
+    );
+  }
+
+  /**
+   * Get all available fields including flattened complex object sub-fields
+   * This replaces complex objects with their individual sub-fields for better UX
+   * Excludes read-only fields and auto-populated fields from mapping UI
+   */
+  static getAllAvailableFields(): Array<{ 
+    field: string; 
+    displayName: string; 
+    isRequired: boolean; 
+    isCustom: boolean; 
+    isComplexSubField: boolean;
+    description?: string;
+  }> {
+    if (!this.fieldDefinitions) {
+      return [];
+    }
+
+    const fields: Array<{ 
+      field: string; 
+      displayName: string; 
+      isRequired: boolean; 
+      isCustom: boolean; 
+      isComplexSubField: boolean;
+      description?: string;
+    }> = [];
+
+    const complexSubFields = this.getComplexObjectSubFields();
+    const complexParentFields = new Set(complexSubFields.map(sub => sub.parentField));
     
-    // Debug logging disabled to reduce console noise
-    // Field processing debug logging disabled to reduce console noise
+    // Fields to exclude from mapping UI because they are auto-populated, read-only, or deprecated
+    const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
+
+    // Add standard fields (excluding complex object parents, read-only fields, and excluded fields)
+    Object.keys(this.fieldDefinitions.properties)
+      .filter(field => 
+        !field.startsWith('custom_') && 
+        !complexParentFields.has(field) &&
+        !this.isReadOnly(field) &&
+        !excludedFields.includes(field)
+      )
+      .forEach(field => {
+        fields.push({
+          field,
+          displayName: field,
+          isRequired: this.isRequired(field),
+          isCustom: false,
+          isComplexSubField: false
+        });
+      });
+
+    // Add complex object sub-fields instead of parent objects (excluding read-only ones)
+    complexSubFields.forEach(subField => {
+      if (!this.isReadOnly(subField.fullFieldPath) && !excludedFields.includes(subField.fullFieldPath)) {
+        fields.push({
+          field: subField.fullFieldPath,
+          displayName: subField.displayName,
+          isRequired: subField.isRequired,
+          isCustom: false,
+          isComplexSubField: true
+        });
+      }
+    });
+
+    // Add custom fields (getCustomFields() already excludes read-only custom fields)
+    this.getCustomFields().forEach(customField => {
+      fields.push({
+        field: customField.name,
+        displayName: customField.description || customField.name,
+        isRequired: this.isRequired(customField.name),
+        isCustom: true,
+        isComplexSubField: false,
+        description: customField.description
+      });
+    });
+
+    return fields.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   /**
@@ -1194,6 +1551,8 @@ export class ValidationService {
             enumValues = extracted.values;
             enumOptions = extracted.options;
           }
+          
+
           
           customFields.push({
             fieldName,
@@ -1718,8 +2077,9 @@ export class ValidationService {
 
   /**
    * Get user-friendly conversion hints for a field type
+   * Enhanced to include enum options from field definitions when available
    */
-  static getConversionHints(fieldType: CustomFieldType): string[] {
+  static getConversionHints(fieldType: CustomFieldType, fieldName?: string): string[] {
     switch (fieldType) {
       case 'optionalString':
         return ['Any text value'];
@@ -1743,10 +2103,27 @@ export class ValidationService {
         ];
         
       case 'optionalEnum':
-        return [
+        // Enhanced enum hints with actual field definition options
+        const baseHints = [
           'Must use one of the predefined dropdown options',
           'Case-insensitive matching supported'
         ];
+        
+        // Add specific enum options if field name is provided and field definitions are available
+        if (fieldName) {
+          try {
+            const enumOptions = FieldDefinitionValidator.getFieldOptions(fieldName);
+            if (enumOptions.length > 0) {
+              const optionsText = enumOptions.slice(0, 6).map(opt => opt.name).join(', ');
+              const moreText = enumOptions.length > 6 ? ` (+${enumOptions.length - 6} more)` : '';
+              baseHints.push(`Options: ${optionsText}${moreText}`);
+            }
+          } catch (error) {
+            // Fall back to base hints if field definitions not available
+          }
+        }
+        
+        return baseHints;
         
       case 'optionalImage':
         return ['Image uploads not supported in bulk import'];
@@ -1865,10 +2242,32 @@ export class ValidationService {
 
   /**
    * Validate country code and suggest correct ISO codes
+   * Now uses field definitions as primary source, falls back to hardcoded values
    */
   static validateCountryCode(input: string): { isValidCountryCode: boolean; suggestedCode?: string } {
     const normalizedInput = input.toUpperCase().trim();
     
+    // First try field definitions for cellPhoneCountryCode or phoneCountryCode
+    try {
+      const cellPhoneResult = FieldDefinitionValidator.validateFieldValue('cellPhoneCountryCode', normalizedInput);
+      if (cellPhoneResult.isValid) {
+        console.log(`✅ Country code "${normalizedInput}" validated using field definitions`);
+        return { isValidCountryCode: true };
+      }
+      
+      // Check if field definitions provide a suggestion
+      if (cellPhoneResult.suggestion) {
+        console.log(`📋 Country code "${normalizedInput}" suggestion from field definitions: ${cellPhoneResult.suggestion}`);
+        return { 
+          isValidCountryCode: false, 
+          suggestedCode: cellPhoneResult.suggestion 
+        };
+      }
+    } catch (error) {
+      console.warn('⚠️ Field definitions not available for country code validation, falling back to hardcoded values:', error);
+    }
+    
+    // Fallback to hardcoded validation (backward compatibility)
     // Common ISO 3166-1 alpha-2 country codes
     const validCodes = new Set([
       'DK', 'SE', 'NO', 'FI', 'IS', // Nordic countries
@@ -1882,10 +2281,11 @@ export class ValidationService {
     
     // If it's already a valid code, return true
     if (validCodes.has(normalizedInput)) {
+      console.log(`✅ Country code "${normalizedInput}" validated using hardcoded fallback`);
       return { isValidCountryCode: true };
     }
     
-    // Country name to ISO code mapping
+    // Country name to ISO code mapping (fallback)
     const countryNameMapping: Record<string, string> = {
       // Nordic countries
       'DENMARK': 'DK', 'SWEDEN': 'SE', 'NORWAY': 'NO', 'FINLAND': 'FI', 'ICELAND': 'IS',
@@ -1905,8 +2305,10 @@ export class ValidationService {
       'LATVIA': 'LV', 'LITHUANIA': 'LT',
     };
     
-    // Try to find a suggestion
+    // Try to find a suggestion from fallback mapping
     const suggestedCode = countryNameMapping[normalizedInput];
+    
+    console.log(`❌ Country code "${normalizedInput}" not found in field definitions or hardcoded fallback${suggestedCode ? `, suggesting: ${suggestedCode}` : ''}`);
     
     return {
       isValidCountryCode: false,
@@ -1916,9 +2318,28 @@ export class ValidationService {
 
   /**
    * Validate country code fields for an employee
+   * Enhanced to use field definition country codes in error messages
    */
   static validateCountryCodeFields(employee: any, rowIndex: number = 0): ValidationError[] {
     const errors: ValidationError[] = [];
+    
+    // Get available country codes from field definitions for better error messages
+    const getCountryCodeExamples = (): string => {
+      try {
+        const countryOptions = FieldDefinitionValidator.getFieldOptions('cellPhoneCountryCode');
+        if (countryOptions.length > 0) {
+          // Take first 4 country codes as examples
+          const examples = countryOptions.slice(0, 4).map(opt => opt.name).join(', ');
+          return `e.g. ${examples}`;
+        }
+      } catch (error) {
+        console.warn('Could not get country code examples from field definitions:', error);
+      }
+      // Fallback to hardcoded examples
+      return 'e.g. DK, SE, NO, UK';
+    };
+    
+    const countryCodeExamples = getCountryCodeExamples();
     
     // Validate phoneCountryCode field
     const phoneCountryCodeStr = employee.phoneCountryCode?.toString()?.trim() || '';
@@ -1930,7 +2351,7 @@ export class ValidationService {
           errors.push({
             field: 'phoneCountryCode',
             value: phoneCountryCodeStr,
-            message: `"${phoneCountryCodeStr}" should be ISO country code "${suggestedCode}" (e.g. DK, SE, NO, UK)`,
+            message: `"${phoneCountryCodeStr}" should be ISO country code "${suggestedCode}" (${countryCodeExamples})`,
             rowIndex,
             severity: 'error'
           });
@@ -1938,7 +2359,7 @@ export class ValidationService {
           errors.push({
             field: 'phoneCountryCode',
             value: phoneCountryCodeStr,
-            message: `"${phoneCountryCodeStr}" is not a valid ISO country code (use DK, SE, NO, UK, etc.)`,
+            message: `"${phoneCountryCodeStr}" is not a valid ISO country code (${countryCodeExamples})`,
             rowIndex,
             severity: 'error'
           });
@@ -1956,7 +2377,7 @@ export class ValidationService {
           errors.push({
             field: 'cellPhoneCountryCode',
             value: cellPhoneCountryCodeStr,
-            message: `"${cellPhoneCountryCodeStr}" should be ISO country code "${suggestedCode}" (e.g. DK, SE, NO, UK)`,
+            message: `"${cellPhoneCountryCodeStr}" should be ISO country code "${suggestedCode}" (${countryCodeExamples})`,
             rowIndex,
             severity: 'error'
           });
@@ -1964,7 +2385,7 @@ export class ValidationService {
           errors.push({
             field: 'cellPhoneCountryCode',
             value: cellPhoneCountryCodeStr,
-            message: `"${cellPhoneCountryCodeStr}" is not a valid ISO country code (use DK, SE, NO, UK, etc.)`,
+            message: `"${cellPhoneCountryCodeStr}" is not a valid ISO country code (${countryCodeExamples})`,
             rowIndex,
             severity: 'error'
           });
@@ -2075,6 +2496,204 @@ export class ValidationService {
         requiredFieldOverrides
       },
       fieldMapping
+    };
+  }
+}
+
+/**
+ * Field Definition Validator
+ * Enhanced validation utility for extracting enum values from field definitions
+ * Handles both custom fields and standard fields (employee types, country codes)
+ */
+export class FieldDefinitionValidator {
+  private static fieldDefinitions: PlandayFieldDefinitionsSchema | null = null;
+
+  /**
+   * Initialize with field definitions from ValidationService
+   */
+  static initialize(fieldDefinitions: PlandayFieldDefinitionsSchema): void {
+    this.fieldDefinitions = fieldDefinitions;
+  }
+
+  /**
+   * Extract enum values for any field (not just custom fields)
+   * Supports employee types, country codes, and custom dropdown fields
+   */
+  static getFieldEnumValues(fieldName: string): { ids: any[], values: string[] } | null {
+    if (!this.fieldDefinitions) {
+      console.warn(`⚠️ Field definitions not loaded, cannot get enum values for "${fieldName}"`);
+      return null;
+    }
+
+    const fieldConfig = this.fieldDefinitions.properties[fieldName];
+    if (!fieldConfig) {
+      console.warn(`⚠️ Field "${fieldName}" not found in field definitions`);
+      return null;
+    }
+
+    // Handle direct reference to definitions (most common pattern)
+    if (fieldConfig.$ref) {
+      return this.extractEnumFromDefinition(fieldConfig.$ref);
+    }
+
+    // Handle direct enum in field config (rare)
+    if (fieldConfig.enum || fieldConfig.values || fieldConfig.anyOf) {
+      return this.extractEnumFromConfig(fieldConfig);
+    }
+
+    return null;
+  }
+
+  /**
+   * Validate any field value against field definitions
+   */
+  static validateFieldValue(fieldName: string, value: any): {
+    isValid: boolean;
+    convertedValue?: any;
+    error?: string;
+    suggestion?: string;
+  } {
+    const enumData = this.getFieldEnumValues(fieldName);
+    
+    if (!enumData) {
+      // No enum validation available - accept any value
+      return { isValid: true, convertedValue: value };
+    }
+
+    const strValue = String(value).trim();
+    
+    // Check for exact ID match (for numeric enums like employee types)
+    if (enumData.ids.includes(value) || enumData.ids.includes(Number(value))) {
+      return { isValid: true, convertedValue: value };
+    }
+
+    // Check for exact value match (for string enums like country codes)
+    if (enumData.values.includes(strValue)) {
+      return { isValid: true, convertedValue: strValue };
+    }
+
+    // Check for case-insensitive value match
+    const lowerValue = strValue.toLowerCase();
+    const caseInsensitiveMatch = enumData.values.find(enumValue => 
+      String(enumValue).toLowerCase() === lowerValue
+    );
+    
+    if (caseInsensitiveMatch) {
+      return { 
+        isValid: true, 
+        convertedValue: caseInsensitiveMatch,
+        suggestion: `Case-insensitive match: "${strValue}" → "${caseInsensitiveMatch}"`
+      };
+    }
+
+    // No match found
+    const availableValues = enumData.values.length <= 10 
+      ? enumData.values.join(', ')
+      : `${enumData.values.slice(0, 10).join(', ')}, ... (${enumData.values.length} total)`;
+      
+    return {
+      isValid: false,
+      error: `Invalid value "${strValue}" for field "${fieldName}". Must be one of: ${availableValues}`
+    };
+  }
+
+  /**
+   * Get display options for dropdowns in UI
+   */
+  static getFieldOptions(fieldName: string): Array<{ id: any, name: string }> {
+    const enumData = this.getFieldEnumValues(fieldName);
+    
+    if (!enumData) {
+      return [];
+    }
+
+    // If we have both IDs and values (like employee types), create ID/name pairs
+    if (enumData.ids.length === enumData.values.length) {
+      return enumData.ids.map((id, index) => ({
+        id,
+        name: String(enumData.values[index])
+      }));
+    }
+
+    // If we only have values (like country codes), use value as both ID and name
+    return enumData.values.map(value => ({
+      id: value,
+      name: String(value)
+    }));
+  }
+
+  /**
+   * Check if field has enum constraints
+   */
+  static isEnumField(fieldName: string): boolean {
+    return this.getFieldEnumValues(fieldName) !== null;
+  }
+
+  /**
+   * Extract enum values from a definition reference
+   */
+  private static extractEnumFromDefinition(ref: string): { ids: any[], values: string[] } | null {
+    if (!this.fieldDefinitions) return null;
+
+    const definitionKey = ref.replace('#/definitions/', '');
+    const definition = this.fieldDefinitions.definitions[definitionKey];
+    
+    if (!definition) {
+      console.warn(`⚠️ Definition "${definitionKey}" not found`);
+      return null;
+    }
+
+    return this.extractEnumFromConfig(definition);
+  }
+
+  /**
+   * Extract enum values from field configuration
+   * Handles both simple enums and complex anyOf structures
+   */
+  private static extractEnumFromConfig(config: any): { ids: any[], values: string[] } | null {
+    const ids: any[] = [];
+    const values: string[] = [];
+
+    // Direct enum/values properties
+    if (config.enum) {
+      ids.push(...config.enum);
+    }
+    
+    if (config.values) {
+      values.push(...config.values);
+    }
+
+    // anyOf structure (like employeeType with enum and values)
+    if (config.anyOf && Array.isArray(config.anyOf)) {
+      config.anyOf.forEach((option: any) => {
+        if (option.enum) {
+          ids.push(...option.enum);
+        }
+        
+        if (option.values) {
+          values.push(...option.values);
+        }
+      });
+    }
+
+    // If we have no enum data, return null
+    if (ids.length === 0 && values.length === 0) {
+      return null;
+    }
+
+    // If we only have IDs but no values, use IDs as values too
+    if (ids.length > 0 && values.length === 0) {
+      values.push(...ids.map(id => String(id)));
+    }
+
+    // If we only have values but no IDs, use values as IDs too
+    if (values.length > 0 && ids.length === 0) {
+      ids.push(...values);
+    }
+
+    return {
+      ids: [...new Set(ids)], // Remove duplicates
+      values: [...new Set(values)] // Remove duplicates
     };
   }
 }

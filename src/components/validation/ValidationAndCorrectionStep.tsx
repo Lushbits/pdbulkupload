@@ -51,7 +51,7 @@ const CorrectionCard: React.FC<CorrectionCardProps> = ({
   };
 
   const handleDropdownSelection = (value: string) => {
-    console.log('🚨 SELECT CHANGE EVENT TRIGGERED:', value);
+    // Select change event triggered
     // Set pending selection - don't apply immediately
     if (value) {
       // Pending selection set
@@ -277,7 +277,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
   // Only reset helper completion state when truly starting fresh (not on every re-render)
   useEffect(() => {
-    console.log('🔄 Setting initial phase and helper state');
+    // Setting initial phase and helper state
     setHelperCompletionState({
       bulkCorrectionsCompleted: false,
       dateFormatCompleted: false
@@ -285,7 +285,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     setHasNavigatedToIndividualCorrection(false);
     setCurrentPhase('bulk-correction'); // Always start with bulk correction phase when coming forward
     
-    console.log('🔍 Component initialized, employees.length:', employees.length);
+    // Component initialized
   }, []); // Only run on mount, not on every prop change
 
   // Initialize and detect bulk correction patterns

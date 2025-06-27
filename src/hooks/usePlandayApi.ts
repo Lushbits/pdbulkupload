@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PlandayApi, PlandayApiError } from '../services/plandayApi';
-import { MappingUtils, ValidationService } from '../services/mappingService';
+import { MappingUtils, ValidationService, FieldDefinitionValidator } from '../services/mappingService';
 import type {
   PlandayDepartment,
   PlandayEmployeeGroup,
@@ -220,6 +220,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       // Initialize services with fetched data
       MappingUtils.initialize(departments, employeeGroups, employeeTypes);
       ValidationService.initialize(fieldDefinitions);
+      FieldDefinitionValidator.initialize(fieldDefinitions);
       
       updateState({
         isAuthenticated: true,
@@ -440,8 +441,9 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         fieldDefinitionsError: null,
       });
 
-      // Initialize ValidationService with field definitions
+      // Initialize validation services with field definitions
       ValidationService.initialize(fieldDefinitions);
+      FieldDefinitionValidator.initialize(fieldDefinitions);
 
       console.log(`✅ Refreshed field definitions`);
 
@@ -685,11 +687,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       // Sync authentication state based on connection test result
       const apiAuthenticated = PlandayApi.isAuthenticated();
       if (state.isAuthenticated !== apiAuthenticated) {
-        console.log('🔄 Syncing authentication state:', {
-          hookState: state.isAuthenticated,
-          apiState: apiAuthenticated,
-          connectionResult: isConnected
-        });
+        // Syncing authentication state
         
         updateState({ isAuthenticated: apiAuthenticated });
       }
@@ -769,23 +767,14 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     
     const restoreData = async () => {
       try {
-        console.log('🔄 Starting data restoration...');
-        
         // First, try to restore data from MappingService (faster than API call)
         if (MappingUtils.isInitialized()) {
           const cachedDepartments = MappingUtils.getDepartments();
           const cachedEmployeeGroups = MappingUtils.getEmployeeGroups();
           const cachedEmployeeTypes = MappingUtils.getEmployeeTypes();
           
-          console.log('📦 Cached data check:', {
-            departments: cachedDepartments.length,
-            employeeGroups: cachedEmployeeGroups.length,
-            employeeTypes: cachedEmployeeTypes.length
-          });
-          
           // Only update if we have all cached data sets
           if (cachedDepartments.length > 0 && cachedEmployeeGroups.length > 0 && cachedEmployeeTypes.length > 0) {
-            console.log('✅ Using cached data');
             updateState({
               departments: cachedDepartments,
               employeeGroups: cachedEmployeeGroups,
@@ -796,7 +785,6 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         }
         
         // If no cached data or incomplete data, fetch from API
-        console.log('🌐 Fetching fresh data from API...');
         
         const [departments, employeeGroups, employeeTypes, fieldDefinitions] = await Promise.all([
           PlandayApi.getDepartments(),
@@ -818,6 +806,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         // Initialize services
         MappingUtils.initialize(departments, employeeGroups, employeeTypes);
         ValidationService.initialize(fieldDefinitions);
+        FieldDefinitionValidator.initialize(fieldDefinitions);
         
         updateState({
           departments,
@@ -827,7 +816,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
           portalInfo
         });
         
-        console.log('✅ Data restoration completed successfully');
+        // Data restoration completed successfully
         
       } catch (error) {
         console.error('❌ Failed to restore Planday data:', error);

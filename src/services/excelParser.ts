@@ -474,17 +474,31 @@ export class ExcelParser {
       let plandayFieldDisplayName: string | null = null;
       let isRequired = false;
 
-      // 1. Try to auto-map based on predefined AUTO_MAPPING_RULES
-      for (const [field, patterns] of Object.entries(AUTO_MAPPING_RULES)) {
-        if (patterns.some(pattern => normalizedHeader.includes(pattern))) {
+      // 1. PRIORITY 1: Check for exact field name matches (field-agnostic)
+      for (const [field] of Object.entries(AUTO_MAPPING_RULES)) {
+        const normalizedFieldName = field.toLowerCase();
+        
+        // Exact match with field name gets highest priority
+        if (normalizedHeader === normalizedFieldName) {
           plandayField = field;
-          // For standard fields, use raw field name (consistent with other components)
           plandayFieldDisplayName = field;
           break;
         }
       }
 
-      // 2. If no standard field matched, try to match against custom fields
+      // 2. PRIORITY 2: Fall back to pattern-based matching if no exact field name match
+      if (!plandayField) {
+        for (const [field, patterns] of Object.entries(AUTO_MAPPING_RULES)) {
+          if (patterns.some(pattern => normalizedHeader.includes(pattern))) {
+            plandayField = field;
+            // For standard fields, use raw field name (consistent with other components)
+            plandayFieldDisplayName = field;
+            break;
+          }
+        }
+      }
+
+      // 3. If no standard field matched, try to match against custom fields
       if (!plandayField && customFields) {
         for (const customField of customFields) {
           const normalizedCustomFieldName = this.normalizeHeader(customField.name);

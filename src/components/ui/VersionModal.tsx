@@ -13,6 +13,20 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.3',
+    date: '2025-06-27',
+    features: [
+      'Fixed bankAccount field splitting: resolved $ref resolution bug in getComplexObjectSubFields() method',
+      'Corrected PlandayEmployee and PlandayEmployeeCreateRequest type definitions: bankAccount now properly typed as object with accountNumber and registrationNumber properties',
+      'Enhanced complex object detection: added logic to resolve $ref fields from field definitions instead of only checking direct type properties',
+      'Fixed phoneCountryCode exclusion: added phoneCountryCode to excludedFields arrays in template generation, field detection, and mapping UI',
+      'Removed unnecessary template instruction fallback cases for deprecated phone fields',
+      'Verified phone field exclusion consistency: confirmed phone and phoneCountryCode are properly excluded while cellPhone and cellPhoneCountryCode remain available',
+      'Excel templates now correctly show Bank Account - Account Number and Bank Account - Registration Number as separate fields instead of single bankAccount field',
+      'Templates properly exclude all landline phone fields (phone, phoneCountryCode) while including mobile phone fields (cellPhone, cellPhoneCountryCode)'
+    ]
+  },
+  {
     version: '0.2.2',
     date: '2025-06-27',
     features: [

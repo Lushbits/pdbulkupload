@@ -11,7 +11,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Button } from './Button';
-import { ValidationService } from '../../services/mappingService';
+import { ValidationService, FieldDefinitionValidator } from '../../services/mappingService';
 
 interface PlandayField {
   name: string;
@@ -238,6 +238,17 @@ const FieldButton: React.FC<FieldButtonProps> = ({ field, isSelected, onClick, i
     ? ValidationService.getCustomFieldsWithTypes().find(cf => cf.fieldName === field.name)
     : null;
   
+  // Get enum options from field definitions for any field (not just custom)
+  const enumOptions = (() => {
+    try {
+      return FieldDefinitionValidator.getFieldOptions(field.name);
+    } catch (error) {
+      return [];
+    }
+  })();
+  
+  const isEnumField = enumOptions.length > 0;
+  
   // Calculate if we need badges (excluding Custom when in custom section, Required and Read-only which go inline)
   const badges = [];
   if (field.isCustom && !isInCustomSection) badges.push({ text: 'Custom', color: 'bg-purple-100 text-purple-700' });
@@ -302,12 +313,28 @@ const FieldButton: React.FC<FieldButtonProps> = ({ field, isSelected, onClick, i
       {/* Custom field conversion hints */}
       {hasConversionHints && (
         <div className={`text-xs mt-1 ${isSelected ? 'pr-5' : 'pr-2'} ${isSelected ? 'text-green-600' : 'text-gray-400'}`}>
-          {ValidationService.getConversionHints(customFieldInfo!.fieldType).map((hint, index) => (
+          {ValidationService.getConversionHints(customFieldInfo!.fieldType, field.name).map((hint, index) => (
             <div key={index} className="flex items-start gap-1">
               <span className="text-xs">•</span>
               <span>{hint}</span>
             </div>
           ))}
+        </div>
+      )}
+      
+      {/* Enum options from field definitions */}
+      {isEnumField && (
+        <div className={`text-xs mt-1 ${isSelected ? 'pr-5' : 'pr-2'} ${isSelected ? 'text-green-600' : 'text-gray-400'}`}>
+          <div className="flex items-start gap-1">
+            <span className="text-xs">📋</span>
+            <div>
+              <span className="font-medium">Options: </span>
+              <span>
+                {enumOptions.slice(0, 5).map(opt => opt.name).join(', ')}
+                {enumOptions.length > 5 && ` (+${enumOptions.length - 5} more)`}
+              </span>
+            </div>
+          </div>
         </div>
       )}
       

@@ -88,7 +88,7 @@ export class PhoneParser {
         const numericValue = parseFloat(input);
         if (!isNaN(numericValue)) {
           processedInput = Math.round(numericValue).toString();
-          console.log(`📱 Converted scientific notation: ${input} → ${processedInput}`);
+          // Converted scientific notation from Excel
         }
       } catch (error) {
         console.warn(`⚠️ Could not convert scientific notation: ${input}`);
@@ -539,7 +539,7 @@ export class PhoneParser {
         const numericValue = parseFloat(input);
         if (!isNaN(numericValue)) {
           processedInput = Math.round(numericValue).toString();
-          console.log(`📱 Converted scientific notation: ${input} → ${processedInput}`);
+          // Converted scientific notation from Excel
         }
       } catch (error) {
         console.warn(`⚠️ Could not convert scientific notation: ${input}`);
@@ -580,7 +580,7 @@ export class PhoneParser {
     // If number starts with the dial code for this country, remove it
     if (workingNumber.startsWith(countryMapping.dialCode)) {
       workingNumber = workingNumber.substring(countryMapping.dialCode.length);
-      console.log(`📱 Removed dial code ${countryMapping.dialCode}: ${cleaned} → ${workingNumber}`);
+              // Removed dial code from phone number
     }
 
     // Validate phone number length for this country

@@ -37,7 +37,10 @@ export interface PlandayEmployee {
   hiredFrom?: string; // YYYY-MM-DD format
   birthDate?: string; // YYYY-MM-DD format - requires special scope
   ssn?: string; // Social Security Number - requires special scope
-  bankAccount?: string; // Bank account info - requires special scope
+  bankAccount?: {
+    accountNumber?: string;
+    registrationNumber?: string;
+  }; // Bank account info - requires special scope
   custom_xxxx?: any; // Custom fields with custom_ prefix
 }
 
@@ -61,7 +64,10 @@ export interface PlandayEmployeeCreateRequest {
   hiredFrom?: string;
   birthDate?: string;
   ssn?: string;
-  bankAccount?: string;
+  bankAccount?: {
+    accountNumber?: string;
+    registrationNumber?: string;
+  };
   employeeTypeId?: number;
   [key: string]: any; // For custom fields
 }
@@ -184,6 +190,7 @@ export interface PlandayFieldDefinitionProperty {
   pattern?: string;
   enum?: string[];
   values?: string[];
+  properties?: Record<string, PlandayFieldDefinitionProperty>; // For object types like bankAccount
   anyOf?: Array<{
     type: string;
     minLength?: number;

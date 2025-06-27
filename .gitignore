@@ -25,3 +25,7 @@ dist-ssr
 
 # Personal documentation
 docs/
+
+# REST Client test files (contains sensitive API tokens)
+*.http
+*.rest
