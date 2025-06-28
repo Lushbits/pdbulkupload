@@ -141,7 +141,56 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
     }
   }
 
-  // Pattern 3: 8-digit dates (01021984 or 19840102)
+  // Pattern 3: Dash-separated dates (2024-01-01 or 01-01-2024)
+  if (sample.includes('-')) {
+    if (sample.length >= 8 && sample.substring(0, 4).match(/^\d{4}$/)) {
+      // YYYY-MM-DD vs YYYY-DD-MM pattern
+      const year = sample.substring(0, 4);
+      const part1 = sample.substring(5, 7);
+      const part2 = sample.substring(8, 10);
+      
+      return {
+        option1: {
+          format: 'YYYY-MM-DD',
+          description: 'Year-Month-Day format',
+          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
+          example2: '1984-03-15 → 1984-03-15 (March 15, 1984)',
+          mapsToPlandayFormat: 'MM/DD/YYYY'
+        },
+        option2: {
+          format: 'YYYY-DD-MM',
+          description: 'Year-Day-Month format',
+          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
+          example2: '1984-15-03 → 1984-03-15 (March 15, 1984)',
+          mapsToPlandayFormat: 'DD/MM/YYYY'
+        }
+      };
+    } else {
+      // MM-DD-YYYY vs DD-MM-YYYY pattern
+      const part1 = sample.substring(0, 2);
+      const part2 = sample.substring(3, 5);
+      const year = sample.substring(6, 10);
+      
+      return {
+        option1: {
+          format: 'MM-DD-YYYY',
+          description: 'Month-Day-Year format',
+          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
+          example2: '03-15-1984 → 1984-03-15 (March 15, 1984)',
+          mapsToPlandayFormat: 'MM/DD/YYYY'
+        },
+        option2: {
+          format: 'DD-MM-YYYY',
+          description: 'Day-Month-Year format',
+          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
+          example2: '15-03-1984 → 1984-03-15 (March 15, 1984)',
+          mapsToPlandayFormat: 'DD/MM/YYYY'
+        }
+      };
+    }
+  }
+
+  // Pattern 4: 8-digit dates (01021984 or 19840102)
   if (sample.length === 8 && /^\d{8}$/.test(sample)) {
     if (sample.substring(0, 2) === '19' || sample.substring(0, 2) === '20') {
       // YYYYMMDD vs YYYYDDMM pattern
@@ -334,9 +383,9 @@ export const DateFormatSelectionStep: React.FC<DateFormatSelectionStepProps> = (
         </div>
 
         <div className="text-sm text-gray-500 mb-4 p-3 bg-blue-50 rounded-lg">
-          💡 <strong>Tip:</strong> Look at your sample dates above. For "{exampleDate}", if you know this represents 
-          <strong> month {samples.length > 0 && samples[0].length >= 2 ? samples[0].substring(0, 2) : 'XX'}</strong>, choose the first option. 
-          If it represents <strong> day {samples.length > 0 && samples[0].length >= 2 ? samples[0].substring(0, 2) : 'XX'}</strong>, choose the second option.
+          💡 <strong>Tip:</strong> Look at your sample dates above. For "{exampleDate}", if you know this follows 
+          <strong> {option1.description.toLowerCase()}</strong>, choose the first option. 
+          If it follows <strong> {option2.description.toLowerCase()}</strong>, choose the second option.
         </div>
       </Card>
 

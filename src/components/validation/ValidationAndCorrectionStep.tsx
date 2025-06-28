@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button } from '../ui';
 import { MappingUtils, DateParser, ValidationService, type ErrorPattern, type BulkCorrectionSummary } from '../../services/mappingService';
+import { DatePatternAnalyzer } from '../../utils/datePatternAnalyzer';
 import { DataCorrectionStep } from './DataCorrectionStep';
 import { DateFormatSelectionStep } from './DateFormatSelectionStep';
 import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
@@ -370,12 +371,14 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
   /**
    * Check for ambiguous dates across ALL optionalDate fields in the entire dataset
-   * Uses improved global detection - only shows modal if truly ambiguous after auto-detection
+   * Uses NEW comprehensive pattern analyzer - performs dataset-level analysis
    */
   const checkForAmbiguousDatesInMappedFields = (employees: any[]): string[] => {
+    console.log('🔍 ValidationAndCorrectionStep: Starting date pattern analysis...');
+    
     // Get ALL fields that are of type optionalDate (both standard and custom)
     const allDateFields = ValidationService.getAllDateFields();
-    // Detected optionalDate fields for date format checking
+    console.log('🔍 Detected optionalDate fields:', allDateFields);
     
     // Collect ALL date values from ALL optionalDate fields across the entire dataset
     const allDateValues: string[] = [];
@@ -393,21 +396,30 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       });
     });
     
-    // Found date values across date fields for format analysis
+    console.log('🔍 Found', allDateValues.length, 'date values across', allDateFields.length, 'optionalDate fields');
+    console.log('🔍 Sample date values:', allDateValues.slice(0, 10));
     
-    // STEP 1: Try global auto-detection first
-    const detectedFormat = DateParser.detectDateFormat(allDateValues);
+    // NEW: Use comprehensive pattern analyzer
+    const analysis = DatePatternAnalyzer.analyzeDatasetPattern(allDateValues);
+    console.log('🔍 Pattern analysis result:', analysis);
     
-    if (detectedFormat) {
+    if (analysis.autoDetectedFormat) {
       // Auto-detection successful - set the format and return no ambiguous dates
-      DateParser.setUserDateFormat(detectedFormat);
+      console.log('✅ Auto-detected format:', analysis.autoDetectedFormat, 'Reason:', analysis.reason);
+      DateParser.setUserDateFormat(analysis.autoDetectedFormat);
       return [];
     }
     
-    // STEP 2: Auto-detection failed - find truly ambiguous dates for user clarification
-    const ambiguous = DateParser.findAmbiguousDates(allDateValues);
+    if (analysis.shouldShowPicker) {
+      // Pattern analysis indicates user clarification needed
+      console.log('❓ User clarification needed. Reason:', analysis.reason);
+      console.log('📋 Providing samples:', analysis.ambiguousSamples);
+      return analysis.ambiguousSamples;
+    }
     
-    return ambiguous;
+    // No ambiguous patterns detected
+    console.log('✅ No ambiguous date patterns detected');
+    return [];
   };
 
   /**

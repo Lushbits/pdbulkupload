@@ -13,6 +13,16 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.6',
+    date: '2025-06-28',
+    features: [
+      'Fixed universal date pattern detection bug: created comprehensive DatePatternAnalyzer to perform dataset-level analysis instead of individual date checking',
+      'Resolved missing date picker for ambiguous patterns: now correctly shows format selection for cases like "01/01/2024 + 06/01/1950" and "2024-01-01 + 1950-01-06"',
+      'Enhanced DateFormatSelectionStep: added support for dash-separated year-first patterns (YYYY-MM-DD vs YYYY-DD-MM) with dynamic examples from user data',
+      'Improved date format tip clarity: replaced confusing identical-value comparisons with clear format descriptions (year-month-day vs year-day-month)'
+    ]
+  },
+  {
     version: '0.2.5',
     date: '2025-06-27',
     features: [
