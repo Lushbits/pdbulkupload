@@ -13,6 +13,17 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.7',
+    date: '2025-06-28',
+    features: [
+      'Migrated from xlsx to exceljs library eliminating prototype pollution and ReDoS vulnerabilities (CVSS 7.8 and 7.5)',
+      'Implemented name-agnostic auto-mapping supporting exact matching for any API field without hardcoded rules',
+      'Restored sophisticated pattern matching with confidence scoring and empty column detection',
+      'Fixed international character support in auto-mapping for Swedish and other Unicode characters',
+      'Achieved zero npm audit vulnerabilities and enhanced auto-mapping performance from 64% to 100%'
+    ]
+  },
+  {
     version: '0.2.6',
     date: '2025-06-28',
     features: [

@@ -78,12 +78,17 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
     try {
       console.log(`📁 Processing file: ${file.name} (${ExcelUtils.formatFileSize(file.size)})`);
 
-      // Parse the Excel file with custom fields for better auto-mapping
+      // Parse the Excel file with ALL available fields for name-agnostic auto-mapping
       const result = await ExcelUtils.parseFile(file, {
         onProgress: (progressValue) => {
           setProgress(progressValue);
         },
-        customFields: ValidationService.getCustomFields(),
+        customFields: ValidationService.getCustomFields(), // Legacy compatibility
+        allFields: ValidationService.getAllAvailableFields().map(field => ({
+          name: field.field,
+          displayName: field.displayName,
+          isCustom: field.isCustom
+        })), // NEW: All API fields for exact name matching
       });
 
       if (result.success && result.data && result.columnMappings) {

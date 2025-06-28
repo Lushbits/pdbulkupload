@@ -60,10 +60,19 @@ export const AUTO_MAPPING_RULES = {
     'ssn', 'social security', 'social security number', 'social',
     'national id', 'personal number', 'cpr', 'tax id', 'taxid'
   ],
+  salaryIdentifier: [
+    'salary identifier', 'salary id', 'salaryid', 'salary number',
+    'payroll identifier', 'pay id', 'payroll id', 'payid', 'payrollid',
+    'payroll number', 'employee id', 'emp id', 'employeeid', 'staff id', 'worker id'
+  ],
+  jobTitle: [
+    'job title', 'title', 'position', 'role', 'job role',
+    'job position', 'position title', 'work title', 'function',
+    'designation', 'rank', 'post'
+  ],
   payrollId: [
     'payroll identifier', 'pay id', 'payroll id', 'payid', 'payrollid',
-    'salary id', 'salaryid', 'salary identifier', 'payroll number',
-    'employee id', 'emp id', 'employeeid', 'staff id', 'worker id'
+    'payroll number', 'employee number', 'emp number', 'staff number', 'worker number'
   ],
   departments: [
     'departments', 'department', 'dept', 'depts',

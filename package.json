@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@types/react-router-dom": "^5.3.3",
+    "exceljs": "^4.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2",
-    "wouter": "^3.7.1",
-    "xlsx": "^0.18.5"
+    "wouter": "^3.7.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",

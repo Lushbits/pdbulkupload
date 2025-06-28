@@ -9,20 +9,22 @@
  * - Memory-efficient processing
  * - Timezone-safe date parsing using display text
  * 
+ * SECURITY UPDATE:
+ * Migrated from 'xlsx' library (vulnerable to prototype pollution and ReDoS)
+ * to 'exceljs' library for improved security and maintenance.
+ * 
  * DATE PARSING APPROACH:
- * This service uses cellText: true and cellDates: false in SheetJS configuration
- * to avoid the notorious "off by one day" Excel date issue. Instead of letting
- * SheetJS convert Excel serial numbers to JavaScript Date objects (which introduces
- * timezone conversions), we read the formatted display text that users actually see
- * in their Excel file and parse it directly. This ensures deterministic results
- * that match user expectations.
+ * This service reads the formatted display text that users actually see
+ * in their Excel file and parses it directly. This ensures deterministic results
+ * that match user expectations and avoids timezone conversion issues.
  */
 
-import * as XLSX from 'xlsx';
+import * as ExcelJS from 'exceljs';
 import type {
   ParsedExcelData,
   ExcelColumnMapping,
   ValidationError,
+  PlandayEmployeeCreateRequest,
 } from '../types/planday';
 import { VALIDATION_CONFIG } from '../constants';
 import { AUTO_MAPPING_RULES } from '../constants/autoMappingRules';
@@ -32,6 +34,7 @@ export interface ExcelParseOptions {
   maxFileSize?: number;
   onProgress?: (progress: number) => void;
   customFields?: Array<{ name: string; description: string }>;
+  allFields?: Array<{ name: string; displayName: string; isCustom: boolean }>;
   // Date parsing now handled in MappingService
 }
 
@@ -44,13 +47,13 @@ export interface ExcelParseResult {
 
 /**
  * Excel Parser Class
- * Handles all Excel file processing operations
+ * Handles all Excel file processing operations using ExcelJS
  */
 export class ExcelParser {
   // Date format detection moved to MappingService
 
   /**
-   * Parse Excel file and extract employee data
+   * Main parsing method that matches the expected interface
    */
   static async parseFile(
     file: File,
@@ -75,110 +78,19 @@ export class ExcelParser {
 
       onProgress?.(10); // File validation complete
 
-      // Read file as array buffer
-      // File reading in progress
-      const arrayBuffer = await this.readFileAsArrayBuffer(file);
+      // Parse the Excel file with comprehensive analysis
+      const data = await this.parseExcelFile(file, maxRows);
       
-      onProgress?.(30); // File read complete
-
-      // Parse workbook
-      // Using cellText: true and cellDates: false to avoid timezone conversion issues
-      // This reads the formatted display text that users actually see in Excel
-      const workbook = XLSX.read(arrayBuffer, {
-        type: 'array',
-        cellText: true,   // Get formatted display text (what user sees)
-        cellDates: false, // Avoid automatic date conversion and timezone issues
-        raw: false,       // Force string parsing to prevent scientific notation
-      });
-
-      onProgress?.(50); // Workbook parsed
-
-      // Get first worksheet
-      const worksheetName = workbook.SheetNames[0];
-      if (!worksheetName) {
-        return {
-          success: false,
-          error: 'No worksheets found in the Excel file.',
-        };
-      }
-
-      const worksheet = workbook.Sheets[worksheetName];
-      
-      onProgress?.(70); // Worksheet selected
-
-      // Extract data from worksheet with special handling for phone numbers
-      
-      // First, try to get raw text values to preserve phone number precision
-      let rawData: any[][];
-      try {
-        // Get the range of the worksheet to read cell by cell
-        const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-        rawData = [];
-        
-        for (let row = range.s.r; row <= range.e.r; row++) {
-          const rowData: any[] = [];
-          for (let col = range.s.c; col <= range.e.c; col++) {
-            const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-            const cell = worksheet[cellAddress];
-            
-            if (!cell) {
-              rowData.push('');
-              continue;
-            }
-            
-            // For cells that might be phone numbers (numeric but should be text)
-            if (cell.t === 'n' && cell.w && (cell.w.includes('E+') || cell.w.includes('e+'))) {
-              // Use the display value (cell.w) instead of the numeric value to preserve precision
-              rowData.push(cell.w);
-              // Preserved phone number precision
-            } else if (cell.t === 'n' && cell.v && cell.v > 1000000000) {
-              // Large numbers that might be phone numbers - use raw value as string
-              rowData.push(cell.v.toString());
-            } else if (cell.w !== undefined) {
-              // Use formatted/display value
-              rowData.push(cell.w);
-            } else {
-              // Use raw value
-              rowData.push(cell.v || '');
-            }
-          }
-          rawData.push(rowData);
-        }
-      } catch (error) {
-        console.warn('⚠️ Cell-by-cell reading failed, falling back to standard method:', error);
-        // Fallback to standard method
-        rawData = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          raw: false, // Prevent scientific notation
-          defval: '', // Default value for empty cells
-          dateNF: 'yyyy-mm-dd', // Standardize date format
-        }) as any[][];
-      }
-
-      if (rawData.length === 0) {
-        return {
-          success: false,
-          error: 'The Excel file appears to be empty.',
-        };
-      }
-
-      onProgress?.(85); // Data extracted
-
-      // Process the data (no date format detection here)
-      const processedData = this.processRawData(rawData, maxRows, file);
-      
-      onProgress?.(95); // Data processed
+      onProgress?.(70); // Data extracted and analyzed
 
       // Generate column mappings with custom fields
-      const columnMappings = this.generateColumnMappings(processedData.headers, customFields);
+      const columnMappings = this.generateColumnMappings(data.headers, customFields, options.allFields);
 
       onProgress?.(100); // Complete
 
-      // Excel parsing complete
-
       return {
         success: true,
-        data: processedData,
+        data,
         columnMappings,
       };
 
@@ -195,6 +107,162 @@ export class ExcelParser {
   }
 
   /**
+   * Parse Excel file with comprehensive analysis and auto-mapping
+   */
+  static async parseExcelFile(file: File, maxRows = 0): Promise<ParsedExcelData> {
+    try {
+      console.log(`📊 Parsing Excel file: ${file.name} (${this.formatFileSize(file.size)})`);
+      
+      const workbook = new ExcelJS.Workbook();
+      const arrayBuffer = await file.arrayBuffer();
+      await workbook.xlsx.load(arrayBuffer);
+      
+      const worksheet = workbook.getWorksheet(1);
+      if (!worksheet) {
+        throw new Error('No worksheet found in the Excel file');
+      }
+
+      // Get worksheet dimensions
+      const rowCount = worksheet.rowCount;
+      const columnCount = worksheet.columnCount;
+      
+      console.log(`📋 Worksheet dimensions: ${rowCount} rows x ${columnCount} columns`);
+
+      // Extract all data as a 2D array
+      const rawData: any[][] = [];
+      
+      // Read all rows
+      for (let rowNum = 1; rowNum <= rowCount; rowNum++) {
+        const row = worksheet.getRow(rowNum);
+        const rowData: any[] = [];
+        
+        // Read all columns in this row
+        for (let colNum = 1; colNum <= columnCount; colNum++) {
+          const cell = row.getCell(colNum);
+          const cellValue = this.extractCellValue(cell);
+          rowData.push(cellValue);
+        }
+        
+        rawData.push(rowData);
+      }
+
+      // Check for empty file
+      if (rawData.length === 0) {
+        throw new Error('The Excel file appears to be empty.');
+      }
+
+      // Extract headers from first row
+      const originalHeaders = rawData[0].map(header => header?.toString().trim() || '');
+      
+      // Validate headers
+      if (originalHeaders.length === 0 || originalHeaders.every(h => !h)) {
+        throw new Error('No valid column headers found in the first row.');
+      }
+
+      // Check for duplicate column names
+      const headerCounts = new Map<string, number[]>();
+      originalHeaders.forEach((header, index) => {
+        if (!headerCounts.has(header)) {
+          headerCounts.set(header, []);
+        }
+        headerCounts.get(header)!.push(index + 1); // Use 1-based column numbers for user display
+      });
+
+      // Find duplicates
+      const duplicates = Array.from(headerCounts.entries())
+        .filter(([_, positions]) => positions.length > 1)
+        .map(([header, positions]) => ({
+          name: header,
+          positions: positions,
+          columns: positions.map(pos => this.getExcelColumnLetter(pos - 1)).join(', ')
+        }));
+
+      if (duplicates.length > 0) {
+        const duplicateMessages = duplicates.map(dup => 
+          `"${dup.name}" (appears in columns ${dup.columns})`
+        ).join(', ');
+        
+        throw new Error(
+          `Duplicate column names found: ${duplicateMessages}. ` +
+          `Please rename your columns to have unique names and re-upload your file.`
+        );
+      }
+
+      // Extract data rows (skip header row)
+      const dataRows = rawData.slice(1);
+
+      // Limit rows if necessary
+      const limitedRows = maxRows > 0 ? dataRows.slice(0, maxRows) : dataRows;
+
+      // Clean and normalize data
+      const cleanedRows = limitedRows.map((row) => {
+        return originalHeaders.map((_, colIndex) => {
+          const cellValue = row[colIndex];
+          return this.normalizeCellValue(cellValue);
+        });
+      });
+
+      // Filter out completely empty rows
+      const nonEmptyRows = cleanedRows.filter(row => 
+        row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== '')
+      );
+
+      // Analyze column data density to identify empty columns
+      const columnAnalysis = originalHeaders.map((header, colIndex) => {
+        const columnData = nonEmptyRows.map(row => row[colIndex]);
+        const nonEmptyValues = columnData.filter(cell => 
+          cell !== null && cell !== undefined && cell.toString().trim() !== ''
+        );
+        
+        return {
+          index: colIndex,
+          header,
+          totalValues: columnData.length,
+          nonEmptyValues: nonEmptyValues.length,
+          dataPercentage: columnData.length > 0 ? (nonEmptyValues.length / columnData.length) * 100 : 0,
+          isEmpty: nonEmptyValues.length === 0,
+          sampleData: nonEmptyValues.slice(0, 3)
+        };
+      });
+
+      // Filter out completely empty columns
+      const columnsWithData = columnAnalysis.filter(col => !col.isEmpty);
+      const emptyColumns = columnAnalysis.filter(col => col.isEmpty);
+      
+      // Only log if there are empty columns to discard
+      if (emptyColumns.length > 0) {
+        console.log(`🗑️ Discarded ${emptyColumns.length} empty columns: ${emptyColumns.map(col => col.header).join(', ')}`);
+      }
+
+      // Keep only headers and data for columns that have actual data
+      const headers = columnsWithData.map(col => col.header);
+      const filteredRows = nonEmptyRows.map(row => 
+        columnsWithData.map(col => row[col.index])
+      );
+
+      const result: ParsedExcelData = {
+        headers,
+        rows: filteredRows,
+        totalRows: filteredRows.length,
+        fileName: file.name,
+        fileSize: file.size,
+        columnAnalysis, // Include analysis for debugging/info
+        discardedColumns: emptyColumns.map(col => col.header)
+      };
+
+      console.log(`✅ Excel parsing complete: ${result.totalRows} rows, ${result.headers.length} columns with data`);
+
+      return result;
+    } catch (error) {
+      console.error('❌ Excel parsing failed:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to parse Excel file. Please ensure it is a valid .xlsx file.');
+    }
+  }
+
+  /**
    * Validate Excel file before processing
    */
   private static validateFile(file: File, maxFileSize: number): string | null {
@@ -202,176 +270,38 @@ export class ExcelParser {
     if (file.size > maxFileSize) {
       const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
       const fileSizeMB = Math.round(file.size / (1024 * 1024));
-      return `File size (${fileSizeMB}MB) exceeds maximum allowed size (${maxSizeMB}MB).`;
+      return `File size (${fileSizeMB}MB) exceeds the maximum allowed size of ${maxSizeMB}MB.`;
     }
 
-    // Check file type
-    const fileExtension = file.name.toLowerCase().split('.').pop();
-    if (!VALIDATION_CONFIG.SUPPORTED_FILE_TYPES.some(type => type.substring(1) === fileExtension)) {
-      return `Unsupported file type. Please upload ${VALIDATION_CONFIG.SUPPORTED_FILE_TYPES.join(' or ')} files.`;
-    }
-
-    // Check file name
-    if (!file.name || file.name.length < 5) {
-      return 'Invalid file name. Please ensure the file has a proper name.';
-    }
-
-    return null; // No validation errors
-  }
-
-  /**
-   * Read file as array buffer with progress tracking
-   */
-  private static readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = (event) => {
-        if (event.target?.result instanceof ArrayBuffer) {
-          resolve(event.target.result);
-        } else {
-          reject(new Error('Failed to read file as ArrayBuffer'));
-        }
-      };
-      
-      reader.onerror = () => {
-        reject(new Error('File reading failed'));
-      };
-      
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  /**
-   * Process raw Excel data into structured format
-   */
-  private static processRawData(
-    rawData: any[][],
-    maxRows: number,
-    file: File
-  ): ParsedExcelData {
-    // Extract headers (first row)
-    const originalHeaders = rawData[0]?.map((header, index) => {
-      // Handle empty or undefined headers
-      if (!header || header.toString().trim() === '') {
-        return `Column ${index + 1}`;
-      }
-      return this.normalizeHeader(header.toString());
-    }) || [];
-
-    // Check for duplicate column names
-    const headerCounts = new Map<string, number[]>();
-    originalHeaders.forEach((header, index) => {
-      if (!headerCounts.has(header)) {
-        headerCounts.set(header, []);
-      }
-      headerCounts.get(header)!.push(index + 1); // Use 1-based column numbers for user display
-    });
-
-    // Find duplicates
-    const duplicates = Array.from(headerCounts.entries())
-      .filter(([_, positions]) => positions.length > 1)
-      .map(([header, positions]) => ({
-        name: header,
-        positions: positions,
-        columns: positions.map(pos => this.getExcelColumnLetter(pos - 1)).join(', ')
-      }));
-
-    if (duplicates.length > 0) {
-      const duplicateMessages = duplicates.map(dup => 
-        `"${dup.name}" (appears in columns ${dup.columns})`
-      ).join(', ');
-      
-      throw new Error(
-        `Duplicate column names found: ${duplicateMessages}. ` +
-        `Please rename your columns to have unique names and re-upload your file.`
-      );
-    }
-
-    // Extract data rows (skip header row)
-    const dataRows = rawData.slice(1);
-
-    // Limit rows if necessary
-    const limitedRows = maxRows > 0 ? dataRows.slice(0, maxRows) : dataRows;
-
-    // Clean and normalize data
-    const cleanedRows = limitedRows.map((row) => {
-      return originalHeaders.map((_, colIndex) => {
-        const cellValue = row[colIndex];
-        return this.normalizeCellValue(cellValue);
-      });
-    });
-
-    // Filter out completely empty rows
-    const nonEmptyRows = cleanedRows.filter(row => 
-      row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== '')
-    );
-
-    // Analyze column data density to identify empty columns
-    const columnAnalysis = originalHeaders.map((header, colIndex) => {
-      const columnData = nonEmptyRows.map(row => row[colIndex]);
-      const nonEmptyValues = columnData.filter(cell => 
-        cell !== null && cell !== undefined && cell.toString().trim() !== ''
-      );
-      
-      return {
-        index: colIndex,
-        header,
-        totalValues: columnData.length,
-        nonEmptyValues: nonEmptyValues.length,
-        dataPercentage: columnData.length > 0 ? (nonEmptyValues.length / columnData.length) * 100 : 0,
-        isEmpty: nonEmptyValues.length === 0,
-        sampleData: nonEmptyValues.slice(0, 3)
-      };
-    });
-
-    // Filter out completely empty columns
-    const columnsWithData = columnAnalysis.filter(col => !col.isEmpty);
-    const emptyColumns = columnAnalysis.filter(col => col.isEmpty);
+    // Check file extension
+    const fileName = file.name.toLowerCase();
+    const supportedExtensions = VALIDATION_CONFIG.SUPPORTED_FILE_TYPES;
+    const hasValidExtension = supportedExtensions.some(ext => fileName.endsWith(ext));
     
-    // Only log if there are empty columns to discard
-    if (emptyColumns.length > 0) {
-      console.log(`🗑️ Discarded ${emptyColumns.length} empty columns: ${emptyColumns.map(col => col.header).join(', ')}`);
+    if (!hasValidExtension) {
+      return `Invalid file type. Please upload an Excel file (${supportedExtensions.join(', ')}).`;
     }
 
-    // Keep only headers and data for columns that have actual data
-    const headers = columnsWithData.map(col => col.header);
-    const filteredRows = nonEmptyRows.map(row => 
-      columnsWithData.map(col => row[col.index])
-    );
-
-    const result = {
-      headers,
-      rows: filteredRows,
-      totalRows: filteredRows.length,
-      fileName: file.name,
-      fileSize: file.size,
-      columnAnalysis, // Include analysis for debugging/info
-      discardedColumns: emptyColumns.map(col => col.header)
-    };
-
-    // Data processing complete
-
-    return result;
+    return null;
   }
 
   /**
-   * Convert column index to Excel column letter (0=A, 1=B, 25=Z, 26=AA, etc.)
+   * Convert column index to Excel column letter (A, B, C, ... Z, AA, AB, ...)
    */
   private static getExcelColumnLetter(columnIndex: number): string {
-    let result = '';
+    let letter = '';
     let index = columnIndex;
     
     while (index >= 0) {
-      result = String.fromCharCode(65 + (index % 26)) + result;
+      letter = String.fromCharCode(65 + (index % 26)) + letter;
       index = Math.floor(index / 26) - 1;
     }
     
-    return result;
+    return letter;
   }
 
   /**
-   * Normalize header text for consistent matching
+   * Normalize header names for better matching
    * Preserves international characters (ä, ö, å, ü, etc.)
    */
   private static normalizeHeader(header: string): string {
@@ -388,270 +318,426 @@ export class ExcelParser {
   }
 
   /**
-   * Normalize cell values with proper type handling
+   * Normalize cell values for consistent processing
    */
   private static normalizeCellValue(value: any): any {
-    // Handle null/undefined
+    // Handle null, undefined, or empty values
     if (value === null || value === undefined) {
-      return null;
+      return '';
     }
 
+    // Convert to string for processing
+    let strValue = value.toString().trim();
+    
     // Handle empty strings
-    if (typeof value === 'string' && value.trim() === '') {
-      return null;
+    if (strValue === '') {
+      return '';
     }
 
-    // Since we're using cellText: true, we should primarily get strings
-    // Date objects shouldn't appear with cellDates: false, but handle them just in case
-    if (value instanceof Date) {
-      // Use UTC methods to avoid timezone conversion issues
-      const year = value.getUTCFullYear();
-      const month = String(value.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(value.getUTCDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
+    // Handle boolean values
+    if (typeof value === 'boolean') {
+      return value.toString();
     }
 
-    // Handle numbers (should be rare with cellText: true, but keep for safety)
+    // Handle numeric values that might be phone numbers
     if (typeof value === 'number') {
-      // Don't try to convert numbers to dates automatically anymore
-      // Let the string-based date parsing handle formatted date strings instead
-      return value;
-    }
-
-    // Handle strings (this is now the primary path for all Excel data)
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      
-      // Handle scientific notation from Excel (common with phone numbers)
-      if (trimmed.includes('E+') || trimmed.includes('e+')) {
-        try {
-          // Use more precise conversion for scientific notation
-          const scientificMatch = trimmed.match(/^(\d+\.?\d*)[eE]\+(\d+)$/);
-          if (scientificMatch) {
-            const [, mantissa, exponent] = scientificMatch;
-            const mantissaNum = parseFloat(mantissa);
-            const exp = parseInt(exponent, 10);
-            
-            if (!isNaN(mantissaNum) && !isNaN(exp) && mantissaNum > 1 && exp >= 6) {
-              // For phone numbers, try to reconstruct the original precision
-              const phoneNumber = (mantissaNum * Math.pow(10, exp)).toFixed(0);
-              return phoneNumber;
-            }
-          }
-          
-          // Fallback to regular parsing
-          const numericValue = parseFloat(trimmed);
-          if (!isNaN(numericValue) && numericValue > 1000000) { // Likely a phone number
-            const phoneNumber = Math.round(numericValue).toString();
-            return phoneNumber;
-          }
-        } catch (error) {
-          console.warn(`⚠️ Could not convert scientific notation: ${trimmed}`);
-        }
+      // Very large numbers that might be phone numbers
+      if (value > 1000000000000) {
+        return value.toString();
       }
       
-      // Return as-is - date parsing will happen later in MappingService
-      return trimmed;
+      // Check for scientific notation in string representation
+      if (strValue.includes('e+') || strValue.includes('E+')) {
+        // This is likely a phone number that got converted to scientific notation
+        // Convert back to full number string
+        return value.toFixed(0);
+      }
+      
+      return strValue;
     }
 
-    // Return as-is for other types
-    return value;
+    // Handle string values that might contain unwanted characters
+    // Remove common Excel artifacts
+    strValue = strValue
+      .replace(/[\u0000-\u001F\u007F]/g, '') // Remove control characters
+      .replace(/\u00A0/g, ' ') // Replace non-breaking spaces with regular spaces
+      .trim();
+
+    // Handle phone numbers that might have been formatted
+    // Look for patterns like scientific notation in strings
+    if (/^\d+\.?\d*[eE][+-]?\d+$/.test(strValue)) {
+      try {
+        const num = parseFloat(strValue);
+        if (!isNaN(num) && num > 1000000000) {
+          return num.toFixed(0);
+        }
+      } catch (e) {
+        // If parsing fails, return the original string
+      }
+    }
+
+    return strValue;
   }
 
-  // Date parsing removed from ExcelParser - handled in MappingService
-
-  // All date parsing logic moved to MappingService for proper context-aware handling
-
   /**
-   * Generate automatic column mappings
-   * Now includes custom fields from Planday for more intelligent auto-mapping
+   * Generate automatic column mappings with sophisticated pattern matching
+   * PRIORITY ORDER:
+   * 1. Exact field name matching against ALL API fields (name-agnostic)
+   * 2. Pattern-based fuzzy matching against AUTO_MAPPING_RULES  
+   * 3. Custom field description matching
    */
-  private static generateColumnMappings(headers: string[], customFields?: Array<{ name: string; description: string }>): ExcelColumnMapping[] {
+  private static generateColumnMappings(
+    headers: string[], 
+    customFields?: Array<{ name: string; description: string }>,
+    allFields?: Array<{ name: string; displayName: string; isCustom: boolean }>
+  ): ExcelColumnMapping[] {
     const mappings: ExcelColumnMapping[] = [];
+    const usedFields = new Set<string>();
+
+    console.log(`🔍 Starting name-agnostic auto-mapping for ${headers.length} columns`);
+    if (allFields) {
+      console.log(`📋 Available API fields: ${allFields.length} (${allFields.filter(f => f.isCustom).length} custom, ${allFields.filter(f => !f.isCustom).length} standard)`);
+    }
 
     headers.forEach((header) => {
       const normalizedHeader = this.normalizeHeader(header);
-      let plandayField: string | null = null;
-      let plandayFieldDisplayName: string | null = null;
+      const originalHeader = header.toLowerCase().trim();
+      let bestMatch: { field: string; displayName: string; confidence: number } | null = null;
       let isRequired = false;
 
-      // 1. PRIORITY 1: Check for exact field name matches (field-agnostic)
-      for (const [field] of Object.entries(AUTO_MAPPING_RULES)) {
-        const normalizedFieldName = field.toLowerCase();
-        
-        // Exact match with field name gets highest priority
-        if (normalizedHeader === normalizedFieldName) {
-          plandayField = field;
-          plandayFieldDisplayName = field;
-          break;
+      // 🎯 PRIORITY 1: Exact field name matching against ALL API fields (name-agnostic)
+      if (allFields) {
+        for (const apiField of allFields) {
+          const apiFieldName = apiField.name.toLowerCase().trim();
+          
+          // Try exact match with original header (preserves international characters)
+          if (originalHeader === apiFieldName && !usedFields.has(apiField.name)) {
+            bestMatch = { 
+              field: apiField.name, 
+              displayName: apiField.displayName, 
+              confidence: 1.0 
+            };
+            console.log(`🎯 EXACT MATCH: "${header}" → "${apiField.name}" (${apiField.isCustom ? 'custom' : 'standard'} field)`);
+            break;
+          }
         }
       }
 
-      // 2. PRIORITY 2: Fall back to pattern-based matching if no exact field name match
-      if (!plandayField) {
+      // 🔍 PRIORITY 2: Exact field name matching against AUTO_MAPPING_RULES (for backwards compatibility)
+      if (!bestMatch) {
+        for (const [field] of Object.entries(AUTO_MAPPING_RULES)) {
+          const normalizedFieldName = field.toLowerCase();
+          
+          if (normalizedHeader === normalizedFieldName && !usedFields.has(field)) {
+            bestMatch = { field, displayName: field, confidence: 1.0 };
+            console.log(`🎯 RULES EXACT: "${header}" → "${field}" (pattern rules)`);
+            break;
+          }
+        }
+      }
+
+      // 📝 PRIORITY 3: Pattern-based fuzzy matching with confidence scoring
+      if (!bestMatch) {
         for (const [field, patterns] of Object.entries(AUTO_MAPPING_RULES)) {
-          if (patterns.some(pattern => normalizedHeader.includes(pattern))) {
-            plandayField = field;
-            // For standard fields, use raw field name (consistent with other components)
-            plandayFieldDisplayName = field;
-            break;
+          if (usedFields.has(field)) continue;
+
+          const confidence = this.calculateMappingConfidence(normalizedHeader, patterns);
+          
+          if (confidence > 0.7) { // High confidence threshold
+            if (!bestMatch || confidence > bestMatch.confidence) {
+              bestMatch = { field, displayName: field, confidence };
+            }
           }
+        }
+        
+        if (bestMatch) {
+          console.log(`🔍 PATTERN MATCH: "${header}" → "${bestMatch.field}" (confidence: ${bestMatch.confidence.toFixed(2)})`);
         }
       }
 
-      // 3. If no standard field matched, try to match against custom fields
-      if (!plandayField && customFields) {
+      // 🏷️ PRIORITY 4: Custom field description matching (legacy compatibility)
+      if (!bestMatch && customFields) {
         for (const customField of customFields) {
-          const normalizedCustomFieldName = this.normalizeHeader(customField.name);
-          const normalizedCustomFieldDescription = this.normalizeHeader(customField.description);
+          const customFieldName = customField.name.toLowerCase();
+          const customFieldDesc = (customField.description || '').toLowerCase();
           
-          // Try exact match with field name
-          if (normalizedHeader === normalizedCustomFieldName) {
-            plandayField = customField.name;
-            plandayFieldDisplayName = customField.description; // Use description as display name
+          // Try exact match on custom field name or description
+          if (originalHeader === customFieldName || 
+              normalizedHeader === customFieldDesc) {
+            bestMatch = { 
+              field: customField.name, 
+              displayName: customField.description || customField.name, 
+              confidence: 0.9 
+            };
+            console.log(`🏷️ CUSTOM DESC: "${header}" → "${customField.name}" (description match)`);
             break;
           }
           
-          // Try exact match with field description
-          if (normalizedHeader === normalizedCustomFieldDescription) {
-            plandayField = customField.name;
-            plandayFieldDisplayName = customField.description;
-            break;
-          }
-          
-          // Try contains match (for flexibility)
-          if (normalizedHeader.includes(normalizedCustomFieldName) || normalizedCustomFieldName.includes(normalizedHeader)) {
-            plandayField = customField.name;
-            plandayFieldDisplayName = customField.description;
-            break;
+          // Try partial matching on custom field description
+          if (customFieldDesc.includes(normalizedHeader) || 
+              normalizedHeader.includes(customFieldDesc)) {
+            const confidence = Math.max(
+              customFieldDesc.length > 0 ? normalizedHeader.length / customFieldDesc.length : 0,
+              normalizedHeader.length > 0 ? customFieldDesc.length / normalizedHeader.length : 0
+            ) * 0.8; // Scale down for partial matches
+            
+            if (confidence > 0.5 && (!bestMatch || confidence > bestMatch.confidence)) {
+              bestMatch = { 
+                field: customField.name, 
+                displayName: customField.description || customField.name, 
+                confidence 
+              };
+            }
           }
         }
       }
 
-      // Check if field is required
-      if (plandayField && VALIDATION_CONFIG.FALLBACK_REQUIRED_FIELDS.includes(plandayField as any)) {
-        isRequired = true;
+      // Determine if field is required
+      if (bestMatch) {
+        isRequired = ['firstName', 'lastName', 'userName', 'departments'].includes(bestMatch.field);
+        usedFields.add(bestMatch.field);
+      } else {
+        console.log(`❌ NO MATCH: "${header}" - no matching API field found`);
       }
 
+      // Create mapping entry
       mappings.push({
         excelColumn: header,
-        plandayField: plandayField as any,
-        plandayFieldDisplayName: plandayFieldDisplayName || undefined,
+        plandayField: (bestMatch?.field as keyof PlandayEmployeeCreateRequest) || ('' as any),
+        plandayFieldDisplayName: bestMatch?.displayName,
         isRequired,
-        isMapped: !!plandayField,
+        isMapped: !!bestMatch,
       });
     });
+
+    const mappedCount = mappings.filter(m => m.isMapped).length;
+    console.log(`🎯 Name-agnostic auto-mapping complete: ${mappedCount}/${headers.length} columns mapped`);
 
     return mappings;
   }
 
   /**
-   * Validate parsed data for common issues
+   * Calculate mapping confidence between header and patterns using sophisticated matching
+   */
+  private static calculateMappingConfidence(normalizedHeader: string, patterns: readonly string[]): number {
+    let maxConfidence = 0;
+
+    for (const pattern of patterns) {
+      const normalizedPattern = pattern.toLowerCase();
+      
+      // Exact match
+      if (normalizedHeader === normalizedPattern) {
+        return 1.0;
+      }
+      
+      // Contains pattern (high confidence)
+      if (normalizedHeader.includes(normalizedPattern)) {
+        const confidence = 0.9 * (normalizedPattern.length / normalizedHeader.length);
+        maxConfidence = Math.max(maxConfidence, confidence);
+      }
+      
+      // Pattern contains header (medium confidence)
+      if (normalizedPattern.includes(normalizedHeader)) {
+        const confidence = 0.8 * (normalizedHeader.length / normalizedPattern.length);
+        maxConfidence = Math.max(maxConfidence, confidence);
+      }
+      
+      // Fuzzy matching for similar words
+      const similarity = this.calculateStringSimilarity(normalizedHeader, normalizedPattern);
+      if (similarity > 0.7) {
+        const confidence = 0.7 * similarity;
+        maxConfidence = Math.max(maxConfidence, confidence);
+      }
+      
+      // Word-based matching (e.g., "first name" matches "name first")
+      const headerWords = normalizedHeader.split(/\s+/);
+      const patternWords = normalizedPattern.split(/\s+/);
+      
+      if (headerWords.length > 1 && patternWords.length > 1) {
+        const commonWords = headerWords.filter(word => patternWords.includes(word));
+        if (commonWords.length > 0) {
+          const confidence = 0.6 * (commonWords.length / Math.max(headerWords.length, patternWords.length));
+          maxConfidence = Math.max(maxConfidence, confidence);
+        }
+      }
+    }
+
+    return maxConfidence;
+  }
+
+  /**
+   * Calculate string similarity using Levenshtein distance
+   */
+  private static calculateStringSimilarity(str1: string, str2: string): number {
+    const matrix: number[][] = [];
+    const len1 = str1.length;
+    const len2 = str2.length;
+
+    if (len1 === 0) return len2 === 0 ? 1 : 0;
+    if (len2 === 0) return 0;
+
+    // Initialize matrix
+    for (let i = 0; i <= len1; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= len2; j++) {
+      matrix[0][j] = j;
+    }
+
+    // Fill matrix
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,      // deletion
+          matrix[i][j - 1] + 1,      // insertion
+          matrix[i - 1][j - 1] + cost // substitution
+        );
+      }
+    }
+
+    const maxLen = Math.max(len1, len2);
+    return (maxLen - matrix[len1][len2]) / maxLen;
+  }
+
+  /**
+   * Validate parsed Excel data
    */
   static validateParsedData(data: ParsedExcelData): ValidationError[] {
     const errors: ValidationError[] = [];
 
-    // Check for empty data
-    if (data.totalRows === 0) {
+    // Check if data is empty
+    if (!data.rows || data.rows.length === 0) {
       errors.push({
-        field: 'general',
-        value: null,
-        message: 'The Excel file contains no data rows.',
+        field: 'data',
+        message: 'No data rows found in the Excel file',
         rowIndex: -1,
+        value: '',
         severity: 'error',
       });
       return errors;
     }
 
-    // Check for too many rows
-    if (data.totalRows > VALIDATION_CONFIG.MAX_EMPLOYEES) {
-      errors.push({
-        field: 'general',
-        value: data.totalRows,
-        message: `Too many rows (${data.totalRows}). Maximum allowed is ${VALIDATION_CONFIG.MAX_EMPLOYEES}.`,
-        rowIndex: -1,
-        severity: 'error',
-      });
-    }
-
-    // Check for empty headers
-    const emptyHeaders = data.headers.filter((header) => 
-      !header || header.trim() === '' || header.startsWith('Column ')
-    );
-
-    if (emptyHeaders.length > 0) {
+    // Check if headers are present
+    if (!data.headers || data.headers.length === 0) {
       errors.push({
         field: 'headers',
-        value: emptyHeaders.length,
-        message: `Found ${emptyHeaders.length} empty or unnamed columns. Please ensure all columns have descriptive headers.`,
+        message: 'No headers found in the Excel file',
         rowIndex: -1,
-        severity: 'warning',
+        value: '',
+        severity: 'error',
       });
+      return errors;
     }
 
     // Check for duplicate headers
-    const headerCounts = data.headers.reduce((acc, header) => {
-      acc[header] = (acc[header] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const headerCounts = new Map<string, number>();
+    data.headers.forEach((header, index) => {
+      const normalized = header.toLowerCase().trim();
+      const count = headerCounts.get(normalized) || 0;
+      headerCounts.set(normalized, count + 1);
+      
+      if (count > 0) {
+        errors.push({
+          field: `header_${index}`,
+          message: `Duplicate header found: "${header}"`,
+          rowIndex: -1,
+          value: header,
+          severity: 'warning',
+        });
+      }
+    });
 
-    const duplicateHeaders = Object.entries(headerCounts)
-      .filter(([_, count]) => count > 1)
-      .map(([header, _]) => header);
+    // Check for completely empty rows
+    data.rows.forEach((row, index) => {
+      const hasData = row.some(cell => cell !== null && cell !== undefined && cell !== '');
+      if (!hasData) {
+        errors.push({
+          field: 'row',
+          message: 'Empty row found',
+          rowIndex: index,
+          value: '',
+          severity: 'warning',
+        });
+      }
+    });
 
-    if (duplicateHeaders.length > 0) {
-      errors.push({
-        field: 'headers',
-        value: duplicateHeaders,
-        message: `Found duplicate column headers: ${duplicateHeaders.join(', ')}. Each column should have a unique name.`,
-        rowIndex: -1,
-        severity: 'warning',
-      });
-    }
-
+    // Check for rows with mismatched column count
+    data.rows.forEach((row, index) => {
+      if (row.length !== data.headers.length) {
+        errors.push({
+          field: 'row',
+          message: `Row has ${row.length} columns but expected ${data.headers.length}`,
+          rowIndex: index,
+          value: '',
+          severity: 'warning',
+        });
+      }
+    });
 
     return errors;
   }
 
   /**
-   * Get sample data for preview (first 5 rows)
+   * Get sample data for preview
    */
   static getSampleData(data: ParsedExcelData, maxRows: number = 5): any[][] {
-    return data.rows.slice(0, maxRows);
+    const sampleRows = data.rows.slice(0, maxRows);
+    return [data.headers, ...sampleRows];
   }
 
   /**
-   * Export data back to Excel (for corrections or downloads)
+   * Export data back to Excel format using ExcelJS
    */
   static exportToExcel(data: ParsedExcelData, filename?: string): void {
-    try {
-      // Create new workbook
-      const workbook = XLSX.utils.book_new();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Sheet1');
+
+    // Add headers
+    worksheet.addRow(data.headers);
+
+    // Add data rows
+    data.rows.forEach(row => {
+      worksheet.addRow(row);
+    });
+
+    // Style the header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' }
+    };
+
+    // Auto-fit columns
+    worksheet.columns.forEach((column) => {
+      if (column.values) {
+        const lengths = column.values.map(v => v ? v.toString().length : 10);
+        const maxLength = Math.max(...lengths.filter(v => typeof v === 'number'));
+        column.width = Math.min(maxLength + 2, 50);
+      }
+    });
+
+    // Download the file
+    const finalFilename = filename || `${data.fileName.replace(/\.[^/.]+$/, '')}_processed.xlsx`;
+    
+    workbook.xlsx.writeBuffer().then(buffer => {
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
       
-      // Prepare data with headers
-      const exportData = [data.headers, ...data.rows];
-      
-      // Create worksheet
-      const worksheet = XLSX.utils.aoa_to_sheet(exportData);
-      
-      // Add worksheet to workbook
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Employee Data');
-      
-      // Generate filename
-      const exportFilename = filename || `${data.fileName.replace(/\.[^/.]+$/, '')}_processed.xlsx`;
-      
-      // Download file
-      XLSX.writeFile(workbook, exportFilename);
-      
-      console.log(`✅ Excel file exported: ${exportFilename}`);
-    } catch (error) {
-      console.error('❌ Excel export failed:', error);
-      throw new Error('Failed to export Excel file');
-    }
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = finalFilename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    });
   }
 
   /**
-   * Generate and download Excel template based on portal configuration
+   * Download a template Excel file using ExcelJS
    */
   static downloadTemplate(templateData: {
     headers: string[];
@@ -659,161 +745,184 @@ export class ExcelParser {
     instructions: Record<string, string>;
     fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
   }): void {
-    try {
-      // Create new workbook
-      const workbook = XLSX.utils.book_new();
-      
-      // Sheet 1: Employee Data Template
-      // Use clean headers without asterisks for proper import compatibility
-      const cleanHeaders = templateData.fieldOrder.map(field => field.displayName);
-      
-      const employeeData = [cleanHeaders, ...templateData.examples];
-      const employeeWorksheet = XLSX.utils.aoa_to_sheet(employeeData);
-      
-      // Style the header row with different colors for required vs optional fields
-      const headerRange = XLSX.utils.decode_range(employeeWorksheet['!ref'] || 'A1');
-      for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
-        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
-        if (!employeeWorksheet[cellAddress]) continue;
-        
-        const field = templateData.fieldOrder[col];
-        const isRequired = field?.isRequired || false;
-        const isCustom = field?.isCustom || false;
-        
-        // Different colors for required, optional, and custom fields
-        let fillColor = 'E6F3FF'; // Default blue for optional
-        if (isRequired) {
-          fillColor = 'FFE6E6'; // Light red for required
-        } else if (isCustom) {
-          fillColor = 'F0F8E8'; // Light green for custom
-        }
-        
-        employeeWorksheet[cellAddress].s = {
-          font: { bold: true },
-          fill: { fgColor: { rgb: fillColor } },
-          border: {
-            top: { style: 'thin' },
-            bottom: { style: 'thin' },
-            left: { style: 'thin' },
-            right: { style: 'thin' }
-          }
-        };
+    const workbook = new ExcelJS.Workbook();
+    
+    // Main data sheet
+    const dataSheet = workbook.addWorksheet('Employee Data');
+    
+    // Add headers
+    const headerRow = dataSheet.addRow(templateData.headers);
+    headerRow.font = { bold: true };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4A90E2' }
+    };
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+    // Add example rows
+    templateData.examples.forEach(exampleRow => {
+      dataSheet.addRow(exampleRow);
+    });
+
+    // Auto-fit columns
+    dataSheet.columns.forEach((column, index) => {
+      const header = templateData.headers[index];
+      const headerLength = header ? header.length : 10;
+      const exampleLengths = templateData.examples.map(row => 
+        row[index] ? row[index].toString().length : 0
+      );
+      const maxLength = Math.max(headerLength, ...exampleLengths);
+      column.width = Math.min(maxLength + 2, 50);
+    });
+
+    // Instructions sheet
+    const instructionsSheet = workbook.addWorksheet('Instructions');
+    
+    instructionsSheet.addRow(['Field Instructions']);
+    instructionsSheet.getRow(1).font = { bold: true, size: 16 };
+    instructionsSheet.addRow([]);
+
+    // Add field instructions
+    templateData.fieldOrder.forEach(field => {
+      const instruction = templateData.instructions[field.field];
+      if (instruction) {
+        instructionsSheet.addRow([field.displayName, instruction]);
       }
-      
-      // Set column widths for better readability
-      const columnWidths = templateData.headers.map(header => {
-        if (header.includes('Email') || header.includes('User Name')) return { wch: 25 };
-        if (header.includes('Department') || header.includes('Employee Group')) return { wch: 20 };
-        if (header.includes('Address') || header.includes('Street')) return { wch: 30 };
-        if (header.includes('Phone')) return { wch: 15 };
-        return { wch: 12 };
+    });
+
+    // Style instructions sheet
+    instructionsSheet.columns = [
+      { width: 25 },
+      { width: 60 }
+    ];
+
+    // Download the template
+    workbook.xlsx.writeBuffer().then(buffer => {
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
       });
-      employeeWorksheet['!cols'] = columnWidths;
       
-      // Keep data sheet clean for import compatibility - all info is in Instructions tab
-      
-      XLSX.utils.book_append_sheet(workbook, employeeWorksheet, 'Employee Data');
-      
-      // Sheet 2: Instructions
-      const instructionData: string[][] = [
-        ['Field', 'Required', 'Type', 'Instructions'],
-        ...templateData.fieldOrder.map(field => [
-          field.displayName,
-          field.isRequired ? 'Yes' : 'No',
-          field.isCustom ? 'Custom' : 'Standard',
-          templateData.instructions[field.field] || field.description || 'Enter appropriate value'
-        ])
-      ];
-      
-      const instructionWorksheet = XLSX.utils.aoa_to_sheet(instructionData);
-      
-      // Style the instruction sheet header
-      const instructionHeaderRange = XLSX.utils.decode_range(instructionWorksheet['!ref'] || 'A1');
-      for (let col = instructionHeaderRange.s.c; col <= instructionHeaderRange.e.c; col++) {
-        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
-        if (!instructionWorksheet[cellAddress]) continue;
-        
-        instructionWorksheet[cellAddress].s = {
-          font: { bold: true },
-          fill: { fgColor: { rgb: 'F0F8E8' } },
-          border: {
-            top: { style: 'thin' },
-            bottom: { style: 'thin' },
-            left: { style: 'thin' },
-            right: { style: 'thin' }
-          }
-        };
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'employee_bulk_upload_template.xlsx';
+      a.click();
+      window.URL.revokeObjectURL(url);
+    });
+  }
+
+  /**
+   * Extract cell value from ExcelJS cell with proper type handling
+   */
+  private static extractCellValue(cell: ExcelJS.Cell): any {
+    if (!cell || cell.value === null || cell.value === undefined) {
+      return null;
+    }
+
+    const value = cell.value;
+
+    // Handle different cell value types
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    // Handle Date objects (convert to string to avoid timezone issues)
+    if (value instanceof Date) {
+      const year = value.getUTCFullYear();
+      const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(value.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // Handle ExcelJS formula results
+    if (typeof value === 'object' && value !== null) {
+      // For formula cells, use the result value
+      if ('result' in value) {
+        return this.extractCellValue({ value: (value as any).result } as ExcelJS.Cell);
       }
       
-      // Set column widths for instructions sheet
-      instructionWorksheet['!cols'] = [
-        { wch: 20 }, // Field
-        { wch: 10 }, // Required
-        { wch: 10 }, // Type
-        { wch: 50 }  // Instructions
-      ];
+      // For rich text, extract text content
+      if ('richText' in value) {
+        const richText = value as any;
+        if (Array.isArray(richText.richText)) {
+          return richText.richText.map((rt: any) => rt.text || '').join('');
+        }
+      }
       
-      XLSX.utils.book_append_sheet(workbook, instructionWorksheet, 'Instructions');
-      
-      // Generate filename with current date
-      const today = new Date().toISOString().split('T')[0];
-      const filename = `Planday_Employee_Template_${today}.xlsx`;
-      
-      // Download file
-      XLSX.writeFile(workbook, filename);
-      
-      console.log(`✅ Template downloaded: ${filename}`);
-    } catch (error) {
-      console.error('❌ Template download failed:', error);
-      throw new Error('Failed to download template');
+      // For hyperlinks, use the text
+      if ('text' in value) {
+        return (value as any).text;
+      }
     }
+
+    // Fallback to string conversion
+    return String(value);
+  }
+
+  /**
+   * Format file size for display
+   */
+  private static formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }
 
 /**
- * Convenience functions for common operations
+ * Excel Parser Service Instance
+ * Provides instance methods for backwards compatibility
  */
-export const ExcelUtils = {
+export class ExcelParserService {
   /**
-   * Parse Excel file
+   * Parse Excel file (instance method)
    */
   async parseFile(
     file: File,
     options?: ExcelParseOptions
   ): Promise<ExcelParseResult> {
     return ExcelParser.parseFile(file, options);
-  },
+  }
 
   /**
-   * Validate parsed data
+   * Validate parsed data (instance method)
    */
   validateData(data: ParsedExcelData): ValidationError[] {
     return ExcelParser.validateParsedData(data);
-  },
+  }
 
   /**
-   * Get sample data for preview
+   * Get sample data (instance method)
    */
   getSample(data: ParsedExcelData, maxRows?: number): any[][] {
     return ExcelParser.getSampleData(data, maxRows);
-  },
+  }
 
   /**
-   * Export data to Excel
+   * Export to Excel (instance method)
    */
   exportToExcel(data: ParsedExcelData, filename?: string): void {
-    return ExcelParser.exportToExcel(data, filename);
-  },
+    ExcelParser.exportToExcel(data, filename);
+  }
 
   /**
-   * Check if file is valid Excel format
+   * Check if file is valid Excel file
    */
   isValidExcelFile(file: File): boolean {
-    const fileExtension = file.name.toLowerCase().split('.').pop();
-    return VALIDATION_CONFIG.SUPPORTED_FILE_TYPES.some(
-      type => type.substring(1) === fileExtension
-    );
-  },
+    const fileName = file.name.toLowerCase();
+    return VALIDATION_CONFIG.SUPPORTED_FILE_TYPES.some(ext => fileName.endsWith(ext));
+  }
 
   /**
    * Format file size for display
@@ -823,10 +932,10 @@ export const ExcelUtils = {
     if (bytes === 0) return '0 Bytes';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-  },
+  }
 
   /**
-   * Download Excel template based on portal configuration
+   * Download template (instance method)
    */
   downloadTemplate(templateData: {
     headers: string[];
@@ -834,6 +943,12 @@ export const ExcelUtils = {
     instructions: Record<string, string>;
     fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
   }): void {
-    return ExcelParser.downloadTemplate(templateData);
-  },
-}; 
+    ExcelParser.downloadTemplate(templateData);
+  }
+}
+
+// Export as ExcelUtils for backwards compatibility
+export const ExcelUtils = new ExcelParserService();
+
+// Export default instance for backwards compatibility
+export default new ExcelParserService(); 
