@@ -18,22 +18,29 @@ import { useEffect } from 'react';
 function App() {
   const plandayApi = usePlandayApi();
   
-  // Expose debugging functions to the global window object for easy access
+  // Expose debugging functions to the global window object for development only
   useEffect(() => {
-    // @ts-ignore - Intentionally adding to window for debugging
-    window.debugPlanday = {
-      diagnoseFieldInconsistencies: () => ValidationService.diagnoseFieldInconsistencies(),
-      getPlandayApi: () => plandayApi,
-      getFieldDefinitions: () => plandayApi.fieldDefinitions,
-      getRequiredFields: () => ValidationService.getRequiredFields(),
-      getCustomFields: () => ValidationService.getCustomFields(),
-    };
-    
-    // Debug functions are available at window.debugPlanday for development
+    // Only expose debug functions in development environment
+    if (process.env.NODE_ENV === 'development') {
+      // @ts-ignore - Intentionally adding to window for debugging
+      window.debugPlanday = {
+        diagnoseFieldInconsistencies: () => ValidationService.diagnoseFieldInconsistencies(),
+        getPlandayApi: () => plandayApi,
+        getFieldDefinitions: () => plandayApi.fieldDefinitions,
+        getRequiredFields: () => ValidationService.getRequiredFields(),
+        getCustomFields: () => ValidationService.getCustomFields(),
+      };
+      
+      // Debug functions are available at window.debugPlanday for development
+    }
     
     return () => {
-      // @ts-ignore
-      delete window.debugPlanday;
+      // Clean up debug functions if they exist
+      // @ts-ignore - debugPlanday may not exist in production
+      if (typeof window !== 'undefined' && window.debugPlanday) {
+        // @ts-ignore
+        delete window.debugPlanday;
+      }
     };
   }, [plandayApi]);
 
