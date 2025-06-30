@@ -159,16 +159,19 @@ export class ExcelParser {
         throw new Error('No valid column headers found in the first row.');
       }
 
-      // Check for duplicate column names
+      // Check for duplicate column names (ignore empty/blank headers)
       const headerCounts = new Map<string, number[]>();
       originalHeaders.forEach((header, index) => {
-        if (!headerCounts.has(header)) {
-          headerCounts.set(header, []);
+        // Skip empty or blank headers - these are allowed as duplicates
+        if (header && header.trim() !== '') {
+          if (!headerCounts.has(header)) {
+            headerCounts.set(header, []);
+          }
+          headerCounts.get(header)!.push(index + 1); // Use 1-based column numbers for user display
         }
-        headerCounts.get(header)!.push(index + 1); // Use 1-based column numbers for user display
       });
 
-      // Find duplicates
+      // Find duplicates (only among non-empty headers)
       const duplicates = Array.from(headerCounts.entries())
         .filter(([_, positions]) => positions.length > 1)
         .map(([header, positions]) => ({

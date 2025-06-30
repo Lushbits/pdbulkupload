@@ -52,7 +52,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   savedMappings,
   savedCustomValues,
   onComplete,
-  onBack,
+  onBack: _onBack, // Mark as unused since we removed the back button
   className = ''
 }) => {
   const [columnMappings, setColumnMappings] = useState<ColumnMapping>({});
@@ -1061,15 +1061,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
 
       {/* Actions */}
       <Card className="p-4">
-        <div className="flex justify-between items-center">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className="text-gray-600 hover:bg-gray-50"
-          >
-            ← Back to Upload
-          </Button>
-          
+        <div className="flex justify-end items-center">
           <div className="flex items-center gap-4">
             <div className="text-sm text-gray-500">
               {unmappedRequiredFields.length === 0 && mappingErrors.length === 0 ? 

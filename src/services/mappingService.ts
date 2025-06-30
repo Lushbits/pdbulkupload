@@ -1552,7 +1552,7 @@ export class ValidationService {
 
   /**
    * Get custom fields with their descriptions
-   * Excludes read-only fields (disabled/inactive custom fields)
+   * Includes read-only fields since they can be set during bulk import (initial employee creation)
    */
   static getCustomFields(): Array<{ name: string; description: string }> {
     if (!this.fieldDefinitions) {
@@ -1565,15 +1565,11 @@ export class ValidationService {
     for (const [fieldName, fieldConfig] of Object.entries(this.fieldDefinitions.properties)) {
       // Use Planday's actual custom field convention: fields starting with 'custom_'
       if (fieldName.startsWith('custom_')) {
-        const isReadOnly = this.fieldDefinitions.readOnly.includes(fieldName);
-        
-        // Filter out read-only fields (these are disabled/inactive custom fields)
-        if (!isReadOnly) {
-          customFields.push({
-            name: fieldName,
-            description: fieldConfig.description || fieldName
-          });
-        }
+        // Allow read-only custom fields during bulk import since users should be able to set initial values
+        customFields.push({
+          name: fieldName,
+          description: fieldConfig.description || fieldName
+        });
       }
     }
 
@@ -1582,7 +1578,7 @@ export class ValidationService {
 
   /**
    * Get custom fields with their type information
-   * Excludes read-only fields (disabled/inactive custom fields)
+   * Includes read-only fields since they can be set during bulk import (initial employee creation)
    */
   static getCustomFieldsWithTypes(): CustomFieldInfo[] {
     if (!this.fieldDefinitions) {
@@ -1594,31 +1590,26 @@ export class ValidationService {
     for (const [fieldName, fieldConfig] of Object.entries(this.fieldDefinitions.properties)) {
       if (fieldName.startsWith('custom_')) {
         const fieldType = this.detectCustomFieldType(fieldConfig.$ref, fieldConfig);
-        const isReadOnly = this.fieldDefinitions.readOnly.includes(fieldName);
         
-        // Filter out read-only fields (these are disabled/inactive custom fields)
-        if (!isReadOnly) {
-          // Extract enum values for dropdown fields
-          let enumValues: string[] | undefined;
-          let enumOptions: Array<{ value: any; label: string }> | undefined;
-          
-          if (fieldType === 'optionalEnum') {
-            const extracted = this.extractEnumValues(fieldConfig);
-            enumValues = extracted.values;
-            enumOptions = extracted.options;
-          }
-          
-
-          
-          customFields.push({
-            fieldName,
-            fieldType,
-            description: fieldConfig.description,
-            isRequired: this.fieldDefinitions.required.includes(fieldName),
-            enumValues,
-            enumOptions
-          });
+        // Allow read-only custom fields during bulk import since users should be able to set initial values
+        // Extract enum values for dropdown fields
+        let enumValues: string[] | undefined;
+        let enumOptions: Array<{ value: any; label: string }> | undefined;
+        
+        if (fieldType === 'optionalEnum') {
+          const extracted = this.extractEnumValues(fieldConfig);
+          enumValues = extracted.values;
+          enumOptions = extracted.options;
         }
+        
+        customFields.push({
+          fieldName,
+          fieldType,
+          description: fieldConfig.description,
+          isRequired: this.fieldDefinitions.required.includes(fieldName),
+          enumValues,
+          enumOptions
+        });
       }
     }
 

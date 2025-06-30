@@ -308,6 +308,15 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     }
     
     setCorrectionSummary(summary);
+    
+    // Surgical fix: If no bulk corrections needed, skip directly to next step
+    if (summary.patterns.length === 0) {
+      // No bulk corrections needed - proceed directly using the normal workflow
+      // This triggers the same logic as clicking "Continue" on an empty bulk corrections step
+      setTimeout(() => {
+        handleProceedToIndividualCorrections();
+      }, 0);
+    }
   }, [employees, departments, employeeGroups, employeeTypes]); // Removed conflicting dependencies
 
   // Separate useEffect for state initialization - runs when initialResolvedPatterns changes

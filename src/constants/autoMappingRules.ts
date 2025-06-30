@@ -36,7 +36,7 @@ export const AUTO_MAPPING_RULES = {
   hiredFrom: [
     'hire date', 'start date', 'employment date', 'date hired',
     'start of employment', 'employment start', 'join date',
-    'hired from', 'hiredate', 'startdate', 'hired date'
+    'hired from', 'hiredate', 'startdate', 'hired date', 'start or hired date'
   ],
   birthDate: [
     'birth date', 'date of birth', 'birthday', 'born', 'dob',
