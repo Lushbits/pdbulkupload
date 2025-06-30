@@ -19,7 +19,6 @@ const versionHistory = [
       'Custom fields marked as read-only now appear in mapping interface since they can be set during employee creation',
       'Excel files with empty columns no longer trigger false "duplicate column names" errors',
       'Read-only custom fields like enum dropdowns now behave identically to non-read-only fields',
-      'Empty and blank column headers are now properly ignored during duplicate validation',
       'Bulk correction step is now automatically skipped when no department or employee group corrections are needed'
     ]
   },
