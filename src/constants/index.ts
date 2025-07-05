@@ -42,9 +42,9 @@ export const WorkflowStep = {
 export const PLANDAY_API_CONFIG: PlandayApiConfig = {
   baseUrl: 'https://openapi.planday.com',
   authUrl: 'https://id.planday.com/connect/token',
-  clientId: 'a1cf1063-3590-4edd-b8bf-80b32481f77a', // Planday Application ID
+  clientId: '13000bf2-dd1f-41ab-a1a0-eeec783f50d7', // Planday Application ID
   requiredHeaders: {
-    'X-ClientId': 'a1cf1063-3590-4edd-b8bf-80b32481f77a', // Planday Application ID
+    'X-ClientId': '13000bf2-dd1f-41ab-a1a0-eeec783f50d7', // Planday Application ID
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },

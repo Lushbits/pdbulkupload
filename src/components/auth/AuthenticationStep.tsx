@@ -202,9 +202,9 @@ export const AuthenticationStep: React.FC<AuthenticationStepProps> = ({
                 <li>Go to Settings → API Access</li>
                 <li>Click "Connect APP" and connect to app: <br/>
                     <div className="flex items-center gap-2 mt-1">
-                      <code className="bg-gray-100 px-2 py-1 rounded text-xs font-mono">a1cf1063-3590-4edd-b8bf-80b32481f77a</code>
+                      <code className="bg-gray-100 px-2 py-1 rounded text-xs font-mono">13000bf2-dd1f-41ab-a1a0-eeec783f50d7</code>
                       <button
-                        onClick={() => navigator.clipboard.writeText('a1cf1063-3590-4edd-b8bf-80b32481f77a')}
+                                                  onClick={() => navigator.clipboard.writeText('13000bf2-dd1f-41ab-a1a0-eeec783f50d7')}
                         className="inline-flex items-center justify-center w-6 h-6 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border border-gray-200 hover:border-gray-300 transition-all duration-200"
                         title="Copy app ID to clipboard"
                       >

@@ -89,7 +89,7 @@ npm run build
 ### **Getting Your Planday Token**
 1. Log in to your Planday portal
 2. Go to Settings → API Access
-3. Click "Connect APP" and use app ID: `a1cf1063-3590-4edd-b8bf-80b32481f77a`
+3. Click "Connect APP" and use app ID: `13000bf2-dd1f-41ab-a1a0-eeec783f50d7`
 4. Authorize the app when prompted
 5. Copy the "Token" value for use in the application
 
