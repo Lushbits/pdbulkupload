@@ -77,65 +77,20 @@ const MappingStep: React.FC<MappingStepProps> = ({
     }));
   }, [headers, employees]);
 
-  // Prepare Planday fields
+  // Prepare Planday fields using flattened field structure (includes complex object sub-fields)
   const plandayFields = useMemo<PlandayField[]>(() => {
-    const requiredFields = ValidationService.getRequiredFields();
-    const customFields = ValidationService.getCustomFields();
-    
-    // Get all available fields from the API field definitions
-    const allApiFields = ValidationService.getAllFieldNames();
+    // Get all available fields including flattened complex object sub-fields (departments.Kitchen, employeeGroups.Reception, etc.)
+    const allAvailableFields = ValidationService.getAllAvailableFields();
 
-    const fields: PlandayField[] = [];
-    const processedFields = new Set<string>();
-
-    // Fields to exclude from mapping UI because they are auto-populated or deprecated
-    const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
-
-    // Add required fields (excluding auto-populated ones)
-    requiredFields.forEach(fieldName => {
-      if (!processedFields.has(fieldName) && !excludedFields.includes(fieldName)) {
-        fields.push({
-          name: fieldName,
-          displayName: fieldName.replace(/([A-Z])/g, ' $1').trim(),
-          isRequired: true,
-          isReadOnly: ValidationService.isReadOnly(fieldName),
-          isUnique: ValidationService.isUnique(fieldName),
-          isCustom: false
-        });
-        processedFields.add(fieldName);
-      }
-    });
-
-    // Add all other API fields as optional (excluding custom fields, already processed fields, and excluded fields)
-    allApiFields.forEach(fieldName => {
-      if (!processedFields.has(fieldName) && !fieldName.startsWith('custom_') && !excludedFields.includes(fieldName)) {
-        fields.push({
-          name: fieldName,
-          displayName: fieldName.replace(/([A-Z])/g, ' $1').trim(),
-          isRequired: false,
-          isReadOnly: ValidationService.isReadOnly(fieldName),
-          isUnique: ValidationService.isUnique(fieldName),
-          isCustom: false
-        });
-        processedFields.add(fieldName);
-      }
-    });
-
-    // Add custom fields
-    customFields.forEach(customField => {
-      if (!processedFields.has(customField.name)) {
-        fields.push({
-          name: customField.name,
-          displayName: customField.description || customField.name,
-          description: customField.description,
-          isRequired: ValidationService.isRequired(customField.name),
-          isReadOnly: ValidationService.isReadOnly(customField.name),
-          isUnique: ValidationService.isUnique(customField.name),
-          isCustom: true
-        });
-        processedFields.add(customField.name);
-      }
-    });
+    const fields: PlandayField[] = allAvailableFields.map(field => ({
+      name: field.field,
+      displayName: field.displayName,
+      description: field.description,
+      isRequired: field.isRequired,
+      isReadOnly: ValidationService.isReadOnly(field.field),
+      isUnique: ValidationService.isUnique(field.field),
+      isCustom: field.isCustom
+    }));
 
     return fields;
   }, []);

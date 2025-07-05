@@ -58,7 +58,14 @@ export const FieldSelectionModal: React.FC<FieldSelectionModalProps> = ({
   const groupedFields = useMemo(() => {
     const groups = {
       required: filteredFields.filter(field => field.isRequired).sort((a, b) => a.name.localeCompare(b.name)),
-      optional: filteredFields.filter(field => !field.isRequired && !field.isCustom).sort((a, b) => a.name.localeCompare(b.name)),
+      departments: filteredFields.filter(field => field.name.startsWith('departments.')).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      employeeGroups: filteredFields.filter(field => field.name.startsWith('employeeGroups.')).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      optional: filteredFields.filter(field => 
+        !field.isRequired && 
+        !field.isCustom && 
+        !field.name.startsWith('departments.') && 
+        !field.name.startsWith('employeeGroups.')
+      ).sort((a, b) => a.name.localeCompare(b.name)),
       custom: filteredFields.filter(field => field.isCustom).sort((a, b) => a.name.localeCompare(b.name)),
     };
     return groups;
@@ -137,6 +144,48 @@ export const FieldSelectionModal: React.FC<FieldSelectionModalProps> = ({
                   </h4>
                   <div className="flex flex-wrap gap-3">
                     {groupedFields.required.map((field) => (
+                      <FieldButton
+                        key={field.name}
+                        field={field}
+                        isSelected={currentMapping === field.name}
+                        onClick={() => handleFieldSelect(field.name)}
+                        isInCustomSection={true}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Department Fields */}
+              {groupedFields.departments.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-4 flex items-center">
+                    <span className="text-green-500 mr-2">🏢</span>
+                    Departments ({groupedFields.departments.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-3">
+                    {groupedFields.departments.map((field) => (
+                      <FieldButton
+                        key={field.name}
+                        field={field}
+                        isSelected={currentMapping === field.name}
+                        onClick={() => handleFieldSelect(field.name)}
+                        isInCustomSection={true}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Employee Group Fields */}
+              {groupedFields.employeeGroups.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-4 flex items-center">
+                    <span className="text-orange-500 mr-2">👥</span>
+                    Employee Groups ({groupedFields.employeeGroups.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-3">
+                    {groupedFields.employeeGroups.map((field) => (
                       <FieldButton
                         key={field.name}
                         field={field}

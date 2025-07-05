@@ -25,6 +25,94 @@ interface ValidationAndCorrectionStepProps {
   className?: string;
 }
 
+// Wrapper component that preprocesses data through validateAndConvert to create display fields
+const DataCorrectionStepWithPreprocessing: React.FC<{
+  employees: any[];
+  departments: any[];
+  employeeGroups: any[];
+  employeeTypes: any[];
+  plandayApi: UsePlandayApiReturn;
+  onComplete: (correctedEmployees: any[]) => void;
+  onBack: () => void;
+  className?: string;
+}> = ({ employees, departments, employeeGroups, employeeTypes, plandayApi, onComplete, onBack, className }) => {
+  const [preprocessedEmployees, setPreprocessedEmployees] = useState<any[]>([]);
+  const [isPreprocessing, setIsPreprocessing] = useState(true);
+
+  useEffect(() => {
+    const preprocessData = async () => {
+      try {
+        setIsPreprocessing(true);
+        
+        // Initialize mapping service with portal data
+        MappingUtils.initialize(departments, employeeGroups, employeeTypes);
+        
+        // Process each employee through validateAndConvert to create display fields
+        const processedEmployees = await Promise.all(
+          employees.map(async (employee) => {
+            try {
+              const result = await MappingUtils.validateEmployee(employee);
+              // Use the converted data which includes display fields
+              const mergedEmployee = { ...employee, ...result.converted };
+              
+              // Merge original and converted data
+              
+              return mergedEmployee;
+            } catch (error) {
+              console.warn('⚠️ Error preprocessing employee:', error);
+              // Return original employee if preprocessing fails
+              return employee;
+            }
+          })
+        );
+        
+
+        
+        setPreprocessedEmployees(processedEmployees);
+      } catch (error) {
+        console.error('❌ Error preprocessing data:', error);
+        // Fallback to original data
+        setPreprocessedEmployees(employees);
+      } finally {
+        setIsPreprocessing(false);
+      }
+    };
+
+    if (employees.length > 0 && departments.length > 0) {
+      preprocessData();
+    } else {
+      setPreprocessedEmployees(employees);
+      setIsPreprocessing(false);
+    }
+  }, [employees, departments, employeeGroups, employeeTypes]);
+
+  if (isPreprocessing) {
+    return (
+      <div className={`validation-correction-step ${className}`}>
+        <Card className="p-6">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-4"></div>
+            <span className="text-gray-600">Processing data for individual corrections...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <DataCorrectionStep
+      employees={preprocessedEmployees}
+      departments={departments}
+      employeeGroups={employeeGroups}
+      employeeTypes={employeeTypes}
+      plandayApi={plandayApi}
+      onComplete={onComplete}
+      onBack={onBack}
+      className={className}
+    />
+  );
+};
+
 interface CorrectionCardProps {
   pattern: ErrorPattern;
   validOptions: Array<{id: number, name: string}>;
@@ -383,11 +471,8 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
    * Uses NEW comprehensive pattern analyzer - performs dataset-level analysis
    */
   const checkForAmbiguousDatesInMappedFields = (employees: any[]): string[] => {
-    console.log('🔍 ValidationAndCorrectionStep: Starting date pattern analysis...');
-    
     // Get ALL fields that are of type optionalDate (both standard and custom)
     const allDateFields = ValidationService.getAllDateFields();
-    console.log('🔍 Detected optionalDate fields:', allDateFields);
     
     // Collect ALL date values from ALL optionalDate fields across the entire dataset
     const allDateValues: string[] = [];
@@ -405,29 +490,23 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
       });
     });
     
-    console.log('🔍 Found', allDateValues.length, 'date values across', allDateFields.length, 'optionalDate fields');
-    console.log('🔍 Sample date values:', allDateValues.slice(0, 10));
-    
     // NEW: Use comprehensive pattern analyzer
     const analysis = DatePatternAnalyzer.analyzeDatasetPattern(allDateValues);
-    console.log('🔍 Pattern analysis result:', analysis);
     
     if (analysis.autoDetectedFormat) {
       // Auto-detection successful - set the format and return no ambiguous dates
-      console.log('✅ Auto-detected format:', analysis.autoDetectedFormat, 'Reason:', analysis.reason);
+
       DateParser.setUserDateFormat(analysis.autoDetectedFormat);
       return [];
     }
     
     if (analysis.shouldShowPicker) {
       // Pattern analysis indicates user clarification needed
-      console.log('❓ User clarification needed. Reason:', analysis.reason);
-      console.log('📋 Providing samples:', analysis.ambiguousSamples);
+
       return analysis.ambiguousSamples;
     }
     
     // No ambiguous patterns detected
-    console.log('✅ No ambiguous date patterns detected');
     return [];
   };
 
@@ -693,7 +772,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   // Render individual correction phase with proper validation
   if (currentPhase === 'individual-correction') {
     return (
-      <DataCorrectionStep
+      <DataCorrectionStepWithPreprocessing
         employees={currentEmployees}
         departments={departments}
         employeeGroups={employeeGroups}

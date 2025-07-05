@@ -412,6 +412,7 @@ export class ExcelParser {
       if (allFields) {
         for (const apiField of allFields) {
           const apiFieldName = apiField.name.toLowerCase().trim();
+          const apiFieldDisplayName = apiField.displayName.toLowerCase().trim();
           
           // Try exact match with original header (preserves international characters)
           if (originalHeader === apiFieldName && !usedFields.has(apiField.name)) {
@@ -423,10 +424,60 @@ export class ExcelParser {
             console.log(`🎯 EXACT MATCH: "${header}" → "${apiField.name}" (${apiField.isCustom ? 'custom' : 'standard'} field)`);
             break;
           }
+          
+          // Try exact match with display name (for template-generated columns)
+          if (originalHeader === apiFieldDisplayName && !usedFields.has(apiField.name)) {
+            bestMatch = { 
+              field: apiField.name, 
+              displayName: apiField.displayName, 
+              confidence: 1.0 
+            };
+            console.log(`🎯 DISPLAY NAME MATCH: "${header}" → "${apiField.name}" (template-generated)`);
+            break;
+          }
         }
       }
 
-      // 🔍 PRIORITY 2: Exact field name matching against AUTO_MAPPING_RULES (for backwards compatibility)
+      // 🏢 PRIORITY 2: Department and Employee Group pattern matching (template-generated columns)
+      if (!bestMatch && allFields) {
+        // Check for department patterns: "Department: Kitchen", "Departments - Kitchen", etc.
+        const departmentMatch = originalHeader.match(/^(?:department|departments)[\s\-:]+(.+)$/i);
+        if (departmentMatch) {
+          const departmentName = departmentMatch[1].trim();
+          const targetField = `departments.${departmentName}`;
+          
+          const matchingField = allFields.find(field => field.name.toLowerCase() === targetField.toLowerCase());
+          if (matchingField && !usedFields.has(matchingField.name)) {
+            bestMatch = { 
+              field: matchingField.name, 
+              displayName: matchingField.displayName, 
+              confidence: 1.0 
+            };
+            console.log(`🏢 DEPARTMENT PATTERN: "${header}" → "${matchingField.name}" (template-generated)`);
+          }
+        }
+        
+        // Check for employee group patterns: "Employee Group: Reception", "Employee Groups - Reception", etc.
+        if (!bestMatch) {
+          const employeeGroupMatch = originalHeader.match(/^(?:employee\s*group|employee\s*groups)[\s\-:]+(.+)$/i);
+          if (employeeGroupMatch) {
+            const groupName = employeeGroupMatch[1].trim();
+            const targetField = `employeeGroups.${groupName}`;
+            
+            const matchingField = allFields.find(field => field.name.toLowerCase() === targetField.toLowerCase());
+            if (matchingField && !usedFields.has(matchingField.name)) {
+              bestMatch = { 
+                field: matchingField.name, 
+                displayName: matchingField.displayName, 
+                confidence: 1.0 
+              };
+              console.log(`👥 EMPLOYEE GROUP PATTERN: "${header}" → "${matchingField.name}" (template-generated)`);
+            }
+          }
+        }
+      }
+
+      // 🔍 PRIORITY 3: Exact field name matching against AUTO_MAPPING_RULES (for backwards compatibility)
       if (!bestMatch) {
         for (const [field] of Object.entries(AUTO_MAPPING_RULES)) {
           const normalizedFieldName = field.toLowerCase();
@@ -439,7 +490,7 @@ export class ExcelParser {
         }
       }
 
-      // 📝 PRIORITY 3: Pattern-based fuzzy matching with confidence scoring
+      // 📝 PRIORITY 4: Pattern-based fuzzy matching with confidence scoring
       if (!bestMatch) {
         for (const [field, patterns] of Object.entries(AUTO_MAPPING_RULES)) {
           if (usedFields.has(field)) continue;
@@ -458,7 +509,7 @@ export class ExcelParser {
         }
       }
 
-      // 🏷️ PRIORITY 4: Custom field description matching (legacy compatibility)
+      // 🏷️ PRIORITY 5: Custom field description matching (legacy compatibility)
       if (!bestMatch && customFields) {
         for (const customField of customFields) {
           const customFieldName = customField.name.toLowerCase();
@@ -497,7 +548,7 @@ export class ExcelParser {
 
       // Determine if field is required
       if (bestMatch) {
-        isRequired = ['firstName', 'lastName', 'userName', 'departments'].includes(bestMatch.field);
+        isRequired = ['firstName', 'lastName', 'userName'].includes(bestMatch.field);
         usedFields.add(bestMatch.field);
       } else {
         console.log(`❌ NO MATCH: "${header}" - no matching API field found`);

@@ -41,6 +41,14 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
 
   // Helper function to get display name for field
   const getFieldDisplayName = (fieldName: string): string => {
+    // Handle business fields for departments and employee groups
+    if (fieldName === 'departments') {
+      return 'Departments';
+    }
+    if (fieldName === 'employeeGroups') {
+      return 'Employee Groups';
+    }
+    
     // Check if it's a custom field
     const customFields = ValidationService.getCustomFields();
     const customField = customFields.find(f => f.name === fieldName);
@@ -118,11 +126,16 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     if (convertedEmployees.length === 0) return;
     
     const fieldSet = new Set<string>();
-    const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+    const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds']);
     
     convertedEmployees.forEach(converted => {
       Object.keys(converted).forEach(key => {
-        if (!internalFields.has(key) && converted[key] != null && converted[key] !== '') {
+        // Filter out individual fields (like departments.Kitchen, employeeGroups.Waiter)
+        // and internal ID fields, but keep consolidated fields (departments, employeeGroups)
+        if (!internalFields.has(key) && 
+            !key.includes('.') && // Exclude individual fields like "departments.Kitchen"
+            converted[key] != null && 
+            converted[key] !== '') {
           fieldSet.add(key);
         }
       });
@@ -244,7 +257,10 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
                 <th className="sticky left-0 z-30 bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200">
                   #
                 </th>
-                {allFields.filter(field => !['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected'].includes(field)).map(field => (
+                {allFields.filter(field => 
+                  !['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds'].includes(field) &&
+                  !field.includes('.') // Exclude individual fields like "departments.Kitchen"
+                ).map(field => (
                   <th
                     key={field}
                     className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50 sticky top-0 z-20"
@@ -257,14 +273,17 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
             <tbody className="bg-white divide-y divide-gray-200">
               {displayEmployees.map((convertedEmployee, index) => {
                 // Filter out internal fields that shouldn't be displayed
-                const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+                const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds']);
                 
                 return (
                   <tr key={`employee-${startIndex + index}`} className="hover:bg-gray-50">
                     <td className="sticky left-0 z-10 bg-white px-3 py-2 text-sm text-gray-900 border-r border-gray-200 font-medium">
                       {startIndex + index + 1}
                     </td>
-                    {allFields.filter(field => !internalFields.has(field)).map(field => {
+                    {allFields.filter(field => 
+                      !internalFields.has(field) &&
+                      !field.includes('.') // Exclude individual fields like "departments.Kitchen"
+                    ).map(field => {
                       const value = convertedEmployee[field];
                       let displayValue = '';
                       

@@ -168,7 +168,11 @@ export class MappingService {
       const validationResult = FieldDefinitionValidator.validateFieldValue('employeeTypeId', name);
       
       if (validationResult.isValid) {
-        result.ids.push(validationResult.convertedValue);
+        // Ensure the convertedValue is always a number for employeeTypeId
+        const convertedId = typeof validationResult.convertedValue === 'string' 
+          ? parseInt(validationResult.convertedValue, 10) 
+          : validationResult.convertedValue;
+        result.ids.push(convertedId);
         if (validationResult.suggestion) {
           result.warnings.push(validationResult.suggestion);
         }
@@ -654,39 +658,106 @@ export class MappingService {
       }
     }
 
-    // Handle departments
-    if (employee.departments) {
-      const deptResult = this.resolveNames(employee.departments, 'departments');
-      if (deptResult.errors.length > 0) {
+    // Handle departments - NEW: Individual field approach
+    const assignedDepartments: string[] = [];
+    const departmentIds: number[] = [];
+    
+    // Process individual department fields
+    
+    // Scan for individual department fields (departments.Kitchen, departments.Bar, etc.)
+    Object.keys(employee).forEach(fieldName => {
+      if (fieldName.startsWith('departments.') && employee[fieldName]) {
+        const departmentName = fieldName.replace('departments.', '');
+        const value = employee[fieldName]?.toString()?.trim();
+        
+        // Any non-empty value means assign this department
+        if (value && value !== '' && value.toLowerCase() !== 'no' && value.toLowerCase() !== 'false') {
+          assignedDepartments.push(departmentName);
+          
+          // Convert department name to ID
+          const deptId = this.departmentsByName.get(this.normalizeName(departmentName));
+          if (deptId) {
+            departmentIds.push(deptId);
+          } else {
+            errors.push({
+              field: fieldName as any,
+              value: departmentName,
+              message: `Department "${departmentName}" not found in portal`,
+              rowIndex: employee.rowIndex || 0,
+              severity: 'error'
+            });
+          }
+        }
+      }
+    });
+    
+    // Set converted departments array and comma-separated editable field
+    if (departmentIds.length > 0) {
+      converted.departments = assignedDepartments.join(', '); // Store as comma-separated names for editing
+      converted.__departmentsIds = departmentIds; // Store IDs separately for API payload
+    } else {
+      // Always create editable field, even if empty
+      converted.departments = '';
+      converted.__departmentsIds = [];
+      // Validate that at least one department is assigned
+      const hasDepartmentFields = Object.keys(employee).some(key => key.startsWith('departments.'));
+      if (hasDepartmentFields) {
         errors.push({
-          field: 'departments',
-          value: employee.departments,
-          message: deptResult.errors.join(', '),
+          field: 'departments' as any,
+          value: '',
+          message: 'At least one department must be assigned to each employee',
           rowIndex: employee.rowIndex || 0,
           severity: 'error'
         });
       }
-      converted.departments = deptResult.ids;
     }
 
-    // Handle employee groups
-    if (employee.employeeGroups) {
-      const groupResult = this.resolveNames(employee.employeeGroups, 'employeeGroups');
-      if (groupResult.errors.length > 0) {
-        errors.push({
-          field: 'employeeGroups',
-          value: employee.employeeGroups,
-          message: groupResult.errors.join(', '),
-          rowIndex: employee.rowIndex || 0,
-          severity: 'error'
-        });
+    // Handle employee groups - NEW: Individual field approach  
+    const assignedEmployeeGroups: string[] = [];
+    const employeeGroupIds: number[] = [];
+    
+    // Scan for individual employee group fields (employeeGroups.Reception, employeeGroups.Waiter, etc.)
+    Object.keys(employee).forEach(fieldName => {
+      if (fieldName.startsWith('employeeGroups.') && employee[fieldName]) {
+        const groupName = fieldName.replace('employeeGroups.', '');
+        const value = employee[fieldName]?.toString()?.trim();
+        
+        // Any non-empty value means assign this employee group
+        if (value && value !== '' && value.toLowerCase() !== 'no' && value.toLowerCase() !== 'false') {
+          assignedEmployeeGroups.push(groupName);
+          
+          // Convert employee group name to ID
+          const groupId = this.employeeGroupsByName.get(this.normalizeName(groupName));
+          if (groupId) {
+            employeeGroupIds.push(groupId);
+          } else {
+            errors.push({
+              field: fieldName as any,
+              value: groupName,
+              message: `Employee group "${groupName}" not found in portal`,
+              rowIndex: employee.rowIndex || 0,
+              severity: 'error'
+            });
+          }
+        }
       }
-      converted.employeeGroups = groupResult.ids;
+    });
+    
+    // Set converted employee groups array and comma-separated editable field
+    if (employeeGroupIds.length > 0) {
+      converted.employeeGroups = assignedEmployeeGroups.join(', '); // Store as comma-separated names for editing
+      converted.__employeeGroupsIds = employeeGroupIds; // Store IDs separately for API payload
+    } else {
+      // Always create editable field, even if empty
+      converted.employeeGroups = '';
+      converted.__employeeGroupsIds = [];
     }
 
     // Handle employee type (single value)
     if (employee.employeeTypeId) {
-      const typeResult = this.resolveEmployeeType(employee.employeeTypeId);
+      // Convert to string to handle numeric IDs
+      const employeeTypeStr = employee.employeeTypeId.toString().trim();
+      const typeResult = this.resolveEmployeeType(employeeTypeStr);
       if (typeResult.errors.length > 0) {
         errors.push({
           field: 'employeeTypeId',
@@ -696,9 +767,11 @@ export class MappingService {
           severity: 'error'
         });
       }
-      // Set the ID if we found a match
+      // Set the ID if we found a match - ensure it's always a number
       if (typeResult.ids.length > 0) {
-        converted.employeeTypeId = typeResult.ids[0];
+        const resolvedId = typeResult.ids[0];
+        // Ensure employeeTypeId is always a number, not a string
+        converted.employeeTypeId = typeof resolvedId === 'string' ? parseInt(resolvedId, 10) : resolvedId;
       }
     }
 
@@ -834,8 +907,7 @@ export class MappingService {
       'userName', // Will be displayed as "email"
       'cellPhone',
       'cellPhoneCountryCode',
-      'departments',
-      'employeeGroups',
+      // departments and employeeGroups removed - now using individual fields like departments.Kitchen, employeeGroups.Waiter
       'employeeTypeId',
       'hiredFrom',
       'gender',
@@ -945,12 +1017,6 @@ export class MappingService {
           case 'userName':
             instructions[field.field] = 'Email address that will be used for login (required, must be unique)';
             break;
-          case 'departments':
-            instructions[field.field] = `Department names from your portal. Use comma-separated names for multiple departments. Available: ${mappingService.getAvailableNames('departments').join(', ')}`;
-            break;
-          case 'employeeGroups':
-            instructions[field.field] = `Employee group names from your portal. Use comma-separated names for multiple groups. Available: ${mappingService.getAvailableNames('employeeGroups').join(', ')}`;
-            break;
           case 'employeeTypeId':
             // Use field definitions for employee type options
             try {
@@ -1025,8 +1091,15 @@ export class MappingService {
             break;
 
           default:
-            // Handle complex object sub-fields
-            if (field.isComplexSubField && field.field.includes('.')) {
+            // Handle individual department and employee group fields
+            if (field.field.startsWith('departments.')) {
+              const departmentName = field.field.replace('departments.', '');
+              instructions[field.field] = `Check this column if employee works in ${departmentName} department. Use "Yes", "X", or any value to assign department, leave empty to skip.`;
+            } else if (field.field.startsWith('employeeGroups.')) {
+              const groupName = field.field.replace('employeeGroups.', '');
+              instructions[field.field] = `Check this column if employee belongs to ${groupName} group. Use "Yes", "X", or any value to assign group, leave empty to skip.`;
+            } else if (field.isComplexSubField && field.field.includes('.')) {
+              // Handle complex object sub-fields
               const [parentField, subField] = field.field.split('.');
               if (parentField === 'bankAccount') {
                 if (subField === 'accountNumber') {
@@ -1039,24 +1112,24 @@ export class MappingService {
               } else {
                 instructions[field.field] = `${parentField} ${subField}`;
               }
-                         } else {
-               // Check if this field has enum options from field definitions
-               try {
-                 if (FieldDefinitionValidator.isEnumField(field.field)) {
-                   const enumOptions = FieldDefinitionValidator.getFieldOptions(field.field);
-                   if (enumOptions.length > 0) {
-                     const optionsList = enumOptions.slice(0, 10).map(opt => opt.name).join(', ');
-                     instructions[field.field] = `Select from available options: ${optionsList}`;
-                   } else {
-                     instructions[field.field] = `Enter appropriate value for ${field.field}`;
-                   }
-                 } else {
-                   instructions[field.field] = `Enter appropriate value for ${field.field}`;
-                 }
-               } catch (error) {
-                 instructions[field.field] = `Enter appropriate value for ${field.field}`;
-               }
-             }
+            } else {
+              // Check if this field has enum options from field definitions
+              try {
+                if (FieldDefinitionValidator.isEnumField(field.field)) {
+                  const enumOptions = FieldDefinitionValidator.getFieldOptions(field.field);
+                  if (enumOptions.length > 0) {
+                    const optionsList = enumOptions.slice(0, 10).map(opt => opt.name).join(', ');
+                    instructions[field.field] = `Select from available options: ${optionsList}`;
+                  } else {
+                    instructions[field.field] = `Enter appropriate value for ${field.field}`;
+                  }
+                } else {
+                  instructions[field.field] = `Enter appropriate value for ${field.field}`;
+                }
+              } catch (error) {
+                instructions[field.field] = `Enter appropriate value for ${field.field}`;
+              }
+            }
         }
       }
     });
@@ -1084,12 +1157,18 @@ export class MappingService {
     const complexObjects: Record<string, any> = {};
     
     // Define internal fields that should be excluded from the API payload
-    const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+    const internalFields = new Set([
+      'rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected',
+      '__departmentsIds', '__employeeGroupsIds' // Internal ID fields for API payload
+    ]);
     
     // Include all fields from the converted employee, excluding internal ones
     Object.entries(converted).forEach(([key, value]) => {
-      // Skip internal fields and undefined/empty values
-      if (!internalFields.has(key) && value != null && value !== '') {
+      // Skip internal fields, individual department/employee group fields, and undefined/empty values
+      if (!internalFields.has(key) && 
+          !key.startsWith('departments.') && 
+          !key.startsWith('employeeGroups.') && 
+          value != null && value !== '') {
         // Handle complex object sub-fields (e.g., "bankAccount.accountNumber")
         if (key.includes('.') && ValidationService.isComplexObjectSubField(key)) {
           const [parentField, subField] = key.split('.');
@@ -1122,6 +1201,14 @@ export class MappingService {
         cleanPayload[parentField] = nestedObject;
       }
     });
+    
+    // Special handling: Use internal ID fields for departments and employee groups
+    if (converted.__departmentsIds && Array.isArray(converted.__departmentsIds) && converted.__departmentsIds.length > 0) {
+      cleanPayload.departments = converted.__departmentsIds;
+    }
+    if (converted.__employeeGroupsIds && Array.isArray(converted.__employeeGroupsIds) && converted.__employeeGroupsIds.length > 0) {
+      cleanPayload.employeeGroups = converted.__employeeGroupsIds;
+    }
     
     // Ensure required fields have defaults if needed
     if (!cleanPayload.email && cleanPayload.userName) {
@@ -1189,7 +1276,7 @@ export class MappingService {
       throw new Error(`Payload validation failed: ${validationErrors.join('; ')}`);
     }
     
-    console.log('✅ Payload validation passed - all field types are correct');
+
   }
 
 
@@ -1314,6 +1401,7 @@ export class ValidationService {
   /**
    * Detect and flatten complex object fields into user-friendly sub-fields
    * Converts complex objects like bankAccount into separate mappable fields
+   * Now also generates dynamic fields for departments and employee groups
    */
   static getComplexObjectSubFields(): Array<{ 
     parentField: string; 
@@ -1334,7 +1422,7 @@ export class ValidationService {
       isRequired: boolean;
     }> = [];
 
-    // Check each field in the schema
+    // EXISTING: Check each field in the schema for static complex objects (like bankAccount)
     Object.entries(this.fieldDefinitions.properties).forEach(([fieldName, fieldConfig]) => {
       if (fieldConfig && typeof fieldConfig === 'object') {
         let objectConfig = fieldConfig;
@@ -1367,7 +1455,32 @@ export class ValidationService {
       }
     });
 
-    // Detected complex object sub-fields
+    // NEW: Generate dynamic department fields from portal data
+    if (mappingService.departments.length > 0) {
+      mappingService.departments.forEach(dept => {
+        subFields.push({
+          parentField: 'departments',
+          subField: dept.name,
+          displayName: `Department: ${dept.name}`,
+          fullFieldPath: `departments.${dept.name}`,
+          isRequired: false // Individual department assignments are optional
+        });
+      });
+    }
+
+    // NEW: Generate dynamic employee group fields from portal data
+    if (mappingService.employeeGroups.length > 0) {
+      mappingService.employeeGroups.forEach(group => {
+        subFields.push({
+          parentField: 'employeeGroups',
+          subField: group.name,
+          displayName: `Employee Group: ${group.name}`,
+          fullFieldPath: `employeeGroups.${group.name}`,
+          isRequired: false // Individual employee group assignments are optional
+        });
+      });
+    }
+
     return subFields;
   }
 
@@ -1479,21 +1592,22 @@ export class ValidationService {
 
   /**
    * Get required fields for the current portal
-   * Note: userName and departments are always required for ALL portals to create employees,
+   * Note: userName is always required for ALL portals to create employees,
    * even if the API field definitions don't mark them as required
+   * Note: departments are now handled via individual department fields, not the parent field
    */
   static getRequiredFields(): string[] {
     if (!this.fieldDefinitions) {
       console.warn('⚠️ Field definitions not loaded, using fallback required fields');
-      return ['firstName', 'lastName', 'userName', 'departments']; // Safe fallback with business-critical fields
+      return ['firstName', 'lastName', 'userName']; // Safe fallback with business-critical fields (departments handled individually now)
     }
     
     // Start with fields marked as required by the API
     const apiRequiredFields = [...this.fieldDefinitions.required];
     
-    // Always ensure userName and departments are marked as required
-    // These are business-critical for creating employees in ANY Planday portal
-    const businessCriticalFields = ['userName', 'departments'];
+    // Always ensure userName is marked as required
+    // This is business-critical for creating employees in ANY Planday portal
+    const businessCriticalFields = ['userName'];
     
     for (const field of businessCriticalFields) {
       if (!apiRequiredFields.includes(field)) {
@@ -1502,11 +1616,14 @@ export class ValidationService {
       }
     }
     
+    // Remove departments from required fields since we now use individual department fields
+    const filteredFields = apiRequiredFields.filter(field => field !== 'departments' && field !== 'employeeGroups');
+    
     if (!this.hasLoggedRequiredFields) {
       this.hasLoggedRequiredFields = true;
     }
     
-    return apiRequiredFields;
+    return filteredFields;
   }
 
   /**

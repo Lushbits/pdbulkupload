@@ -74,17 +74,7 @@ export const AUTO_MAPPING_RULES = {
     'payroll identifier', 'pay id', 'payroll id', 'payid', 'payrollid',
     'payroll number', 'employee number', 'emp number', 'staff number', 'worker number'
   ],
-  departments: [
-    'departments', 'department', 'dept', 'depts',
-    'department name', 'department names', 'work area', 'work areas',
-    'division', 'divisions', 'location', 'locations'
-  ],
-  employeeGroups: [
-    'employee groups', 'employee group', 'groups', 'group',
-    'employee roles', 'employee role', 'roles', 'role',
-    'positions', 'position', 'job roles', 'job role',
-    'team', 'teams', 'category', 'categories'
-  ],
+  // departments and employeeGroups removed - now using individual fields like departments.Kitchen, employeeGroups.Waiter
   employeeTypeId: [
     'employee type', 'employment type', 'type', 'job type',
     'position type', 'contract type', 'employment status',

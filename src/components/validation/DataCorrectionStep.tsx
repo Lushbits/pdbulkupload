@@ -59,6 +59,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   onBack,
   className = ''
 }) => {
+  // Initialize component with employee data
+
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [validationErrors, setValidationErrors] = useState<Map<string, ValidationError[]>>(new Map());
@@ -96,7 +98,6 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
           .map(email => email!.toLowerCase().trim());
         
         if (emailAddresses.length === 0) {
-          console.log('⚠️ No email addresses found to check for duplicates');
           setIsCheckingDuplicates(false);
           return;
         }
@@ -288,6 +289,11 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
    * Handle cell click to start editing
    */
   const handleCellClick = (rowIndex: number, field: keyof Employee) => {
+    // Prevent editing of internal ID fields (they're for API use only)
+    if (field.toString().startsWith('__') && field.toString().endsWith('Ids')) {
+      return;
+    }
+    
     const employee = employees[rowIndex];
     setEditingCell({
       rowIndex,
@@ -317,7 +323,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     try {
       // Only log if multiple emails to reduce noise
       if (emailAddresses.length > 1) {
-        console.log('🔍 Re-checking duplicates for modified email addresses:', emailAddresses);
+  
       }
       
       // Check only the specific emails that were modified
@@ -343,7 +349,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       
       // Only log results summary to reduce noise
       if (existingEmps.size > 0) {
-        console.log(`✅ Re-check found ${existingEmps.size} duplicates among ${emailAddresses.length} checked emails`);
+
       }
     } catch (error) {
       console.error('❌ Failed to re-check duplicates:', error);
@@ -470,7 +476,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       return emp;
     });
     
-    console.log(`⏭️ Marking ${Array.from(duplicateEmails).length} employees to be skipped`);
+    
     setEmployees(updatedEmployees);
     
     // Clear existing employees state since duplicates are now marked to skip
@@ -520,7 +526,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       setBulkEditMode('replace');
       clearSelection();
 
-      console.log(`✅ Applied bulk ${bulkEditMode} to ${selectedRows.size} rows`);
+
     } catch (error) {
       console.error('Error applying bulk edit:', error);
     } finally {
@@ -606,26 +612,68 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
       
       Object.keys(emp).forEach(key => {
-        if (!internalFields.has(key) && emp[key as keyof Employee] != null && emp[key as keyof Employee] !== '') {
-          fieldSet.add(key);
+        // Exclude individual department/employee group fields (e.g., departments.Kitchen, employeeGroups.Reception)
+        // These are converted to comma-separated editable fields (departments, employeeGroups)
+        const isIndividualDeptField = key.startsWith('departments.') || key.startsWith('employeeGroups.');
+        // Exclude internal ID fields used for API payload
+        const isInternalIdField = key.startsWith('__') && key.endsWith('Ids');
+        
+        // Always include business fields (departments, employeeGroups) even if empty, otherwise only include non-empty fields
+        const isBusinessField = ['departments', 'employeeGroups'].includes(key);
+        
+        // Debug: Log department and employee group field values for first few employees
+        if (fieldSet.size < 10 && (key === 'departments' || key === 'employeeGroups')) {
+
+        }
+        
+        if (!internalFields.has(key) && !isIndividualDeptField && !isInternalIdField) {
+          if (isBusinessField || (emp[key as keyof Employee] != null && emp[key as keyof Employee] !== '')) {
+            fieldSet.add(key);
+            if (isBusinessField) {
+              console.log(`✅ Added business field ${key} to fieldSet, value:`, emp[key as keyof Employee]);
+            }
+          }
         }
       });
     });
     
     // Sort fields with important ones first
     const importantFields = ['firstName', 'lastName', 'userName', 'email'];
-    const otherFields = Array.from(fieldSet).filter(field => !importantFields.includes(field)).sort();
+    const businessFields = ['departments', 'employeeGroups']; // Business-critical editable fields - always show
+    const otherFields = Array.from(fieldSet).filter(field => 
+      !importantFields.includes(field) && !businessFields.includes(field)
+    ).sort();
     
-    return [...importantFields.filter(field => fieldSet.has(field)), ...otherFields] as (keyof Employee)[];
+    // Always include business fields even if not in fieldSet (they might be empty but should still be editable)
+    const fieldsToShow = [
+      ...importantFields.filter(field => fieldSet.has(field)), 
+      ...businessFields, // Always include business fields, regardless of fieldSet
+      ...otherFields
+    ];
+    
+
+    
+    return fieldsToShow as (keyof Employee)[];
   }, [employees]);
 
-  // Get fields that can be bulk edited (exclude userName since emails must be unique)
+  // Get fields that can be bulk edited (exclude userName since emails must be unique, and internal fields)
   const bulkEditableFields = useMemo(() => {
-    return editableFields.filter(field => field !== 'userName');
+    return editableFields.filter(field => 
+      field !== 'userName' && 
+      !field.toString().startsWith('__') // Exclude internal ID fields like __departmentsIds
+    );
   }, [editableFields]);
 
   // Helper function to get display name for field
   const getFieldDisplayName = (fieldName: string): string => {
+    // Handle business fields for departments and employee groups
+    if (fieldName === 'departments') {
+      return 'Departments';
+    }
+    if (fieldName === 'employeeGroups') {
+      return 'Employee Groups';
+    }
+    
     // Check if it's a custom field
     const customFields = ValidationService.getCustomFields();
     const customField = customFields.find(f => f.name === fieldName);
@@ -883,6 +931,9 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                     {ValidationService.isUnique(field.toString()) && (
                       <span className="text-orange-500 ml-1" title="Must be unique">⚡</span>
                     )}
+                    {field.toString().startsWith('__') && field.toString().endsWith('Ids') && (
+                      <span className="text-gray-500 ml-1" title="Internal field">🔒</span>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -938,11 +989,17 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                         ) : (
                           <div
                             onClick={() => handleCellClick(originalIndex, field)}
-                            className="min-h-6 px-2 py-1 text-sm cursor-pointer hover:bg-gray-100 rounded border-2 border-transparent hover:border-blue-200 relative"
-                            title="Click to edit"
+                            className={`min-h-6 px-2 py-1 text-sm rounded border-2 border-transparent relative ${
+                              field.toString().startsWith('__') && field.toString().endsWith('Ids')
+                                ? 'bg-gray-50 text-gray-700 cursor-default' // Read-only internal ID fields
+                                : 'cursor-pointer hover:bg-gray-100 hover:border-blue-200'
+                            }`}
+                            title={field.toString().startsWith('__') && field.toString().endsWith('Ids') ? 'Internal field' : 'Click to edit'}
                           >
                             {employee[field] || (
-                              <span className="text-gray-400 italic">Click to add...</span>
+                              <span className="text-gray-400 italic">
+                                {field.toString().startsWith('__') && field.toString().endsWith('Ids') ? 'Internal data' : 'Click to add...'}
+                              </span>
                             )}
                             {renderCellValidation(originalIndex, field)}
                           </div>

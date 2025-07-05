@@ -13,6 +13,17 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.2.9',
+    date: '2025-07-05',
+    features: [
+      'Individual field mapping for departments and employee groups replaces comma-separated values',
+      'Each department now appears as separate mappable field like "Department Kitchen" or "Department Bar"',
+      'Any non-empty value in individual field assigns that department or employee group to the employee',
+      'Eliminated bulk corrections for departments and employee groups since typos are no longer possible',
+      'Uses same pattern as bankAccount field flattening for consistent architecture'
+    ]
+  },
+  {
     version: '0.2.8',
     date: '2025-06-30',
     features: [
