@@ -2,6 +2,7 @@ import { Route, Switch } from 'wouter';
 import { DocumentationLayout } from './components/layouts/DocumentationLayout';
 import { WorkflowAppWithLayout } from './components/WorkflowAppWithLayout';
 import { RoadmapPage } from './components/documentation/DocumentationPage';
+import { BulkEditPage } from './edit/components';
 import { usePlandayApi } from './hooks/usePlandayApi';
 import { ValidationService } from './services/mappingService';
 import { useEffect } from 'react';
@@ -56,6 +57,11 @@ function App() {
         <DocumentationLayout>
           <RoadmapPage />
         </DocumentationLayout>
+      </Route>
+      
+      {/* Bulk edit page */}
+      <Route path="/edit">
+        <BulkEditPage />
       </Route>
     </Switch>
   );
