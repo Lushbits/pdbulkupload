@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import type { Employee, BulkUploadProgress, EmployeeUploadResult, PlandayEmployeeCreateRequest } from '../../types/planday';
+import type { Employee, BulkUploadProgress, EmployeeUploadResult, PlandayEmployeeCreateRequest, PayrateAssignment, PayrateSetResult } from '../../types/planday';
 import { usePlandayApi } from '../../hooks/usePlandayApi';
 import { MappingUtils } from '../../services/mappingService';
 import { ValidationService } from '../../services/mappingService';
@@ -30,12 +30,14 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   onBack,
   className = ''
 }) => {
-  const [status, setStatus] = useState<'preparing' | 'validating' | 'authenticating' | 'uploading' | 'completed' | 'error'>('preparing');
+  const [status, setStatus] = useState<'preparing' | 'validating' | 'authenticating' | 'uploading' | 'setting-payrates' | 'completed' | 'error'>('preparing');
   const [progress, setProgress] = useState<BulkUploadProgress | null>(null);
   const [results, setResults] = useState<EmployeeUploadResult[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [processingLog, setProcessingLog] = useState<string[]>([]);
   const [validationErrors, setValidationErrors] = useState<Array<{employee: string, errors: string[]}>>([]);
+  const [payrateProgress, setPayrateProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [payrateResults, setPayrateResults] = useState<PayrateSetResult[] | null>(null);
   
   const plandayApi = usePlandayApi();
 
@@ -46,31 +48,33 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   };
 
   // Pre-validate ALL employees before any upload
-  const validateAllEmployees = async (employees: Employee[]): Promise<{ 
-    isValid: boolean, 
-    validatedEmployees: PlandayEmployeeCreateRequest[], 
-    errors: Array<{employee: string, errors: string[]}> 
+  const validateAllEmployees = async (employees: Employee[]): Promise<{
+    isValid: boolean,
+    validatedEmployees: PlandayEmployeeCreateRequest[],
+    convertedEmployees: any[], // Keep converted data for payrate extraction
+    errors: Array<{employee: string, errors: string[]}>
   }> => {
     addLogEntry(`🔍 Pre-validating all ${employees.length} employees...`);
-    
+
     const validatedEmployees: PlandayEmployeeCreateRequest[] = [];
+    const convertedEmployees: any[] = []; // Store converted employees with payrate data
     const allErrors: Array<{employee: string, errors: string[]}> = [];
-    
+
     for (let index = 0; index < employees.length; index++) {
       const employee = employees[index];
       const employeeName = `${employee.firstName || 'Unknown'} ${employee.lastName || 'Unknown'} (row ${index + 1})`;
-      
+
       // Use ValidationService for required field validation
       const requiredFieldErrors = ValidationService.validateRequiredFields(employee, index);
-      
+
       // Use MappingUtils for conversion and additional validation
       const validation = await MappingUtils.validateEmployee(employee);
-      
+
       // Country code validation using centralized ValidationService
       const countryCodeErrors = ValidationService.validateCountryCodeFields(employee, index);
-      
+
       const allValidationErrors = [...requiredFieldErrors, ...validation.errors, ...countryCodeErrors];
-      
+
       if (allValidationErrors.length > 0) {
         const errorMessages = allValidationErrors.map(e => e.message);
         allErrors.push({
@@ -81,14 +85,21 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       } else {
         // Use the converted data from validation
         const converted = validation.converted;
-        
+
+        // Store the converted data (includes __employeeGroupPayrates and wageValidFrom)
+        convertedEmployees.push({ ...converted, rowIndex: index });
+
         // Use the centralized payload creation function to ensure consistency with preview
         const plandayEmployee = MappingUtils.createApiPayload(converted);
-        
+
         validatedEmployees.push(plandayEmployee);
-        
-        // Debug log to verify employeeTypeId is being included
-        if (plandayEmployee.employeeTypeId) {
+
+        // Log payrate info if present
+        const payrates = converted.__employeeGroupPayrates || [];
+        if (payrates.length > 0) {
+          const rateInfo = payrates.map((p: any) => `${p.groupName}: ${p.hourlyRate}`).join(', ');
+          addLogEntry(`✅ ${employeeName}: Valid (Hourly rates: ${rateInfo})`);
+        } else if (plandayEmployee.employeeTypeId) {
           addLogEntry(`✅ ${employeeName}: Valid (employeeTypeId: ${plandayEmployee.employeeTypeId})`);
         } else {
           addLogEntry(`✅ ${employeeName}: Valid`);
@@ -115,16 +126,17 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
     }
     
     const isValid = allErrors.length === 0;
-    
+
     if (isValid) {
       addLogEntry(`🎉 All ${employees.length} employees passed validation!`);
     } else {
       addLogEntry(`❌ ${allErrors.length} employees failed validation. Upload will not proceed.`);
     }
-    
+
     return {
       isValid,
       validatedEmployees,
+      convertedEmployees,
       errors: allErrors
     };
   };
@@ -256,7 +268,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         setErrorMessage(`Atomic upload failed: ${failed.length} employees failed to upload. ${successful.length} employees were successfully uploaded before the failure.`);
         addLogEntry(`❌ ATOMIC UPLOAD FAILED: Not all employees could be uploaded.`);
         addLogEntry(`📊 Final result: ${successful.length} successful, ${failed.length} failed`);
-        
+
         // Log detailed failure information
         failed.forEach((failedResult, index) => {
           const employee = failedResult.employee;
@@ -265,8 +277,61 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           addLogEntry(`   Row: ${failedResult.rowIndex + 1}`);
         });
       } else {
+        addLogEntry(`🎉 All ${successful.length} employees uploaded successfully!`);
+
+        // Phase 4: Set pay rates for employees with hourly rates
+        const payrateAssignments: PayrateAssignment[] = [];
+
+        successful.forEach((result) => {
+          // Find the corresponding converted employee data
+          const convertedEmployee = validation.convertedEmployees.find(
+            (c: any) => c.rowIndex === result.rowIndex
+          );
+
+          if (convertedEmployee && result.plandayId) {
+            const payrates = convertedEmployee.__employeeGroupPayrates || [];
+            const validFrom = convertedEmployee.wageValidFrom || new Date().toISOString().split('T')[0];
+
+            payrates.forEach((pr: any) => {
+              payrateAssignments.push({
+                employeeId: result.plandayId!,
+                groupId: pr.groupId,
+                groupName: pr.groupName,
+                rate: pr.hourlyRate,
+                validFrom
+              });
+            });
+          }
+        });
+
+        if (payrateAssignments.length > 0) {
+          setStatus('setting-payrates');
+          addLogEntry(`💰 Setting ${payrateAssignments.length} hourly pay rates for employees...`);
+
+          const payrateResults = await plandayApi.bulkSetPayrates(
+            payrateAssignments,
+            (completed, total) => {
+              setPayrateProgress({ completed, total });
+            }
+          );
+
+          setPayrateResults(payrateResults);
+
+          const successfulPayrates = payrateResults.filter(r => r.success).length;
+          const failedPayrates = payrateResults.filter(r => !r.success).length;
+
+          if (failedPayrates > 0) {
+            addLogEntry(`⚠️ Pay rates: ${successfulPayrates} successful, ${failedPayrates} failed`);
+            payrateResults.filter(r => !r.success).forEach(pr => {
+              addLogEntry(`   ❌ Failed: ${pr.groupName} rate ${pr.rate} - ${pr.error}`);
+            });
+          } else {
+            addLogEntry(`✅ All ${successfulPayrates} pay rates set successfully!`);
+          }
+        }
+
         setStatus('completed');
-        addLogEntry(`🎉 ATOMIC SUCCESS: All ${successful.length} employees uploaded successfully!`);
+        addLogEntry(`🎉 ATOMIC SUCCESS: Upload process complete!`);
       }
 
       setResults(uploadResults);
@@ -323,6 +388,9 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             {status === 'uploading' && (
               <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             )}
+            {status === 'setting-payrates' && (
+              <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+            )}
             {status === 'completed' && (
               <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
@@ -339,6 +407,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             {status === 'validating' && 'Validating All Employees'}
             {status === 'authenticating' && 'Re-authenticating with Planday'}
             {status === 'uploading' && 'Uploading to Planday'}
+            {status === 'setting-payrates' && 'Setting Hourly Pay Rates'}
             {status === 'completed' && 'Atomic Upload Complete!'}
             {status === 'error' && 'Atomic Upload Failed'}
           </h2>
@@ -347,6 +416,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             {status === 'validating' && `Pre-validating all ${employees.length} employees. Upload will only proceed if ALL are valid.`}
             {status === 'authenticating' && 'Authentication expired. Automatically refreshing your session...'}
             {status === 'uploading' && `Atomic upload in progress - all ${employees.length} employees must succeed.`}
+            {status === 'setting-payrates' && 'Employees created. Now setting hourly pay rates for employee groups...'}
             {status === 'completed' && 'All employees have been successfully uploaded to Planday!'}
             {status === 'error' && 'Upload stopped due to validation or API errors. No partial uploads.'}
           </p>
@@ -401,6 +471,62 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
               </div>
             )}
           </div>
+        </Card>
+      )}
+
+      {/* Pay Rate Progress */}
+      {status === 'setting-payrates' && payrateProgress && (
+        <Card>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Setting Pay Rates</h3>
+              <span className="text-sm text-gray-600">
+                {Math.round((payrateProgress.completed / payrateProgress.total) * 100)}% Complete
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div
+                className="bg-green-600 h-3 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${(payrateProgress.completed / payrateProgress.total) * 100}%` }}
+              ></div>
+            </div>
+            <div className="text-center text-sm text-gray-600">
+              {payrateProgress.completed} of {payrateProgress.total} pay rates set...
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Pay Rate Results */}
+      {status === 'completed' && payrateResults && payrateResults.length > 0 && (
+        <Card>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pay Rate Results</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">
+                {payrateResults.filter(r => r.success).length}
+              </div>
+              <div className="text-sm text-green-700">Pay Rates Set</div>
+            </div>
+            <div className="p-4 bg-red-50 rounded-lg">
+              <div className="text-2xl font-bold text-red-600">
+                {payrateResults.filter(r => !r.success).length}
+              </div>
+              <div className="text-sm text-red-700">Failed</div>
+            </div>
+          </div>
+          {payrateResults.some(r => !r.success) && (
+            <div className="mt-4">
+              <h4 className="font-medium text-red-800 mb-2">Failed Pay Rates:</h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {payrateResults.filter(r => !r.success).map((result, index) => (
+                  <div key={index} className="p-2 bg-red-50 rounded text-sm">
+                    <span className="font-medium">{result.groupName}</span>: Rate {result.rate} - {result.error}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -581,7 +707,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         <Button
           variant="secondary"
           onClick={onBack}
-          disabled={status === 'uploading' || status === 'validating' || status === 'authenticating'}
+          disabled={status === 'uploading' || status === 'validating' || status === 'authenticating' || status === 'setting-payrates'}
           className="flex items-center space-x-2"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -665,6 +791,17 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             >
               <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin"></div>
               <span>Uploading...</span>
+            </Button>
+          )}
+
+          {status === 'setting-payrates' && (
+            <Button
+              variant="primary"
+              disabled
+              className="flex items-center space-x-2"
+            >
+              <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin"></div>
+              <span>Setting Pay Rates...</span>
             </Button>
           )}
         </div>

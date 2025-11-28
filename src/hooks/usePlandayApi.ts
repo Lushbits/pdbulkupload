@@ -22,6 +22,8 @@ import type {
   BulkUploadProgress,
   PlandayFieldDefinitionsSchema,
   PlandayPortalInfo,
+  PayrateAssignment,
+  PayrateSetResult,
 } from '../types/planday';
 
 interface PlandayApiState {
@@ -104,10 +106,16 @@ interface PlandayApiActions {
     emailAddresses: string[]
   ) => Promise<Map<string, PlandayEmployeeResponse>>;
   
+  // Pay rate actions
+  bulkSetPayrates: (
+    assignments: PayrateAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ) => Promise<PayrateSetResult[]>;
+
   // Utility actions
   testConnection: () => Promise<boolean>;
   clearErrors: () => void;
-  
+
   // Diagnostic actions for debugging field inconsistencies
   diagnoseFieldInconsistencies: () => ReturnType<typeof ValidationService.diagnoseFieldInconsistencies>;
 }
@@ -719,7 +727,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     try {
       const existingEmployees = await PlandayApi.checkExistingEmployeesByEmail(emailAddresses);
       // Email duplicate check completed
-      
+
       return existingEmployees;
     } catch (error) {
       console.error('❌ Failed to check existing employees by email:', error);
@@ -727,6 +735,30 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       throw new Error(errorMessage);
     }
   }, [state.isAuthenticated, handleError]);
+
+  /**
+   * Bulk set pay rates for employees in employee groups
+   */
+  const bulkSetPayrates = useCallback(async (
+    assignments: PayrateAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<PayrateSetResult[]> => {
+    // Check authentication directly from API client (state might be stale after re-auth)
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+
+    try {
+      const results = await PlandayApi.bulkSetPayrates(assignments, onProgress);
+      console.log(`✅ Bulk pay rates set: ${results.filter(r => r.success).length} successful, ${results.filter(r => !r.success).length} failed`);
+
+      return results;
+    } catch (error) {
+      console.error('❌ Failed to set pay rates:', error);
+      const errorMessage = handleError(error);
+      throw new Error(errorMessage);
+    }
+  }, [handleError]);
 
   /**
    * Clear all error states
@@ -859,9 +891,10 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     fetchEmployees,
     fetchEmployeesByIds,
     checkExistingEmployeesByEmail,
+    bulkSetPayrates,
     testConnection,
     clearErrors,
-    
+
     // Diagnostic actions for debugging field inconsistencies
     diagnoseFieldInconsistencies: () => ValidationService.diagnoseFieldInconsistencies(),
   };

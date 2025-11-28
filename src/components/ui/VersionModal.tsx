@@ -13,6 +13,21 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.0',
+    date: '2025-11-28',
+    title: 'Hourly Pay Rates',
+    features: [
+      'Added hourly pay rate support for employee groups - enter numeric values (e.g., 15.50) in employee group columns to set hourly rates',
+      'Employee group columns now accept "X" for assignment only, or a number for assignment with hourly rate',
+      'Added "Wage Valid From" date column to specify when pay rates take effect',
+      'Pay rates displayed inline in Employee Groups column (e.g., "Kitchen (15.50), Bar (18.00)")',
+      'Pay rate preview section added to Final Review step showing rates to be set via Pay API',
+      'Fixed primaryDepartmentId conversion from department name to numeric ID',
+      'Fixed authentication state issue when setting pay rates after employee creation',
+      'Fixed date format display in Final Review table to show ISO format consistently'
+    ]
+  },
+  {
     version: '0.2.9',
     date: '2025-07-05',
     features: [

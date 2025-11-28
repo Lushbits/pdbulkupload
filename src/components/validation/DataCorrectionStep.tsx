@@ -609,14 +609,14 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     const fieldSet = new Set<string>();
     employees.forEach(emp => {
       // Define internal fields that should be excluded
-      const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected']);
+      const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__employeeGroupPayrates']);
       
       Object.keys(emp).forEach(key => {
         // Exclude individual department/employee group fields (e.g., departments.Kitchen, employeeGroups.Reception)
         // These are converted to comma-separated editable fields (departments, employeeGroups)
         const isIndividualDeptField = key.startsWith('departments.') || key.startsWith('employeeGroups.');
-        // Exclude internal ID fields used for API payload
-        const isInternalIdField = key.startsWith('__') && key.endsWith('Ids');
+        // Exclude ALL internal fields that start with __ (e.g., __departmentsIds, __employeeGroupPayrates)
+        const isInternalField = key.startsWith('__');
         
         // Always include business fields (departments, employeeGroups) even if empty, otherwise only include non-empty fields
         const isBusinessField = ['departments', 'employeeGroups'].includes(key);
@@ -626,7 +626,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
         }
         
-        if (!internalFields.has(key) && !isIndividualDeptField && !isInternalIdField) {
+        if (!internalFields.has(key) && !isIndividualDeptField && !isInternalField) {
           if (isBusinessField || (emp[key as keyof Employee] != null && emp[key as keyof Employee] !== '')) {
             fieldSet.add(key);
             if (isBusinessField) {
@@ -640,13 +640,13 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     // Sort fields with important ones first
     const importantFields = ['firstName', 'lastName', 'userName', 'email'];
     const businessFields = ['departments', 'employeeGroups']; // Business-critical editable fields - always show
-    const otherFields = Array.from(fieldSet).filter(field => 
+    const otherFields = Array.from(fieldSet).filter(field =>
       !importantFields.includes(field) && !businessFields.includes(field)
     ).sort();
-    
+
     // Always include business fields even if not in fieldSet (they might be empty but should still be editable)
     const fieldsToShow = [
-      ...importantFields.filter(field => fieldSet.has(field)), 
+      ...importantFields.filter(field => fieldSet.has(field)),
       ...businessFields, // Always include business fields, regardless of fieldSet
       ...otherFields
     ];
@@ -658,8 +658,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
   // Get fields that can be bulk edited (exclude userName since emails must be unique, and internal fields)
   const bulkEditableFields = useMemo(() => {
-    return editableFields.filter(field => 
-      field !== 'userName' && 
+    return editableFields.filter(field =>
+      field !== 'userName' &&
       !field.toString().startsWith('__') // Exclude internal ID fields like __departmentsIds
     );
   }, [editableFields]);
@@ -691,6 +691,35 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   const cleanErrorMessage = (message: string): string => {
     // Fix redundant dropdown values like "XXL (XXL), XL (XL)" -> "XXL, XL"
     return message.replace(/(\w+) \(\1\)/g, '$1');
+  };
+
+  // Helper function to format employee groups with their hourly rates
+  const formatEmployeeGroupsWithRates = (employee: Employee): string | null => {
+    const payrates = (employee as any).__employeeGroupPayrates as Array<{ groupId: number; groupName: string; hourlyRate: number }> | undefined;
+    const baseGroups = employee.employeeGroups;
+
+    // If no payrates data, return null to use default display
+    if (!payrates || !Array.isArray(payrates) || payrates.length === 0) {
+      return null;
+    }
+
+    // Build a map of group names to hourly rates
+    const ratesMap = new Map<string, number>();
+    payrates.forEach(pr => {
+      ratesMap.set(pr.groupName, pr.hourlyRate);
+    });
+
+    // If we have base groups string, parse and enhance it
+    if (baseGroups && typeof baseGroups === 'string') {
+      const groups = baseGroups.split(',').map(g => g.trim()).filter(g => g);
+      return groups.map(groupName => {
+        const rate = ratesMap.get(groupName);
+        return rate !== undefined ? `${groupName} (${rate})` : groupName;
+      }).join(', ');
+    }
+
+    // Fallback: just show payrate groups with rates
+    return payrates.map(pr => `${pr.groupName} (${pr.hourlyRate})`).join(', ');
   };
 
   /**
@@ -990,17 +1019,32 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                           <div
                             onClick={() => handleCellClick(originalIndex, field)}
                             className={`min-h-6 px-2 py-1 text-sm rounded border-2 border-transparent relative ${
-                              field.toString().startsWith('__') && field.toString().endsWith('Ids')
-                                ? 'bg-gray-50 text-gray-700 cursor-default' // Read-only internal ID fields
+                              field.toString().startsWith('__')
+                                ? 'bg-gray-50 text-gray-700 cursor-default' // Read-only internal fields
                                 : 'cursor-pointer hover:bg-gray-100 hover:border-blue-200'
                             }`}
-                            title={field.toString().startsWith('__') && field.toString().endsWith('Ids') ? 'Internal field' : 'Click to edit'}
+                            title={field.toString().startsWith('__') ? 'Internal field' : 'Click to edit'}
                           >
-                            {employee[field] || (
-                              <span className="text-gray-400 italic">
-                                {field.toString().startsWith('__') && field.toString().endsWith('Ids') ? 'Internal data' : 'Click to add...'}
-                              </span>
-                            )}
+                            {(() => {
+                              // Special handling for employeeGroups to show hourly rates
+                              if (field === 'employeeGroups') {
+                                const groupsWithRates = formatEmployeeGroupsWithRates(employee);
+                                if (groupsWithRates) {
+                                  return groupsWithRates;
+                                }
+                                // Fall through to normal display if no rates
+                              }
+                              const value = employee[field];
+                              // Don't render objects/arrays directly - they're internal data
+                              if (value && typeof value === 'object') {
+                                return <span className="text-gray-400 italic">Internal data</span>;
+                              }
+                              return value || (
+                                <span className="text-gray-400 italic">
+                                  {field.toString().startsWith('__') ? 'Internal data' : 'Click to add...'}
+                                </span>
+                              );
+                            })()}
                             {renderCellValidation(originalIndex, field)}
                           </div>
                         )}

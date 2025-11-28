@@ -80,6 +80,13 @@ export const AUTO_MAPPING_RULES = {
     'position type', 'contract type', 'employment status',
     'worker type', 'staff type', 'employment category'
   ],
+  wageValidFrom: [
+    'wage valid from', 'salary valid from', 'rate valid from',
+    'pay rate valid from', 'hourly rate valid from', 'rate from',
+    'rate start date', 'wage start date', 'pay start date',
+    'valid from date', 'effective date', 'pay effective date',
+    'wage effective date', 'rate effective', 'pay from'
+  ],
 } as const;
 
 /**

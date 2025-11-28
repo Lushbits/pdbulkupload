@@ -500,4 +500,38 @@ export interface CountryPhoneMapping {
   minLength: number;      // Min phone number length (without country code)
   maxLength: number;      // Max phone number length (without country code)
   countryId?: number;     // Planday internal ID if available
+}
+
+/**
+ * Payrate Types for Bulk Upload
+ * Used for setting hourly rates on employee groups after employee creation
+ */
+export interface EmployeeGroupPayrateData {
+  groupId: number;
+  groupName: string;
+  hourlyRate: number;
+}
+
+export interface PayrateSetRequest {
+  wageType: 'HourlyRate';
+  rate: number;
+  employeeIds: number[];
+  validFrom: string; // YYYY-MM-DD format
+}
+
+export interface PayrateSetResult {
+  employeeId: number;
+  groupId: number;
+  groupName: string;
+  rate: number;
+  success: boolean;
+  error?: string;
+}
+
+export interface PayrateAssignment {
+  employeeId: number;
+  groupId: number;
+  groupName: string;
+  rate: number;
+  validFrom: string;
 } 

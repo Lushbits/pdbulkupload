@@ -25,6 +25,9 @@ import type {
   PlandayFieldDefinitionsSchema,
   PlandayFieldDefinitionsResponse,
   PlandayPortalInfo,
+  PayrateSetRequest,
+  PayrateSetResult,
+  PayrateAssignment,
 } from '../types/planday';
 
 import { PlandayErrorCodes } from '../types/planday';
@@ -852,6 +855,126 @@ export class PlandayApiClient {
   }
 
   /**
+   * Set hourly pay rate for employees in an employee group
+   * PUT /pay/v1.0/payrates/employeeGroups/{groupId}
+   */
+  async setEmployeeGroupPayrate(
+    groupId: number,
+    payload: PayrateSetRequest
+  ): Promise<void> {
+    try {
+      await this.makeAuthenticatedRequest(
+        `${API_ENDPOINTS.PAYRATES_BY_GROUP}/${groupId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }
+      );
+      console.log(`✅ Set pay rate ${payload.rate} for ${payload.employeeIds.length} employees in group ${groupId}`);
+    } catch (error) {
+      console.error(`❌ Failed to set pay rate for group ${groupId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk set pay rates after employee creation
+   * Groups assignments by groupId and rate for efficient API calls
+   */
+  async bulkSetPayrates(
+    assignments: PayrateAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<PayrateSetResult[]> {
+    const results: PayrateSetResult[] = [];
+
+    if (assignments.length === 0) {
+      return results;
+    }
+
+    console.log(`💰 Setting pay rates for ${assignments.length} employee-group assignments...`);
+
+    // Group assignments by groupId for efficient API calls
+    const groupedByGroup = new Map<number, PayrateAssignment[]>();
+
+    assignments.forEach(assignment => {
+      if (!groupedByGroup.has(assignment.groupId)) {
+        groupedByGroup.set(assignment.groupId, []);
+      }
+      groupedByGroup.get(assignment.groupId)!.push(assignment);
+    });
+
+    let completed = 0;
+    const total = assignments.length;
+
+    // Process each group
+    for (const [groupId, groupAssignments] of groupedByGroup.entries()) {
+      // Further group by rate (API takes array of employeeIds with same rate)
+      const groupedByRate = new Map<number, { employeeIds: number[]; validFrom: string; groupName: string }>();
+
+      groupAssignments.forEach(a => {
+        if (!groupedByRate.has(a.rate)) {
+          groupedByRate.set(a.rate, {
+            employeeIds: [],
+            validFrom: a.validFrom,
+            groupName: a.groupName
+          });
+        }
+        groupedByRate.get(a.rate)!.employeeIds.push(a.employeeId);
+      });
+
+      // Make API call for each rate value in this group
+      for (const [rate, data] of groupedByRate.entries()) {
+        try {
+          await this.setEmployeeGroupPayrate(groupId, {
+            wageType: 'HourlyRate',
+            rate,
+            employeeIds: data.employeeIds,
+            validFrom: data.validFrom
+          });
+
+          // Mark all as successful
+          data.employeeIds.forEach(employeeId => {
+            results.push({
+              employeeId,
+              groupId,
+              groupName: data.groupName,
+              rate,
+              success: true
+            });
+            completed++;
+            onProgress?.(completed, total);
+          });
+
+        } catch (error) {
+          // Mark all as failed
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          data.employeeIds.forEach(employeeId => {
+            results.push({
+              employeeId,
+              groupId,
+              groupName: data.groupName,
+              rate,
+              success: false,
+              error: errorMessage
+            });
+            completed++;
+            onProgress?.(completed, total);
+          });
+        }
+
+        // Rate limit delay between API calls
+        await this.delay(RATE_LIMIT_CONFIG.delayBetweenBatches);
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    console.log(`💰 Pay rate results: ${successCount} successful, ${failCount} failed`);
+
+    return results;
+  }
+
+  /**
    * Cleanup method to clear all tokens
    */
   cleanup(): void {
@@ -1003,6 +1126,16 @@ export const PlandayApi = {
    */
   async fetchEmployeesByIds(employeeIds: number[]): Promise<PlandayEmployeeResponse[]> {
     return plandayApiClient.fetchEmployeesByIds(employeeIds);
+  },
+
+  /**
+   * Bulk set pay rates for employees in employee groups
+   */
+  async bulkSetPayrates(
+    assignments: PayrateAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<PayrateSetResult[]> {
+    return plandayApiClient.bulkSetPayrates(assignments, onProgress);
   },
 
   /**

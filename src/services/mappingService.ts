@@ -712,24 +712,52 @@ export class MappingService {
       }
     }
 
-    // Handle employee groups - NEW: Individual field approach  
+    // Handle employee groups - NEW: Individual field approach with hourly rate support
     const assignedEmployeeGroups: string[] = [];
     const employeeGroupIds: number[] = [];
-    
+    const employeeGroupPayrates: Array<{ groupId: number; groupName: string; hourlyRate: number }> = [];
+
     // Scan for individual employee group fields (employeeGroups.Reception, employeeGroups.Waiter, etc.)
     Object.keys(employee).forEach(fieldName => {
       if (fieldName.startsWith('employeeGroups.') && employee[fieldName]) {
         const groupName = fieldName.replace('employeeGroups.', '');
         const value = employee[fieldName]?.toString()?.trim();
-        
+
         // Any non-empty value means assign this employee group
         if (value && value !== '' && value.toLowerCase() !== 'no' && value.toLowerCase() !== 'false') {
           assignedEmployeeGroups.push(groupName);
-          
+
           // Convert employee group name to ID
           const groupId = this.employeeGroupsByName.get(this.normalizeName(groupName));
           if (groupId) {
             employeeGroupIds.push(groupId);
+
+            // Check if value is numeric (indicates hourly rate)
+            // "X", "x", "yes", "true" = assignment only, numeric value = hourly rate
+            const lowerValue = value.toLowerCase();
+            if (lowerValue !== 'x' && lowerValue !== 'yes' && lowerValue !== 'true') {
+              const numericValue = parseFloat(value);
+              if (!isNaN(numericValue)) {
+                if (numericValue > 0) {
+                  // Store as hourly rate
+                  employeeGroupPayrates.push({
+                    groupId,
+                    groupName,
+                    hourlyRate: numericValue
+                  });
+                } else if (numericValue < 0) {
+                  // Negative rate is invalid
+                  errors.push({
+                    field: fieldName as any,
+                    value: value,
+                    message: `Hourly rate for "${groupName}" must be positive (got ${value})`,
+                    rowIndex: employee.rowIndex || 0,
+                    severity: 'error'
+                  });
+                }
+                // numericValue === 0 means assign without rate (like "X")
+              }
+            }
           } else {
             errors.push({
               field: fieldName as any,
@@ -742,7 +770,7 @@ export class MappingService {
         }
       }
     });
-    
+
     // Set converted employee groups array and comma-separated editable field
     if (employeeGroupIds.length > 0) {
       converted.employeeGroups = assignedEmployeeGroups.join(', '); // Store as comma-separated names for editing
@@ -751,6 +779,40 @@ export class MappingService {
       // Always create editable field, even if empty
       converted.employeeGroups = '';
       converted.__employeeGroupsIds = [];
+    }
+
+    // Store payrate data for post-creation API calls
+    if (employeeGroupPayrates.length > 0) {
+      converted.__employeeGroupPayrates = employeeGroupPayrates;
+    }
+
+    // Handle wageValidFrom date field (for payrate API, not employee creation)
+    if (employee.wageValidFrom && employee.wageValidFrom.toString().trim() !== '') {
+      const dateStr = employee.wageValidFrom.toString().trim();
+
+      if (DateParser.couldBeDate(dateStr)) {
+        const convertedDate = DateParser.parseToISO(dateStr);
+
+        if (convertedDate) {
+          converted.wageValidFrom = convertedDate;
+        } else {
+          errors.push({
+            field: 'wageValidFrom' as any,
+            value: dateStr,
+            message: `Invalid wage valid from date format. Use YYYY-MM-DD format.`,
+            rowIndex: employee.rowIndex || 0,
+            severity: 'error'
+          });
+        }
+      } else {
+        errors.push({
+          field: 'wageValidFrom' as any,
+          value: dateStr,
+          message: `"${dateStr}" doesn't appear to be a valid date. Use YYYY-MM-DD format.`,
+          rowIndex: employee.rowIndex || 0,
+          severity: 'error'
+        });
+      }
     }
 
     // Handle employee type (single value)
@@ -903,13 +965,14 @@ export class MappingService {
     // Define logical order for common fields (most important first)
     const logicalFieldOrder = [
       'firstName',
-      'lastName', 
+      'lastName',
       'userName', // Will be displayed as "email"
       'cellPhone',
       'cellPhoneCountryCode',
       // departments and employeeGroups removed - now using individual fields like departments.Kitchen, employeeGroups.Waiter
       'employeeTypeId',
       'hiredFrom',
+      'wageValidFrom', // For hourly pay rates - when they take effect
       'gender',
       'birthDate',
       'street1',
@@ -1090,6 +1153,9 @@ export class MappingService {
             instructions[field.field] = 'Social Security Number (if required by your portal)';
             break;
 
+          case 'wageValidFrom':
+            instructions[field.field] = 'Date when hourly pay rates take effect (YYYY-MM-DD format). Required if any hourly rates are specified in employee group columns.';
+            break;
           default:
             // Handle individual department and employee group fields
             if (field.field.startsWith('departments.')) {
@@ -1097,7 +1163,7 @@ export class MappingService {
               instructions[field.field] = `Check this column if employee works in ${departmentName} department. Use "Yes", "X", or any value to assign department, leave empty to skip.`;
             } else if (field.field.startsWith('employeeGroups.')) {
               const groupName = field.field.replace('employeeGroups.', '');
-              instructions[field.field] = `Check this column if employee belongs to ${groupName} group. Use "Yes", "X", or any value to assign group, leave empty to skip.`;
+              instructions[field.field] = `Assign to ${groupName} group: Use "X" to assign without rate, or enter hourly rate (e.g., 15.50) to assign with pay rate. Leave empty to skip.`;
             } else if (field.isComplexSubField && field.field.includes('.')) {
               // Handle complex object sub-fields
               const [parentField, subField] = field.field.split('.');
@@ -1159,7 +1225,8 @@ export class MappingService {
     // Define internal fields that should be excluded from the API payload
     const internalFields = new Set([
       'rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected',
-      '__departmentsIds', '__employeeGroupsIds' // Internal ID fields for API payload
+      '__departmentsIds', '__employeeGroupsIds', // Internal ID fields for API payload
+      '__employeeGroupPayrates', 'wageValidFrom' // Payrate fields (handled separately after employee creation)
     ]);
     
     // Include all fields from the converted employee, excluding internal ones
@@ -1208,6 +1275,20 @@ export class MappingService {
     }
     if (converted.__employeeGroupsIds && Array.isArray(converted.__employeeGroupsIds) && converted.__employeeGroupsIds.length > 0) {
       cleanPayload.employeeGroups = converted.__employeeGroupsIds;
+    }
+
+    // Convert primaryDepartmentId from name to ID if it's a string
+    if (cleanPayload.primaryDepartmentId && typeof cleanPayload.primaryDepartmentId === 'string') {
+      const departments = MappingUtils.getDepartments();
+      const deptName = cleanPayload.primaryDepartmentId.trim().toLowerCase();
+      const matchingDept = departments.find(d => d.name.toLowerCase() === deptName);
+      if (matchingDept) {
+        cleanPayload.primaryDepartmentId = matchingDept.id;
+      } else {
+        // Remove invalid primaryDepartmentId - Planday API expects a numeric ID
+        console.warn(`⚠️ primaryDepartmentId "${cleanPayload.primaryDepartmentId}" not found in departments list, removing from payload`);
+        delete cleanPayload.primaryDepartmentId;
+      }
     }
     
     // Ensure required fields have defaults if needed
@@ -1585,6 +1666,16 @@ export class ValidationService {
         isComplexSubField: false,
         description: customField.description
       });
+    });
+
+    // Add special bulk upload fields (not from Planday API but used for payrate functionality)
+    fields.push({
+      field: 'wageValidFrom',
+      displayName: 'Wage Valid From',
+      isRequired: false,
+      isCustom: false,
+      isComplexSubField: false,
+      description: 'Date when hourly pay rates take effect (YYYY-MM-DD)'
     });
 
     return fields.sort((a, b) => a.displayName.localeCompare(b.displayName));

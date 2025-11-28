@@ -25,6 +25,10 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
   onStartUpload
 }) => {
   const [convertedEmployee, setConvertedEmployee] = useState<any>(null);
+  const [payratePreview, setPayratePreview] = useState<{
+    payrates: Array<{ groupId: number; groupName: string; hourlyRate: number }>;
+    validFrom: string;
+  } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const employeesPerPage = 25;
 
@@ -66,18 +70,30 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     const convertFirstEmployee = async () => {
       if (employees.length === 0) {
         setConvertedEmployee(null);
+        setPayratePreview(null);
         return;
       }
-      
+
       const result = await mappingService.validateAndConvert(employees[0]);
       const converted = result.converted;
-    
+
       // Use the centralized payload creation function to ensure consistency with upload
       const cleanPayload = MappingUtils.createApiPayload(converted);
-
       setConvertedEmployee(cleanPayload);
+
+      // Capture payrate data for preview (this is sent separately after employee creation)
+      const payrates = (converted as any).__employeeGroupPayrates;
+      const validFrom = (converted as any).wageValidFrom;
+      if (payrates && Array.isArray(payrates) && payrates.length > 0) {
+        setPayratePreview({
+          payrates,
+          validFrom: validFrom || new Date().toISOString().split('T')[0]
+        });
+      } else {
+        setPayratePreview(null);
+      }
     };
-    
+
     convertFirstEmployee();
   }, [employees]);
 
@@ -126,15 +142,21 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     if (convertedEmployees.length === 0) return;
     
     const fieldSet = new Set<string>();
-    const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds']);
+    // Exclude internal fields and payrate fields (payrates shown separately)
+    const internalFields = new Set([
+      'rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected',
+      '__departmentsIds', '__employeeGroupsIds',
+      '__employeeGroupPayrates', 'wageValidFrom' // Payrate fields shown in separate preview
+    ]);
     
     convertedEmployees.forEach(converted => {
       Object.keys(converted).forEach(key => {
         // Filter out individual fields (like departments.Kitchen, employeeGroups.Waiter)
         // and internal ID fields, but keep consolidated fields (departments, employeeGroups)
-        if (!internalFields.has(key) && 
+        if (!internalFields.has(key) &&
+            !key.startsWith('__') && // Exclude ALL internal fields starting with __
             !key.includes('.') && // Exclude individual fields like "departments.Kitchen"
-            converted[key] != null && 
+            converted[key] != null &&
             converted[key] !== '') {
           fieldSet.add(key);
         }
@@ -291,9 +313,8 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
                         displayValue = '-';
                       } else if (Array.isArray(value)) {
                         displayValue = value.join(', ');
-                      } else if (field.includes('Date') && value) {
-                        displayValue = new Date(value).toLocaleDateString();
                       } else {
+                        // Display value as-is (dates are already in ISO format YYYY-MM-DD)
                         displayValue = String(value);
                       }
                       
@@ -346,6 +367,27 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
               <pre className="text-sm text-gray-800 whitespace-pre-wrap">
                 {JSON.stringify(convertedEmployee, null, 2)}
               </pre>
+            </div>
+          )}
+
+          {/* Payrate Preview - shown separately as it's sent after employee creation */}
+          {payratePreview && payratePreview.payrates.length > 0 && (
+            <div className="mt-4 bg-blue-50 rounded border border-blue-200 p-4">
+              <div className="text-xs text-blue-600 mb-2 font-medium">
+                Hourly Rates (sent after employee creation via Pay API)
+              </div>
+              <div className="text-sm text-blue-800 space-y-1">
+                <div><strong>Valid From:</strong> {payratePreview.validFrom}</div>
+                <div><strong>Pay Rates:</strong></div>
+                <ul className="ml-4 list-disc">
+                  {payratePreview.payrates.map((pr, idx) => (
+                    <li key={idx}>{pr.groupName}: {pr.hourlyRate}/hr</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="text-xs text-blue-500 mt-2 italic">
+                These rates will be set via PUT /pay/v1.0/payrates/employeeGroups/{'{groupId}'} after employee creation
+              </div>
             </div>
           )}
         </div>

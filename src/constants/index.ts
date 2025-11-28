@@ -57,13 +57,16 @@ export const PLANDAY_API_CONFIG: PlandayApiConfig = {
 export const API_ENDPOINTS = {
   // Authentication
   TOKEN_REFRESH: '/connect/token',
-  
+
   // HR API Endpoints (v1.0 with lowercase paths)
   DEPARTMENTS: '/hr/v1.0/departments',
   EMPLOYEES: '/hr/v1.0/employees',
   EMPLOYEE_GROUPS: '/hr/v1.0/employeegroups',
   EMPLOYEE_TYPES: '/hr/v1.0/employeetypes',
   EMPLOYEE_FIELD_DEFINITIONS: '/hr/v1.0/employees/fielddefinitions',
+
+  // Pay API Endpoints (v1.0)
+  PAYRATES_BY_GROUP: '/pay/v1.0/payrates/employeeGroups',
 } as const;
 
 /**
