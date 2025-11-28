@@ -18,6 +18,12 @@ import type {
   PlandayEmployeeGroupsResponse,
   PlandayEmployeeType,
   PlandayEmployeeTypesResponse,
+  PlandaySupervisor,
+  PlandaySupervisorsResponse,
+  PlandaySalaryType,
+  PlandaySalaryTypesResponse,
+  PlandayContractRule,
+  PlandayContractRulesResponse,
   PlandayEmployeeCreateRequest,
   PlandayEmployeeResponse,
   BulkUploadProgress,
@@ -28,6 +34,8 @@ import type {
   PayrateSetRequest,
   PayrateSetResult,
   PayrateAssignment,
+  FixedSalaryAssignment,
+  FixedSalarySetResult,
 } from '../types/planday';
 
 import { PlandayErrorCodes } from '../types/planday';
@@ -274,10 +282,263 @@ export class PlandayApiClient {
       const response = await this.makeAuthenticatedRequest<PlandayEmployeeTypesResponse>(
         API_ENDPOINTS.EMPLOYEE_TYPES
       );
-      
+
       return response.data || [];
     } catch (error) {
       console.error('❌ Failed to fetch employee types:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all supervisors (employees marked as supervisors)
+   * Used for mapping supervisor names to supervisor record IDs
+   */
+  async fetchSupervisors(): Promise<PlandaySupervisor[]> {
+    try {
+      const allSupervisors: PlandaySupervisor[] = [];
+      let offset = 0;
+      const limit = 50;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await this.makeAuthenticatedRequest<PlandaySupervisorsResponse>(
+          `${API_ENDPOINTS.SUPERVISORS}?limit=${limit}&offset=${offset}`
+        );
+
+        if (response.data && response.data.length > 0) {
+          allSupervisors.push(...response.data);
+          offset += response.data.length;
+          hasMore = response.data.length === limit;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      console.log(`✅ Fetched ${allSupervisors.length} supervisors`);
+      return allSupervisors;
+    } catch (error) {
+      console.error('❌ Failed to fetch supervisors:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Assign a supervisor to an employee via PUT request
+   * This must be done AFTER employee creation (supervisorId not accepted in POST)
+   */
+  async assignSupervisorToEmployee(employeeId: number, supervisorRecordId: number): Promise<void> {
+    try {
+      await this.makeAuthenticatedRequest(
+        `${API_ENDPOINTS.EMPLOYEES}/${employeeId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ supervisorId: supervisorRecordId })
+        }
+      );
+      console.log(`✅ Assigned supervisor ${supervisorRecordId} to employee ${employeeId}`);
+    } catch (error) {
+      console.error(`❌ Failed to assign supervisor to employee ${employeeId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk assign supervisors to employees after creation
+   */
+  async bulkAssignSupervisors(
+    assignments: Array<{ employeeId: number; supervisorId: number; supervisorName: string }>,
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }>> {
+    const results: Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }> = [];
+
+    if (assignments.length === 0) {
+      return results;
+    }
+
+    console.log(`👔 Assigning supervisors to ${assignments.length} employees...`);
+
+    let completed = 0;
+    const total = assignments.length;
+
+    for (const assignment of assignments) {
+      try {
+        await this.assignSupervisorToEmployee(assignment.employeeId, assignment.supervisorId);
+        results.push({
+          employeeId: assignment.employeeId,
+          supervisorId: assignment.supervisorId,
+          supervisorName: assignment.supervisorName,
+          success: true
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.push({
+          employeeId: assignment.employeeId,
+          supervisorId: assignment.supervisorId,
+          supervisorName: assignment.supervisorName,
+          success: false,
+          error: errorMessage
+        });
+      }
+
+      completed++;
+      onProgress?.(completed, total);
+    }
+
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+    console.log(`👔 Supervisor assignment complete: ${successful} successful, ${failed} failed`);
+
+    return results;
+  }
+
+  /**
+   * Fetch salary types from Planday Pay API
+   * Returns list of salary period types (Monthly, Weekly, etc.)
+   */
+  async fetchSalaryTypes(): Promise<PlandaySalaryType[]> {
+    try {
+      const response = await this.makeAuthenticatedRequest<PlandaySalaryTypesResponse>(
+        API_ENDPOINTS.SALARY_TYPES
+      );
+
+      console.log(`✅ Fetched ${response.data.length} salary types`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to fetch salary types:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Assign a fixed salary to an employee via PUT request
+   * This can be done after employee creation
+   */
+  async assignFixedSalary(
+    employeeId: number,
+    salaryTypeId: number,
+    hours: number,
+    salary: number,
+    validFrom: string
+  ): Promise<void> {
+    try {
+      await this.makeAuthenticatedRequest(
+        `${API_ENDPOINTS.SALARIES}/${employeeId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            from: validFrom,
+            salaryTypeId,
+            hours: Number(hours),
+            salary: Number(salary)
+          })
+        }
+      );
+      console.log(`✅ Assigned fixed salary (type ${salaryTypeId}, ${salary}) to employee ${employeeId}`);
+    } catch (error) {
+      console.error(`❌ Failed to assign fixed salary to employee ${employeeId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk assign fixed salaries to employees after creation
+   */
+  async bulkAssignFixedSalaries(
+    assignments: FixedSalaryAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<FixedSalarySetResult[]> {
+    const results: FixedSalarySetResult[] = [];
+
+    if (assignments.length === 0) {
+      return results;
+    }
+
+    console.log(`💵 Assigning fixed salaries to ${assignments.length} employees...`);
+
+    let completed = 0;
+    const total = assignments.length;
+
+    for (const assignment of assignments) {
+      try {
+        await this.assignFixedSalary(
+          assignment.employeeId,
+          assignment.salaryTypeId,
+          assignment.hours,
+          assignment.salary,
+          assignment.validFrom
+        );
+        results.push({
+          employeeId: assignment.employeeId,
+          salaryTypeId: assignment.salaryTypeId,
+          salaryTypeName: assignment.salaryTypeName,
+          hours: assignment.hours,
+          salary: assignment.salary,
+          success: true
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.push({
+          employeeId: assignment.employeeId,
+          salaryTypeId: assignment.salaryTypeId,
+          salaryTypeName: assignment.salaryTypeName,
+          hours: assignment.hours,
+          salary: assignment.salary,
+          success: false,
+          error: errorMessage
+        });
+      }
+
+      completed++;
+      onProgress?.(completed, total);
+    }
+
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+    console.log(`💵 Fixed salary assignment complete: ${successful} successful, ${failed} failed`);
+
+    return results;
+  }
+
+  /**
+   * Fetch all contract rules from the portal
+   * Contract rules define contracted hours (per week, month, or year)
+   */
+  async fetchContractRules(): Promise<PlandayContractRule[]> {
+    try {
+      const response = await this.makeAuthenticatedRequest<PlandayContractRulesResponse>(
+        API_ENDPOINTS.CONTRACT_RULES
+      );
+
+      console.log(`✅ Fetched ${response.data.length} contract rules`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to fetch contract rules:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Assign a contract rule to an employee via PUT request
+   * This is done inline after employee creation (not deferred like supervisors)
+   *
+   * Endpoint: PUT /contractrules/v1/employees/{employeeId}?contractRuleId={contractRuleId}
+   * Body: {"employeeId": "123456"} (employeeId as string)
+   */
+  async assignContractRule(employeeId: number, contractRuleId: number): Promise<void> {
+    try {
+      await this.makeAuthenticatedRequest(
+        `${API_ENDPOINTS.CONTRACT_RULES_EMPLOYEES}/${employeeId}?contractRuleId=${contractRuleId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            employeeId: String(employeeId)
+          })
+        }
+      );
+      console.log(`✅ Assigned contract rule ${contractRuleId} to employee ${employeeId}`);
+    } catch (error) {
+      console.error(`❌ Failed to assign contract rule to employee ${employeeId}:`, error);
       throw error;
     }
   }
@@ -1067,6 +1328,88 @@ export const PlandayApi = {
    */
   async getEmployeeTypes(): Promise<PlandayEmployeeType[]> {
     return plandayApiClient.fetchEmployeeTypes();
+  },
+
+  /**
+   * Fetch all supervisors
+   */
+  async getSupervisors(): Promise<PlandaySupervisor[]> {
+    return plandayApiClient.fetchSupervisors();
+  },
+
+  /**
+   * Bulk assign supervisors to employees after creation
+   */
+  async bulkAssignSupervisors(
+    assignments: Array<{ employeeId: number; supervisorId: number; supervisorName: string }>,
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }>> {
+    return plandayApiClient.bulkAssignSupervisors(assignments, onProgress);
+  },
+
+  /**
+   * Fetch all salary types
+   */
+  async getSalaryTypes(): Promise<PlandaySalaryType[]> {
+    return plandayApiClient.fetchSalaryTypes();
+  },
+
+  /**
+   * Bulk assign fixed salaries to employees after creation
+   */
+  async bulkAssignFixedSalaries(
+    assignments: FixedSalaryAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<FixedSalarySetResult[]> {
+    return plandayApiClient.bulkAssignFixedSalaries(assignments, onProgress);
+  },
+
+  /**
+   * Fetch all contract rules
+   */
+  async getContractRules(): Promise<PlandayContractRule[]> {
+    return plandayApiClient.fetchContractRules();
+  },
+
+  /**
+   * Assign a contract rule to an employee (inline after creation)
+   */
+  async assignContractRule(employeeId: number, contractRuleId: number): Promise<void> {
+    return plandayApiClient.assignContractRule(employeeId, contractRuleId);
+  },
+
+  /**
+   * Create a single employee
+   */
+  async createEmployee(employee: PlandayEmployeeCreateRequest): Promise<{ data: PlandayEmployeeResponse }> {
+    return plandayApiClient.createEmployee(employee);
+  },
+
+  /**
+   * Assign fixed salary to an employee (inline after creation)
+   */
+  async assignFixedSalary(
+    employeeId: number,
+    salaryTypeId: number,
+    hours: number,
+    salary: number,
+    validFrom: string
+  ): Promise<void> {
+    return plandayApiClient.assignFixedSalary(employeeId, salaryTypeId, hours, salary, validFrom);
+  },
+
+  /**
+   * Set payrate for an employee in a specific group (inline after creation)
+   */
+  async setEmployeeGroupPayrate(groupId: number, payload: PayrateSetRequest): Promise<void> {
+    return plandayApiClient.setEmployeeGroupPayrate(groupId, payload);
+  },
+
+  /**
+   * Assign supervisor to an employee (deferred until all employees created)
+   */
+  async assignSupervisorToEmployee(employeeId: number, supervisorRecordId: number): Promise<void> {
+    return plandayApiClient.assignSupervisorToEmployee(employeeId, supervisorRecordId);
   },
 
   /**

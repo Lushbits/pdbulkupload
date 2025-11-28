@@ -87,6 +87,16 @@ export const AUTO_MAPPING_RULES = {
     'valid from date', 'effective date', 'pay effective date',
     'wage effective date', 'rate effective', 'pay from'
   ],
+  supervisorId: [
+    'supervisor', 'supervisor name', 'manager', 'manager name',
+    'reports to', 'reporting to', 'line manager', 'team lead',
+    'team leader', 'boss', 'superior', 'supervisor id'
+  ],
+  isSupervisor: [
+    'is supervisor', 'issupervisor', 'supervisor flag', 'is manager',
+    'manager flag', 'is team lead', 'is team leader', 'supervisor status',
+    'makes supervisor', 'set as supervisor'
+  ],
 } as const;
 
 /**

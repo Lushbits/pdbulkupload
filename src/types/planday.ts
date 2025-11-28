@@ -129,6 +129,101 @@ export interface PlandayEmployeeTypesResponse {
 }
 
 /**
+ * Planday Supervisor Types
+ * Based on actual API: https://openapi.planday.com/hr/v1.0/employees/supervisors
+ */
+export interface PlandaySupervisor {
+  id: number;  // Supervisor Record ID (not employee ID)
+  name: string;
+}
+
+export interface PlandaySupervisorsResponse {
+  paging: {
+    offset: number;
+    limit: number;
+    total: number;
+  };
+  data: PlandaySupervisor[];
+}
+
+/**
+ * Planday Salary Type
+ * Based on actual API: https://openapi.planday.com/pay/v1.0/salarytypes
+ */
+export interface PlandaySalaryType {
+  id: number;
+  name: string;
+}
+
+export interface PlandaySalaryTypesResponse {
+  paging: {
+    offset: number;
+    limit: number;
+    total: number;
+  };
+  data: PlandaySalaryType[];
+}
+
+/**
+ * Fixed Salary Assignment
+ * Used for assigning fixed salary to an employee
+ */
+export interface FixedSalaryAssignment {
+  employeeId: number;
+  salaryTypeId: number;
+  salaryTypeName: string;
+  hours: number;
+  salary: number;
+  validFrom: string;
+}
+
+export interface FixedSalarySetResult {
+  employeeId: number;
+  salaryTypeId: number;
+  salaryTypeName: string;
+  hours: number;
+  salary: number;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Planday Contract Rule Types
+ * Based on actual API: https://openapi.planday.com/contractrules/v1/contractrules
+ */
+export interface PlandayContractRule {
+  id: number;
+  name: string;
+}
+
+export interface PlandayContractRulesResponse {
+  paging: {
+    offset: number;
+    limit: number;
+    total: number;
+  };
+  data: PlandayContractRule[];
+}
+
+/**
+ * Contract Rule Assignment
+ * Used for assigning contract rule to an employee inline after creation
+ */
+export interface ContractRuleAssignment {
+  employeeId: number;
+  contractRuleId: number;
+  contractRuleName: string;
+}
+
+export interface ContractRuleSetResult {
+  employeeId: number;
+  contractRuleId: number;
+  contractRuleName: string;
+  success: boolean;
+  error?: string;
+}
+
+/**
  * Planday API Error Types
  */
 export interface PlandayApiError {

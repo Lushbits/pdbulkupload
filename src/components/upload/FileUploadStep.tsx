@@ -14,6 +14,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { TemplateOptionsModal } from '../ui/TemplateOptionsModal';
 // DateFormatModal will be used in mapping/validation steps
 
 // import { FieldDefinitionsDebugButton } from '../ui/FieldDefinitionsModal'; // Commented out for production
@@ -51,9 +52,10 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ExcelParseResult | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
-  
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+
   // Date format modal will be handled in mapping/validation steps
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Date format checking will be handled during mapping/validation, not during initial parsing
@@ -169,34 +171,42 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
   }, []);
 
   /**
-   * Handle template download
+   * Handle template download button click - opens modal
    */
   const handleDownloadTemplate = useCallback(() => {
+    // Check if field definitions are loaded
+    const status = ValidationService.getStatus();
+
+    if (!status.isLoaded) {
+      setUploadError('Portal field definitions not loaded yet. Please wait a moment and try again.');
+      return;
+    }
+
+    // Open the template options modal
+    setIsTemplateModalOpen(true);
+  }, []);
+
+  /**
+   * Handle actual template download with options
+   */
+  const handleDownloadWithOptions = useCallback((options: { includeSupervisorColumns: boolean; includeFixedSalaryColumns: boolean }) => {
     try {
-      console.log('📋 Starting template download...');
-      
-      // Check if field definitions are loaded
-      const status = ValidationService.getStatus();
-              // ValidationService status check
-      
-      if (!status.isLoaded) {
-        setUploadError('Portal field definitions not loaded yet. Please wait a moment and try again.');
-        return;
-      }
-      
+      console.log('📋 Starting template download...', options);
+
       // Generate template data using portal configuration
-      const templateData = MappingService.generatePortalTemplate();
-      
+      const templateData = MappingService.generatePortalTemplate(options);
+
       console.log('📊 Template data generated:', {
         headerCount: templateData.headers.length,
         fieldOrderCount: templateData.fieldOrder.length,
         customFieldsIncluded: templateData.fieldOrder.filter(f => f.isCustom).length,
-        requiredFieldsIncluded: templateData.fieldOrder.filter(f => f.isRequired).length
+        requiredFieldsIncluded: templateData.fieldOrder.filter(f => f.isRequired).length,
+        ...options
       });
-      
+
       // Download the Excel file
       ExcelUtils.downloadTemplate(templateData);
-      
+
       console.log('✅ Template download initiated');
     } catch (error) {
       console.error('❌ Template download failed:', error);
@@ -633,6 +643,13 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       </Card>
 
       {/* Date Format Modal will be added to mapping/validation steps */}
+
+      {/* Template Options Modal */}
+      <TemplateOptionsModal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        onDownload={handleDownloadWithOptions}
+      />
     </div>
   );
 };

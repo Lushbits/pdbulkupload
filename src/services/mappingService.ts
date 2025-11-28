@@ -14,6 +14,9 @@ import type {
   PlandayDepartment,
   PlandayEmployeeGroup,
   PlandayEmployeeType,
+  PlandaySupervisor,
+  PlandaySalaryType,
+  PlandayContractRule,
   ValidationError,
   PlandayFieldDefinitionsSchema,
   PlandayEmployeeCreateRequest
@@ -77,11 +80,23 @@ export class MappingService {
   private employeeGroupsById: Map<number, string> = new Map();
   private employeeTypesByName: Map<string, number> = new Map();
   private employeeTypesById: Map<number, string> = new Map();
+  // Supervisor maps - name can map to multiple IDs if duplicates exist
+  private supervisorsByName: Map<string, number[]> = new Map();
+  private supervisorsById: Map<number, string> = new Map();
+  // Salary type maps - for fixed salary assignments
+  private salaryTypesByName: Map<string, number> = new Map();
+  private salaryTypesById: Map<number, string> = new Map();
+  // Contract rule maps - for contracted hours
+  private contractRulesByName: Map<string, number> = new Map();
+  private contractRulesById: Map<number, string> = new Map();
 
   // Original data for reference (public for utility functions)
   public departments: PlandayDepartment[] = [];
   public employeeGroups: PlandayEmployeeGroup[] = [];
   public employeeTypes: PlandayEmployeeType[] = [];
+  public supervisors: PlandaySupervisor[] = [];
+  public salaryTypes: PlandaySalaryType[] = [];
+  public contractRules: PlandayContractRule[] = [];
 
   constructor() {}
 
@@ -128,6 +143,165 @@ export class MappingService {
         this.employeeTypesById.set(type.id, type.name);
       }
     });
+  }
+
+  /**
+   * Set supervisors data (called separately after authentication)
+   * Handles duplicate names by storing array of IDs per name
+   */
+  setSupervisors(supervisors: PlandaySupervisor[]): void {
+    this.supervisors = supervisors;
+    this.supervisorsByName.clear();
+    this.supervisorsById.clear();
+
+    supervisors.forEach(supervisor => {
+      if (supervisor && supervisor.name) {
+        const normalizedName = this.normalizeName(supervisor.name);
+
+        // Handle duplicate names - store as array
+        const existingIds = this.supervisorsByName.get(normalizedName) || [];
+        existingIds.push(supervisor.id);
+        this.supervisorsByName.set(normalizedName, existingIds);
+
+        this.supervisorsById.set(supervisor.id, supervisor.name);
+      }
+    });
+
+    console.log(`✅ Initialized ${supervisors.length} supervisors`);
+  }
+
+  /**
+   * Set salary types data (called separately after authentication)
+   */
+  setSalaryTypes(salaryTypes: PlandaySalaryType[]): void {
+    this.salaryTypes = salaryTypes;
+    this.salaryTypesByName.clear();
+    this.salaryTypesById.clear();
+
+    salaryTypes.forEach(salaryType => {
+      if (salaryType && salaryType.name) {
+        const normalizedName = this.normalizeName(salaryType.name);
+        this.salaryTypesByName.set(normalizedName, salaryType.id);
+        this.salaryTypesById.set(salaryType.id, salaryType.name);
+      }
+    });
+
+    console.log(`✅ Initialized ${salaryTypes.length} salary types`);
+  }
+
+  /**
+   * Resolve salary type name to ID
+   */
+  resolveSalaryType(input: string): MappingResult {
+    const result: MappingResult = {
+      ids: [],
+      errors: [],
+      warnings: [],
+      suggestions: []
+    };
+
+    if (!input || input.trim() === '') {
+      return result;
+    }
+
+    const name = input.trim();
+    const normalizedName = this.normalizeName(name);
+
+    // 1. Try numeric ID first
+    const numericId = parseInt(name);
+    if (!isNaN(numericId) && this.salaryTypesById.has(numericId)) {
+      result.ids.push(numericId);
+      return result;
+    }
+
+    // 2. Try exact name match (case-insensitive)
+    const matchingId = this.salaryTypesByName.get(normalizedName);
+
+    if (matchingId !== undefined) {
+      result.ids.push(matchingId);
+      return result;
+    }
+
+    // 3. No exact match - try fuzzy matching for typos
+    const availableNames = Array.from(this.salaryTypesByName.keys());
+    const suggestion = this.findBestMatch(normalizedName, availableNames);
+
+    if (suggestion.match && suggestion.confidence > 0.7) {
+      const originalName = this.salaryTypesById.get(this.salaryTypesByName.get(suggestion.match)!);
+      result.errors.push(`Salary type "${name}" not found. Did you mean "${originalName}"?`);
+    } else {
+      const availableSalaryTypes = this.salaryTypes.map(s => s.name).join(', ');
+      result.errors.push(`Salary type "${name}" not found. Available types: ${availableSalaryTypes}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Set contract rules data (called separately after authentication)
+   */
+  setContractRules(contractRules: PlandayContractRule[]): void {
+    this.contractRules = contractRules;
+    this.contractRulesByName.clear();
+    this.contractRulesById.clear();
+
+    contractRules.forEach(contractRule => {
+      if (contractRule && contractRule.name) {
+        const normalizedName = this.normalizeName(contractRule.name);
+        this.contractRulesByName.set(normalizedName, contractRule.id);
+        this.contractRulesById.set(contractRule.id, contractRule.name);
+      }
+    });
+
+    console.log(`✅ Initialized ${contractRules.length} contract rules`);
+  }
+
+  /**
+   * Resolve contract rule name to ID
+   */
+  resolveContractRule(input: string): MappingResult {
+    const result: MappingResult = {
+      ids: [],
+      errors: [],
+      warnings: [],
+      suggestions: []
+    };
+
+    if (!input || input.trim() === '') {
+      return result;
+    }
+
+    const name = input.trim();
+    const normalizedName = this.normalizeName(name);
+
+    // 1. Try numeric ID first
+    const numericId = parseInt(name);
+    if (!isNaN(numericId) && this.contractRulesById.has(numericId)) {
+      result.ids.push(numericId);
+      return result;
+    }
+
+    // 2. Try exact name match (case-insensitive)
+    const matchingId = this.contractRulesByName.get(normalizedName);
+
+    if (matchingId !== undefined) {
+      result.ids.push(matchingId);
+      return result;
+    }
+
+    // 3. No exact match - try fuzzy matching for typos
+    const availableNames = Array.from(this.contractRulesByName.keys());
+    const suggestion = this.findBestMatch(normalizedName, availableNames);
+
+    if (suggestion.match && suggestion.confidence > 0.7) {
+      const originalName = this.contractRulesById.get(this.contractRulesByName.get(suggestion.match)!);
+      result.errors.push(`Contract rule "${name}" not found. Did you mean "${originalName}"?`);
+    } else {
+      const availableContractRules = this.contractRules.map(c => c.name).join(', ');
+      result.errors.push(`Contract rule "${name}" not found. Available rules: ${availableContractRules}`);
+    }
+
+    return result;
   }
 
   /**
@@ -237,6 +411,86 @@ export class MappingService {
     }
 
     return result;
+  }
+
+  /**
+   * Resolve supervisor name to ID with duplicate detection
+   * - If 1 match → returns the supervisor ID
+   * - If 0 matches → error with fuzzy suggestions
+   * - If 2+ matches → error listing all matching IDs for user to choose
+   */
+  resolveSupervisor(input: string): MappingResult {
+    const result: MappingResult = {
+      ids: [],
+      errors: [],
+      warnings: [],
+      suggestions: []
+    };
+
+    if (!input || input.trim() === '') {
+      return result;
+    }
+
+    const name = input.trim();
+    const normalizedName = this.normalizeName(name);
+
+    // 1. Try numeric ID first
+    const numericId = parseInt(name);
+    if (!isNaN(numericId) && this.supervisorsById.has(numericId)) {
+      result.ids.push(numericId);
+      return result;
+    }
+
+    // 2. Try exact name match (case-insensitive)
+    const matchingIds = this.supervisorsByName.get(normalizedName);
+
+    if (matchingIds && matchingIds.length === 1) {
+      // Single match - perfect!
+      result.ids.push(matchingIds[0]);
+      return result;
+    }
+
+    if (matchingIds && matchingIds.length > 1) {
+      // Multiple supervisors with same name - error with IDs
+      const idsWithNames = matchingIds.map(id => {
+        const supervisorName = this.supervisorsById.get(id);
+        return `${id} (${supervisorName})`;
+      }).join(', ');
+
+      result.errors.push(
+        `Multiple supervisors named "${name}" found. Please use one of these IDs instead: ${idsWithNames}`
+      );
+      return result;
+    }
+
+    // 3. No exact match - try fuzzy matching for typos
+    const availableNames = Array.from(this.supervisorsByName.keys());
+    const suggestion = this.findBestMatch(normalizedName, availableNames);
+
+    if (suggestion.match && suggestion.confidence > 0.7) {
+      const originalName = this.getOriginalSupervisorName(suggestion.match);
+      result.errors.push(`Supervisor "${name}" not found. Did you mean "${originalName}"?`);
+      result.suggestions.push(originalName);
+    } else if (suggestion.match && suggestion.confidence > 0.4) {
+      const topMatches = this.getTopMatches(normalizedName, availableNames, 3)
+        .map(m => this.getOriginalSupervisorName(m));
+      result.errors.push(`Supervisor "${name}" not found. Possible matches: ${topMatches.join(', ')}`);
+    } else {
+      result.errors.push(`Supervisor "${name}" not found in available supervisors`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get original supervisor name from normalized name
+   */
+  private getOriginalSupervisorName(normalizedName: string): string {
+    const ids = this.supervisorsByName.get(normalizedName);
+    if (ids && ids.length > 0) {
+      return this.supervisorsById.get(ids[0]) || normalizedName;
+    }
+    return normalizedName;
   }
 
   /**
@@ -837,6 +1091,160 @@ export class MappingService {
       }
     }
 
+    // Handle supervisorId - convert name to ID with duplicate detection
+    // NOTE: supervisorId must be assigned via PUT after employee creation (not accepted in POST)
+    if (employee.supervisorId) {
+      const supervisorStr = employee.supervisorId.toString().trim();
+      if (supervisorStr !== '') {
+        const supervisorResult = this.resolveSupervisor(supervisorStr);
+        if (supervisorResult.errors.length > 0) {
+          errors.push({
+            field: 'supervisorId',
+            value: employee.supervisorId,
+            message: supervisorResult.errors.join(', '),
+            rowIndex: employee.rowIndex || 0,
+            severity: 'error'
+          });
+        }
+        // Store in internal field for assignment after creation (ID needed for API)
+        if (supervisorResult.ids.length === 1) {
+          // Get the supervisor name for display/logging
+          const supervisorName = this.supervisorsById.get(supervisorResult.ids[0]) || supervisorStr;
+          converted.__supervisorAssignment = {
+            supervisorId: supervisorResult.ids[0],
+            supervisorName: supervisorName
+          };
+          // Keep original value for display in UI
+          converted.supervisorId = supervisorName;
+        }
+      }
+    }
+
+    // Handle isSupervisor - convert to boolean
+    if (employee.isSupervisor !== undefined && employee.isSupervisor !== null && employee.isSupervisor !== '') {
+      const isSupervisorStr = employee.isSupervisor.toString().toLowerCase().trim();
+      if (['true', 'yes', '1', 'y', 'x'].includes(isSupervisorStr)) {
+        converted.isSupervisor = true;
+      } else if (['false', 'no', '0', 'n', ''].includes(isSupervisorStr)) {
+        converted.isSupervisor = false;
+      } else {
+        errors.push({
+          field: 'isSupervisor',
+          value: employee.isSupervisor,
+          message: `Invalid value "${employee.isSupervisor}". Use true/false, yes/no, 1/0, or x for yes.`,
+          rowIndex: employee.rowIndex || 0,
+          severity: 'error'
+        });
+      }
+    }
+
+    // Handle Fixed Salary fields (all-or-nothing validation)
+    // Three fields: salaryPeriod (type), salaryHours, salaryAmount
+    const salaryPeriod = employee.salaryPeriod?.toString()?.trim() || '';
+    const salaryHoursStr = employee.salaryHours?.toString()?.trim() || '';
+    const salaryAmountStr = employee.salaryAmount?.toString()?.trim() || '';
+
+    // Count how many salary fields are filled
+    const salaryFieldsFilled = [salaryPeriod, salaryHoursStr, salaryAmountStr].filter(v => v !== '').length;
+
+    if (salaryFieldsFilled > 0 && salaryFieldsFilled < 3) {
+      // Partial salary info - error
+      const missingFields = [];
+      if (!salaryPeriod) missingFields.push('Fixed Salary - Period');
+      if (!salaryHoursStr) missingFields.push('Fixed Salary - Expected working hours');
+      if (!salaryAmountStr) missingFields.push('Fixed Salary - Amount');
+
+      errors.push({
+        field: 'fixedSalary',
+        value: `Period: ${salaryPeriod || '(empty)'}, Hours: ${salaryHoursStr || '(empty)'}, Amount: ${salaryAmountStr || '(empty)'}`,
+        message: `Fixed salary requires all 3 fields or none. Missing: ${missingFields.join(', ')}`,
+        rowIndex: employee.rowIndex || 0,
+        severity: 'error'
+      });
+    } else if (salaryFieldsFilled === 3) {
+      // All fields filled - validate values
+      let salaryValid = true;
+
+      // Validate salary period (type)
+      const salaryTypeResult = this.resolveSalaryType(salaryPeriod);
+      if (salaryTypeResult.errors.length > 0) {
+        errors.push({
+          field: 'salaryPeriod',
+          value: salaryPeriod,
+          message: salaryTypeResult.errors.join(', '),
+          rowIndex: employee.rowIndex || 0,
+          severity: 'error'
+        });
+        salaryValid = false;
+      }
+
+      // Validate hours is a number
+      const salaryHours = parseFloat(salaryHoursStr);
+      if (isNaN(salaryHours) || salaryHours <= 0) {
+        errors.push({
+          field: 'salaryHours',
+          value: salaryHoursStr,
+          message: 'Expected working hours must be a positive number',
+          rowIndex: employee.rowIndex || 0,
+          severity: 'error'
+        });
+        salaryValid = false;
+      }
+
+      // Validate amount is a number
+      const salaryAmount = parseFloat(salaryAmountStr);
+      if (isNaN(salaryAmount) || salaryAmount < 0) {
+        errors.push({
+          field: 'salaryAmount',
+          value: salaryAmountStr,
+          message: 'Salary amount must be a non-negative number',
+          rowIndex: employee.rowIndex || 0,
+          severity: 'error'
+        });
+        salaryValid = false;
+      }
+
+      // If all valid, store for assignment after creation
+      if (salaryValid && salaryTypeResult.ids.length === 1) {
+        const salaryTypeName = this.salaryTypesById.get(salaryTypeResult.ids[0]) || salaryPeriod;
+        converted.__fixedSalaryAssignment = {
+          salaryTypeId: salaryTypeResult.ids[0],
+          salaryTypeName: salaryTypeName,
+          hours: salaryHours,
+          salary: salaryAmount
+        };
+        // Keep display values for UI
+        converted.salaryPeriod = salaryTypeName;
+        converted.salaryHours = salaryHours;
+        converted.salaryAmount = salaryAmount;
+      }
+    }
+
+    // Handle Contract Rule (optional single field)
+    const contractRuleStr = employee.contractRule?.toString()?.trim() || '';
+    if (contractRuleStr !== '') {
+      const contractRuleResult = this.resolveContractRule(contractRuleStr);
+
+      if (contractRuleResult.errors.length > 0) {
+        errors.push({
+          field: 'contractRule',
+          value: contractRuleStr,
+          message: contractRuleResult.errors[0],
+          rowIndex: employee.rowIndex || 0,
+          severity: 'error'
+        });
+      } else if (contractRuleResult.ids.length === 1) {
+        // Store for assignment after creation
+        const contractRuleName = this.contractRulesById.get(contractRuleResult.ids[0]) || contractRuleStr;
+        converted.__contractRuleAssignment = {
+          contractRuleId: contractRuleResult.ids[0],
+          contractRuleName: contractRuleName
+        };
+        // Keep display value for UI
+        converted.contractRule = contractRuleName;
+      }
+    }
+
     // Handle phone numbers with country code extraction
     // Convert cellPhone to string and check if it's not empty
     const cellPhoneStr = employee.cellPhone?.toString()?.trim() || '';
@@ -938,23 +1346,35 @@ export class MappingService {
    * Generate a comprehensive Excel template based on portal fields
    * Orders fields logically: required first, then optional, then custom
    */
-  static generatePortalTemplate(): {
+  static generatePortalTemplate(options?: { includeSupervisorColumns?: boolean; includeFixedSalaryColumns?: boolean }): {
     headers: string[];
     examples: string[][];
     instructions: Record<string, string>;
     fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string; isComplexSubField?: boolean }>;
   } {
+    const { includeSupervisorColumns = false, includeFixedSalaryColumns = false } = options || {};
+
     // Get flattened field information including complex object sub-fields
     const allAvailableFields = ValidationService.getAllAvailableFields();
-    
+
     // Template generation using complex object flattening
-    
+
     // Build ordered field list using flattened fields with logical ordering
     const fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string; isComplexSubField?: boolean }> = [];
     const processedFields = new Set<string>();
-    
+
     // Fields to exclude from templates because they are auto-populated or deprecated
     const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
+
+    // Exclude supervisor fields if not requested
+    if (!includeSupervisorColumns) {
+      excludedFields.push('supervisorId', 'isSupervisor');
+    }
+
+    // Exclude fixed salary fields if not requested
+    if (!includeFixedSalaryColumns) {
+      excludedFields.push('salaryPeriod', 'salaryHours', 'salaryAmount');
+    }
     
     // Create field map for easy lookup
     const fieldMap = new Map<string, any>();
@@ -971,8 +1391,16 @@ export class MappingService {
       'cellPhoneCountryCode',
       // departments and employeeGroups removed - now using individual fields like departments.Kitchen, employeeGroups.Waiter
       'employeeTypeId',
+      'contractRule', // Contract Rule (contracted hours per week/month/year)
       'hiredFrom',
-      'wageValidFrom', // For hourly pay rates - when they take effect
+      'wageValidFrom', // For hourly pay rates AND fixed salary - when they take effect
+      // Fixed salary fields (optional)
+      'salaryPeriod', // Fixed Salary - Period (Monthly, Weekly, etc.)
+      'salaryHours', // Fixed Salary - Expected working hours
+      'salaryAmount', // Fixed Salary - Amount
+      // Supervisor fields (optional)
+      'supervisorId', // Assigns a supervisor to this employee (by name or ID)
+      'isSupervisor', // Makes this employee a supervisor (true/false)
       'gender',
       'birthDate',
       'street1',
@@ -1154,7 +1582,37 @@ export class MappingService {
             break;
 
           case 'wageValidFrom':
-            instructions[field.field] = 'Date when hourly pay rates take effect (YYYY-MM-DD format). Required if any hourly rates are specified in employee group columns.';
+            instructions[field.field] = 'Date when hourly pay rates and fixed salaries take effect (YYYY-MM-DD format).';
+            break;
+          case 'contractRule':
+            // List available contract rules from the portal
+            if (mappingService.contractRules.length > 0) {
+              const contractRuleNames = mappingService.contractRules.map(cr => cr.name).join(', ');
+              instructions[field.field] = `Contract rule defining contracted hours. Available: ${contractRuleNames}`;
+            } else {
+              instructions[field.field] = 'Contract rule name (e.g., 37 hours/week). Use values from your Planday portal.';
+            }
+            break;
+          case 'salaryPeriod':
+            // List available salary types from the portal
+            if (mappingService.salaryTypes.length > 0) {
+              const salaryTypeNames = mappingService.salaryTypes.map(st => st.name).join(', ');
+              instructions[field.field] = `Fixed salary period type. Available: ${salaryTypeNames}`;
+            } else {
+              instructions[field.field] = 'Salary period type (e.g., Monthly, Weekly). Use values from your Planday portal.';
+            }
+            break;
+          case 'salaryHours':
+            instructions[field.field] = 'Expected working hours for the salary period (e.g., 160 for monthly). Required if salaryPeriod is specified.';
+            break;
+          case 'salaryAmount':
+            instructions[field.field] = 'Fixed salary amount for the period (e.g., 30000). Required if salaryPeriod is specified.';
+            break;
+          case 'supervisorId':
+            instructions[field.field] = 'Supervisor name or ID to assign to this employee. The supervisor must already exist in Planday.';
+            break;
+          case 'isSupervisor':
+            instructions[field.field] = 'Set to "Yes", "X", or "true" to make this employee a supervisor. Leave empty if not a supervisor.';
             break;
           default:
             // Handle individual department and employee group fields
@@ -1226,7 +1684,10 @@ export class MappingService {
     const internalFields = new Set([
       'rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected',
       '__departmentsIds', '__employeeGroupsIds', // Internal ID fields for API payload
-      '__employeeGroupPayrates', 'wageValidFrom' // Payrate fields (handled separately after employee creation)
+      '__employeeGroupPayrates', 'wageValidFrom', // Payrate fields (handled separately after employee creation)
+      '__supervisorAssignment', 'supervisorId', // Supervisor assignment (must be PUT after employee creation, not POST)
+      '__fixedSalaryAssignment', 'salaryPeriod', 'salaryHours', 'salaryAmount', // Fixed salary (PUT after employee creation)
+      '__contractRuleAssignment', 'contractRule' // Contract rule (PUT after employee creation)
     ]);
     
     // Include all fields from the converted employee, excluding internal ones
@@ -1290,7 +1751,24 @@ export class MappingService {
         delete cleanPayload.primaryDepartmentId;
       }
     }
-    
+
+    // NOTE: supervisorId is excluded from POST payload - must be assigned via PUT after employee creation
+    // The __supervisorAssignment internal field stores the data for later processing
+
+    // Convert isSupervisor to boolean if it's a string
+    if (cleanPayload.isSupervisor !== undefined && typeof cleanPayload.isSupervisor === 'string') {
+      const val = cleanPayload.isSupervisor.toLowerCase().trim();
+      if (['true', 'yes', '1', 'y', 'x'].includes(val)) {
+        cleanPayload.isSupervisor = true;
+      } else if (['false', 'no', '0', 'n', ''].includes(val)) {
+        cleanPayload.isSupervisor = false;
+      } else {
+        // Unknown value - remove it
+        console.warn(`⚠️ isSupervisor unknown value "${cleanPayload.isSupervisor}", removing from payload`);
+        delete cleanPayload.isSupervisor;
+      }
+    }
+
     // Ensure required fields have defaults if needed
     if (!cleanPayload.email && cleanPayload.userName) {
       cleanPayload.email = cleanPayload.userName;
@@ -1433,6 +1911,69 @@ export const MappingUtils = {
    */
   getEmployeeTypes(): PlandayEmployeeType[] {
     return [...mappingService.employeeTypes];
+  },
+
+  /**
+   * Set supervisors data (called after authentication)
+   */
+  setSupervisors(supervisors: PlandaySupervisor[]): void {
+    mappingService.setSupervisors(supervisors);
+  },
+
+  /**
+   * Get stored supervisors data
+   */
+  getSupervisors(): PlandaySupervisor[] {
+    return [...mappingService.supervisors];
+  },
+
+  /**
+   * Resolve supervisor name to ID
+   */
+  resolveSupervisor(input: string): MappingResult {
+    return mappingService.resolveSupervisor(input);
+  },
+
+  /**
+   * Set salary types data (called after authentication)
+   */
+  setSalaryTypes(salaryTypes: PlandaySalaryType[]): void {
+    mappingService.setSalaryTypes(salaryTypes);
+  },
+
+  /**
+   * Get stored salary types data
+   */
+  getSalaryTypes(): PlandaySalaryType[] {
+    return [...mappingService.salaryTypes];
+  },
+
+  /**
+   * Resolve salary type name to ID
+   */
+  resolveSalaryType(input: string): MappingResult {
+    return mappingService.resolveSalaryType(input);
+  },
+
+  /**
+   * Set contract rules data (called after authentication)
+   */
+  setContractRules(contractRules: PlandayContractRule[]): void {
+    mappingService.setContractRules(contractRules);
+  },
+
+  /**
+   * Get stored contract rules data
+   */
+  getContractRules(): PlandayContractRule[] {
+    return [...mappingService.contractRules];
+  },
+
+  /**
+   * Resolve contract rule name to ID
+   */
+  resolveContractRule(input: string): MappingResult {
+    return mappingService.resolveContractRule(input);
   },
 
   /**
@@ -1668,15 +2209,82 @@ export class ValidationService {
       });
     });
 
-    // Add special bulk upload fields (not from Planday API but used for payrate functionality)
+    // Add special bulk upload fields not always included in Planday field definitions API
     fields.push({
       field: 'wageValidFrom',
       displayName: 'Wage Valid From',
       isRequired: false,
       isCustom: false,
       isComplexSubField: false,
-      description: 'Date when hourly pay rates take effect (YYYY-MM-DD)'
+      description: 'Date when hourly pay rates and fixed salaries take effect (YYYY-MM-DD)'
     });
+
+    // Add supervisor fields - valid API fields but may not be in field definitions schema
+    const existingFieldNames = new Set(fields.map(f => f.field));
+    if (!existingFieldNames.has('supervisorId')) {
+      fields.push({
+        field: 'supervisorId',
+        displayName: 'Supervisor',
+        isRequired: false,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Assigns a supervisor to this employee (enter supervisor name or ID)'
+      });
+    }
+    if (!existingFieldNames.has('isSupervisor')) {
+      fields.push({
+        field: 'isSupervisor',
+        displayName: 'Is Supervisor',
+        isRequired: false,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Makes this employee a supervisor (true/false, yes/no, or x)'
+      });
+    }
+
+    // Add fixed salary fields - valid API fields but not in field definitions schema
+    if (!existingFieldNames.has('salaryPeriod')) {
+      fields.push({
+        field: 'salaryPeriod',
+        displayName: 'Fixed Salary - Period',
+        isRequired: false,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Salary period type (e.g., Monthly, Weekly). Requires all 3 salary fields.'
+      });
+    }
+    if (!existingFieldNames.has('salaryHours')) {
+      fields.push({
+        field: 'salaryHours',
+        displayName: 'Fixed Salary - Expected Hours',
+        isRequired: false,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Expected working hours for the salary period. Requires all 3 salary fields.'
+      });
+    }
+    if (!existingFieldNames.has('salaryAmount')) {
+      fields.push({
+        field: 'salaryAmount',
+        displayName: 'Fixed Salary - Amount',
+        isRequired: false,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Salary amount for the period. Requires all 3 salary fields.'
+      });
+    }
+
+    // Add contract rule field - valid API field but not in field definitions schema
+    if (!existingFieldNames.has('contractRule')) {
+      fields.push({
+        field: 'contractRule',
+        displayName: 'Contract Rule',
+        isRequired: false,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Contract rule defining contracted hours (e.g., 37 hours/week). Enter the contract rule name.'
+      });
+    }
 
     return fields.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }

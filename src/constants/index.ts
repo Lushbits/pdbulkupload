@@ -64,9 +64,16 @@ export const API_ENDPOINTS = {
   EMPLOYEE_GROUPS: '/hr/v1.0/employeegroups',
   EMPLOYEE_TYPES: '/hr/v1.0/employeetypes',
   EMPLOYEE_FIELD_DEFINITIONS: '/hr/v1.0/employees/fielddefinitions',
+  SUPERVISORS: '/hr/v1.0/employees/supervisors',
 
   // Pay API Endpoints (v1.0)
   PAYRATES_BY_GROUP: '/pay/v1.0/payrates/employeeGroups',
+  SALARY_TYPES: '/pay/v1.0/salarytypes',
+  SALARIES: '/pay/v1.0/salaries/employees',
+
+  // Contract Rules API Endpoints (v1)
+  CONTRACT_RULES: '/contractrules/v1/contractrules',
+  CONTRACT_RULES_EMPLOYEES: '/contractrules/v1/employees',
 } as const;
 
 /**

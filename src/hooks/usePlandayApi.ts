@@ -16,6 +16,9 @@ import type {
   PlandayDepartment,
   PlandayEmployeeGroup,
   PlandayEmployeeType,
+  PlandaySupervisor,
+  PlandaySalaryType,
+  PlandayContractRule,
   PlandayEmployeeResponse,
   PlandayEmployeeCreateRequest,
   EmployeeUploadResult,
@@ -24,6 +27,8 @@ import type {
   PlandayPortalInfo,
   PayrateAssignment,
   PayrateSetResult,
+  FixedSalaryAssignment,
+  FixedSalarySetResult,
 } from '../types/planday';
 
 interface PlandayApiState {
@@ -51,7 +56,22 @@ interface PlandayApiState {
   employeeTypes: PlandayEmployeeType[];
   isEmployeeTypesLoading: boolean;
   employeeTypesError: string | null;
-  
+
+  // Supervisor state
+  supervisors: PlandaySupervisor[];
+  isSupervisorsLoading: boolean;
+  supervisorsError: string | null;
+
+  // Salary type state
+  salaryTypes: PlandaySalaryType[];
+  isSalaryTypesLoading: boolean;
+  salaryTypesError: string | null;
+
+  // Contract rule state
+  contractRules: PlandayContractRule[];
+  isContractRulesLoading: boolean;
+  contractRulesError: string | null;
+
   // Field definitions state
   fieldDefinitions: PlandayFieldDefinitionsSchema | null;
   isFieldDefinitionsLoading: boolean;
@@ -72,6 +92,7 @@ interface PlandayApiActions {
   refreshDepartments: () => Promise<void>;
   refreshEmployeeGroups: () => Promise<void>;
   refreshEmployeeTypes: () => Promise<void>;
+  refreshSupervisors: () => Promise<void>;
   refreshFieldDefinitions: () => Promise<void>;
   refreshPortalInfo: () => Promise<void>;
   refreshPlandayData: () => Promise<void>;
@@ -111,6 +132,27 @@ interface PlandayApiActions {
     assignments: PayrateAssignment[],
     onProgress?: (completed: number, total: number) => void
   ) => Promise<PayrateSetResult[]>;
+
+  // Supervisor assignment actions
+  bulkAssignSupervisors: (
+    assignments: Array<{ employeeId: number; supervisorId: number; supervisorName: string }>,
+    onProgress?: (completed: number, total: number) => void
+  ) => Promise<Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }>>;
+
+  // Fixed salary assignment actions
+  bulkAssignFixedSalaries: (
+    assignments: FixedSalaryAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ) => Promise<FixedSalarySetResult[]>;
+
+  // Contract rule assignment action (inline after employee creation)
+  assignContractRule: (employeeId: number, contractRuleId: number) => Promise<void>;
+
+  // Single employee operations (for sequential inline processing)
+  createEmployee: (employee: PlandayEmployeeCreateRequest) => Promise<{ data: PlandayEmployeeResponse }>;
+  assignFixedSalary: (employeeId: number, salaryTypeId: number, hours: number, salary: number, validFrom: string) => Promise<void>;
+  setEmployeeGroupPayrate: (groupId: number, employeeId: number, rate: number, validFrom: string) => Promise<void>;
+  assignSupervisorToEmployee: (employeeId: number, supervisorRecordId: number) => Promise<void>;
 
   // Utility actions
   testConnection: () => Promise<boolean>;
@@ -157,7 +199,22 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     employeeTypes: [],
     isEmployeeTypesLoading: false,
     employeeTypesError: null,
-    
+
+    // Supervisor state
+    supervisors: [],
+    isSupervisorsLoading: false,
+    supervisorsError: null,
+
+    // Salary type state
+    salaryTypes: [],
+    isSalaryTypesLoading: false,
+    salaryTypesError: null,
+
+    // Contract rule state
+    contractRules: [],
+    isContractRulesLoading: false,
+    contractRulesError: null,
+
     // Field definitions state
     fieldDefinitions: null,
     isFieldDefinitionsLoading: false,
@@ -218,18 +275,24 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       }
       
       // Test connection and fetch initial data
-      const [departments, employeeGroups, employeeTypes, fieldDefinitions] = await Promise.all([
+      const [departments, employeeGroups, employeeTypes, supervisors, salaryTypes, contractRules, fieldDefinitions] = await Promise.all([
         PlandayApi.getDepartments(),
         PlandayApi.getEmployeeGroups(),
         PlandayApi.getEmployeeTypes(),
+        PlandayApi.getSupervisors(),
+        PlandayApi.getSalaryTypes(),
+        PlandayApi.getContractRules(),
         PlandayApi.getFieldDefinitions()
       ]);
-      
+
       // Initialize services with fetched data
       MappingUtils.initialize(departments, employeeGroups, employeeTypes);
+      MappingUtils.setSupervisors(supervisors);
+      MappingUtils.setSalaryTypes(salaryTypes);
+      MappingUtils.setContractRules(contractRules);
       ValidationService.initialize(fieldDefinitions);
       FieldDefinitionValidator.initialize(fieldDefinitions);
-      
+
       updateState({
         isAuthenticated: true,
         isAuthenticating: false,
@@ -237,6 +300,9 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         departments,
         employeeGroups,
         employeeTypes,
+        supervisors,
+        salaryTypes,
+        contractRules,
         fieldDefinitions,
         authError: null,
       });
@@ -253,8 +319,11 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         departments: [],
         employeeGroups: [],
         employeeTypes: [],
+        supervisors: [],
+        salaryTypes: [],
+        contractRules: [],
       });
-      
+
       return false;
     }
   }, [updateState, handleError]);
@@ -288,7 +357,22 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       employeeTypes: [],
       isEmployeeTypesLoading: false,
       employeeTypesError: null,
-      
+
+      // Reset supervisor state
+      supervisors: [],
+      isSupervisorsLoading: false,
+      supervisorsError: null,
+
+      // Reset salary type state
+      salaryTypes: [],
+      isSalaryTypesLoading: false,
+      salaryTypesError: null,
+
+      // Reset contract rule state
+      contractRules: [],
+      isContractRulesLoading: false,
+      contractRulesError: null,
+
       // Reset field definitions state
       fieldDefinitions: null,
       isFieldDefinitionsLoading: false,
@@ -427,6 +511,44 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   }, [state.isAuthenticated, state.departments, state.employeeGroups, updateState, handleError]);
 
   /**
+   * Refresh supervisors from Planday
+   */
+  const refreshSupervisors = useCallback(async (): Promise<void> => {
+    if (!state.isAuthenticated) {
+      throw new Error('Not authenticated');
+    }
+
+    updateState({
+      isSupervisorsLoading: true,
+      supervisorsError: null
+    });
+
+    try {
+      const supervisors = await PlandayApi.getSupervisors();
+
+      updateState({
+        supervisors,
+        isSupervisorsLoading: false,
+        supervisorsError: null,
+      });
+
+      // Update mapping service with supervisors
+      MappingUtils.setSupervisors(supervisors);
+
+      console.log(`✅ Refreshed ${supervisors.length} supervisors`);
+
+    } catch (error) {
+      const errorMessage = handleError(error);
+      updateState({
+        isSupervisorsLoading: false,
+        supervisorsError: errorMessage,
+      });
+
+      throw error;
+    }
+  }, [state.isAuthenticated, updateState, handleError]);
+
+  /**
    * Refresh field definitions from Planday
    */
   const refreshFieldDefinitions = useCallback(async (): Promise<void> => {
@@ -508,16 +630,17 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         refreshDepartments(),
         refreshEmployeeGroups(),
         refreshEmployeeTypes(),
+        refreshSupervisors(),
         refreshFieldDefinitions(),
         refreshPortalInfo(),
       ]);
-      
+
       console.log('✅ All Planday data refreshed successfully');
     } catch (error) {
       console.error('❌ Failed to refresh some Planday data:', error);
       throw error;
     }
-  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshEmployeeTypes, refreshFieldDefinitions, refreshPortalInfo]);
+  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshEmployeeTypes, refreshSupervisors, refreshFieldDefinitions, refreshPortalInfo]);
 
   /**
    * Upload employees to Planday
@@ -761,6 +884,134 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   }, [handleError]);
 
   /**
+   * Bulk assign supervisors to employees after creation
+   */
+  const bulkAssignSupervisors = useCallback(async (
+    assignments: Array<{ employeeId: number; supervisorId: number; supervisorName: string }>,
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }>> => {
+    // Check authentication directly from API client (state might be stale after re-auth)
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+
+    try {
+      const results = await PlandayApi.bulkAssignSupervisors(assignments, onProgress);
+      console.log(`✅ Bulk supervisor assignments: ${results.filter(r => r.success).length} successful, ${results.filter(r => !r.success).length} failed`);
+
+      return results;
+    } catch (error) {
+      console.error('❌ Failed to assign supervisors:', error);
+      const errorMessage = handleError(error);
+      throw new Error(errorMessage);
+    }
+  }, [handleError]);
+
+  /**
+   * Bulk assign fixed salaries to employees after creation
+   */
+  const bulkAssignFixedSalaries = useCallback(async (
+    assignments: FixedSalaryAssignment[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<FixedSalarySetResult[]> => {
+    // Check authentication directly from API client (state might be stale after re-auth)
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+
+    try {
+      const results = await PlandayApi.bulkAssignFixedSalaries(assignments, onProgress);
+      console.log(`✅ Bulk fixed salary assignments: ${results.filter(r => r.success).length} successful, ${results.filter(r => !r.success).length} failed`);
+
+      return results;
+    } catch (error) {
+      console.error('❌ Failed to assign fixed salaries:', error);
+      const errorMessage = handleError(error);
+      throw new Error(errorMessage);
+    }
+  }, [handleError]);
+
+  /**
+   * Assign a contract rule to an employee (inline after creation)
+   */
+  const assignContractRule = useCallback(async (
+    employeeId: number,
+    contractRuleId: number
+  ): Promise<void> => {
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+
+    try {
+      await PlandayApi.assignContractRule(employeeId, contractRuleId);
+    } catch (error) {
+      console.error(`❌ Failed to assign contract rule to employee ${employeeId}:`, error);
+      throw error;
+    }
+  }, []);
+
+  /**
+   * Create a single employee
+   */
+  const createEmployee = useCallback(async (
+    employee: PlandayEmployeeCreateRequest
+  ): Promise<{ data: PlandayEmployeeResponse }> => {
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+    return PlandayApi.createEmployee(employee);
+  }, []);
+
+  /**
+   * Assign fixed salary to an employee (inline after creation)
+   */
+  const assignFixedSalary = useCallback(async (
+    employeeId: number,
+    salaryTypeId: number,
+    hours: number,
+    salary: number,
+    validFrom: string
+  ): Promise<void> => {
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+    await PlandayApi.assignFixedSalary(employeeId, salaryTypeId, hours, salary, validFrom);
+  }, []);
+
+  /**
+   * Set payrate for an employee in a specific group (inline after creation)
+   */
+  const setEmployeeGroupPayrate = useCallback(async (
+    groupId: number,
+    employeeId: number,
+    rate: number,
+    validFrom: string
+  ): Promise<void> => {
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+    await PlandayApi.setEmployeeGroupPayrate(groupId, {
+      wageType: 'HourlyRate',
+      rate,
+      employeeIds: [employeeId],
+      validFrom
+    });
+  }, []);
+
+  /**
+   * Assign supervisor to an employee (deferred until all employees created)
+   */
+  const assignSupervisorToEmployee = useCallback(async (
+    employeeId: number,
+    supervisorRecordId: number
+  ): Promise<void> => {
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+    await PlandayApi.assignSupervisorToEmployee(employeeId, supervisorRecordId);
+  }, []);
+
+  /**
    * Clear all error states
    */
   const clearErrors = useCallback(() => {
@@ -883,6 +1134,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     refreshDepartments,
     refreshEmployeeGroups,
     refreshEmployeeTypes,
+    refreshSupervisors,
     refreshFieldDefinitions,
     refreshPortalInfo,
     refreshPlandayData,
@@ -892,6 +1144,13 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     fetchEmployeesByIds,
     checkExistingEmployeesByEmail,
     bulkSetPayrates,
+    bulkAssignSupervisors,
+    bulkAssignFixedSalaries,
+    assignContractRule,
+    createEmployee,
+    assignFixedSalary,
+    setEmployeeGroupPayrate,
+    assignSupervisorToEmployee,
     testConnection,
     clearErrors,
 

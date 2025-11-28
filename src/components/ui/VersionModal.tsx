@@ -13,6 +13,23 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.1',
+    date: '2025-11-28',
+    title: 'Fixed Salary, Contract Rules & Supervisors',
+    features: [
+      'Added fixed/monthly salary support - set Period (Monthly/Weekly), Expected Hours, and Amount for employees',
+      'Added contract rules support - assign contracted hours (e.g., 37 hours/week) to employees',
+      'Added supervisor assignment support - assign supervisors to employees and mark employees as supervisors',
+      'Template download now shows options modal to include optional columns (Fixed Salary, Supervisors)',
+      'Refactored upload flow to match Google Apps Script pattern - sequential inline processing',
+      'Each employee is now fully processed (with all inline operations) before moving to next row',
+      'Contract rules, fixed salaries, and pay rates are assigned immediately after employee creation',
+      'Only supervisor assignments are deferred until all employees are created (needed for cross-references)',
+      'Improved reliability - if browser closes mid-upload, completed employees have all their data set',
+      'Better error tracking - know exactly which operations succeeded/failed per employee'
+    ]
+  },
+  {
     version: '0.3.0',
     date: '2025-11-28',
     title: 'Hourly Pay Rates',
