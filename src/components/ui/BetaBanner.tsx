@@ -25,7 +25,7 @@ export const BetaBanner: React.FC = () => {
         {/* Text Content */}
         <div className="flex-1 min-w-0">
           <p className="text-amber-800 font-medium text-sm sm:text-base">
-            This tool is currently in beta testing. Please do not use with real employee data yet.
+            This tool is currently in beta testing.
           </p>
           <p className="text-amber-700 text-xs sm:text-sm mt-1 group-hover:text-amber-800 transition-colors">
             Click here for known issues and upcoming developments.
