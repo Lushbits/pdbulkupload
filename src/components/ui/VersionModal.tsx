@@ -13,6 +13,19 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.2',
+    date: '2025-11-29',
+    title: 'API Preview & Salary Types Fix',
+    features: [
+      'Fixed salary types API endpoint - was using wrong path, now correctly fetches from /pay/v1.0/salaries/types',
+      'Template instructions now show all available salary period options (Monthly, Fortnightly, Weekly, Annual, FourWeekly)',
+      'Template instructions now show all available contract rules from your portal',
+      'Redesigned API Payload Preview in Final Review step - now shows all API calls in order with JSON format',
+      'Each API call shown in separate color-coded box: Create Employee, Contract Rule, Fixed Salary, Hourly Rates, Supervisor',
+      'API preview displays actual endpoint paths and request payloads for transparency'
+    ]
+  },
+  {
     version: '0.3.1',
     date: '2025-11-28',
     title: 'Fixed Salary, Contract Rules & Supervisors',

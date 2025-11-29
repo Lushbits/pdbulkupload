@@ -29,6 +29,21 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     payrates: Array<{ groupId: number; groupName: string; hourlyRate: number }>;
     validFrom: string;
   } | null>(null);
+  const [contractRulePreview, setContractRulePreview] = useState<{
+    contractRuleId: number;
+    contractRuleName: string;
+  } | null>(null);
+  const [fixedSalaryPreview, setFixedSalaryPreview] = useState<{
+    salaryTypeId: number;
+    salaryTypeName: string;
+    hours: number;
+    salary: number;
+    validFrom: string;
+  } | null>(null);
+  const [supervisorPreview, setSupervisorPreview] = useState<{
+    supervisorId: number;
+    supervisorName: string;
+  } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const employeesPerPage = 25;
 
@@ -71,6 +86,9 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
       if (employees.length === 0) {
         setConvertedEmployee(null);
         setPayratePreview(null);
+        setContractRulePreview(null);
+        setFixedSalaryPreview(null);
+        setSupervisorPreview(null);
         return;
       }
 
@@ -81,16 +99,53 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
       const cleanPayload = MappingUtils.createApiPayload(converted);
       setConvertedEmployee(cleanPayload);
 
+      const validFrom = (converted as any).wageValidFrom || new Date().toISOString().split('T')[0];
+
+      // Capture contract rule data for preview
+      const contractRuleAssignment = (converted as any).__contractRuleAssignment;
+      if (contractRuleAssignment) {
+        setContractRulePreview({
+          contractRuleId: contractRuleAssignment.contractRuleId,
+          contractRuleName: contractRuleAssignment.contractRuleName
+        });
+      } else {
+        setContractRulePreview(null);
+      }
+
+      // Capture fixed salary data for preview
+      const fixedSalaryAssignment = (converted as any).__fixedSalaryAssignment;
+      if (fixedSalaryAssignment) {
+        setFixedSalaryPreview({
+          salaryTypeId: fixedSalaryAssignment.salaryTypeId,
+          salaryTypeName: fixedSalaryAssignment.salaryTypeName,
+          hours: fixedSalaryAssignment.hours,
+          salary: fixedSalaryAssignment.salary,
+          validFrom
+        });
+      } else {
+        setFixedSalaryPreview(null);
+      }
+
       // Capture payrate data for preview (this is sent separately after employee creation)
       const payrates = (converted as any).__employeeGroupPayrates;
-      const validFrom = (converted as any).wageValidFrom;
       if (payrates && Array.isArray(payrates) && payrates.length > 0) {
         setPayratePreview({
           payrates,
-          validFrom: validFrom || new Date().toISOString().split('T')[0]
+          validFrom
         });
       } else {
         setPayratePreview(null);
+      }
+
+      // Capture supervisor assignment for preview (sent after ALL employees are created)
+      const supervisorAssignment = (converted as any).__supervisorAssignment;
+      if (supervisorAssignment) {
+        setSupervisorPreview({
+          supervisorId: supervisorAssignment.supervisorId,
+          supervisorName: supervisorAssignment.supervisorName
+        });
+      } else {
+        setSupervisorPreview(null);
       }
     };
 
@@ -359,37 +414,100 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
             </div>
           </div>
           
-          {convertedEmployee && (
-            <div className="bg-gray-50 rounded border border-gray-200 p-4 max-h-60 overflow-y-auto">
-              <div className="text-xs text-gray-500 mb-2 font-medium">
-                Sample JSON for: {employees[0].firstName} {employees[0].lastName} (Converted for Planday API)
-              </div>
-              <pre className="text-sm text-gray-800 whitespace-pre-wrap">
-                {JSON.stringify(convertedEmployee, null, 2)}
-              </pre>
-            </div>
-          )}
+          <div className="text-xs text-gray-500 mb-3 font-medium">
+            Sample API calls for: {employees[0]?.firstName} {employees[0]?.lastName}
+          </div>
 
-          {/* Payrate Preview - shown separately as it's sent after employee creation */}
-          {payratePreview && payratePreview.payrates.length > 0 && (
-            <div className="mt-4 bg-blue-50 rounded border border-blue-200 p-4">
-              <div className="text-xs text-blue-600 mb-2 font-medium">
-                Hourly Rates (sent after employee creation via Pay API)
+          <div className="space-y-3">
+            {/* Step 1: Create Employee */}
+            {convertedEmployee && (
+              <div className="bg-gray-50 rounded border border-gray-200 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-0.5 rounded">Step 1</span>
+                  <span className="text-xs font-mono text-gray-600">POST /hr/v1.0/employees</span>
+                </div>
+                <pre className="text-xs text-gray-800 whitespace-pre-wrap max-h-48 overflow-y-auto bg-white p-2 rounded border">
+                  {JSON.stringify(convertedEmployee, null, 2)}
+                </pre>
               </div>
-              <div className="text-sm text-blue-800 space-y-1">
-                <div><strong>Valid From:</strong> {payratePreview.validFrom}</div>
-                <div><strong>Pay Rates:</strong></div>
-                <ul className="ml-4 list-disc">
-                  {payratePreview.payrates.map((pr, idx) => (
-                    <li key={idx}>{pr.groupName}: {pr.hourlyRate}/hr</li>
-                  ))}
-                </ul>
+            )}
+
+            {/* Step 2: Assign Contract Rule (if applicable) */}
+            {contractRulePreview && (
+              <div className="bg-purple-50 rounded border border-purple-200 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-0.5 rounded">Step 2</span>
+                  <span className="text-xs font-mono text-gray-600">PUT /contractrules/v1/employees/{'{employeeId}'}?contractRuleId={contractRulePreview.contractRuleId}</span>
+                </div>
+                <pre className="text-xs text-gray-800 whitespace-pre-wrap bg-white p-2 rounded border">
+                  {JSON.stringify({
+                    contractRuleId: contractRulePreview.contractRuleId,
+                    _comment: `Assigns "${contractRulePreview.contractRuleName}" contract rule`
+                  }, null, 2)}
+                </pre>
               </div>
-              <div className="text-xs text-blue-500 mt-2 italic">
-                These rates will be set via PUT /pay/v1.0/payrates/employeeGroups/{'{groupId}'} after employee creation
+            )}
+
+            {/* Step 3: Set Fixed Salary (if applicable) */}
+            {fixedSalaryPreview && (
+              <div className="bg-amber-50 rounded border border-amber-200 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5 rounded">Step {contractRulePreview ? '3' : '2'}</span>
+                  <span className="text-xs font-mono text-gray-600">PUT /pay/v1.0/salaries/employees/{'{employeeId}'}</span>
+                </div>
+                <pre className="text-xs text-gray-800 whitespace-pre-wrap bg-white p-2 rounded border">
+                  {JSON.stringify({
+                    salaryTypeId: fixedSalaryPreview.salaryTypeId,
+                    hours: fixedSalaryPreview.hours,
+                    salary: fixedSalaryPreview.salary,
+                    validFrom: fixedSalaryPreview.validFrom,
+                    _comment: `${fixedSalaryPreview.salaryTypeName} salary of ${fixedSalaryPreview.salary} for ${fixedSalaryPreview.hours} hours`
+                  }, null, 2)}
+                </pre>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Step 4: Set Hourly Pay Rates (if applicable) */}
+            {payratePreview && payratePreview.payrates.length > 0 && (
+              <div className="bg-blue-50 rounded border border-blue-200 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
+                    Step {1 + (contractRulePreview ? 1 : 0) + (fixedSalaryPreview ? 1 : 0) + 1}
+                  </span>
+                  <span className="text-xs font-mono text-gray-600">PUT /pay/v1.0/payrates/employeeGroups/{'{groupId}'}</span>
+                </div>
+                <pre className="text-xs text-gray-800 whitespace-pre-wrap bg-white p-2 rounded border">
+                  {JSON.stringify({
+                    employeeId: '{employeeId}',
+                    validFrom: payratePreview.validFrom,
+                    payrates: payratePreview.payrates.map(pr => ({
+                      groupId: pr.groupId,
+                      groupName: pr.groupName,
+                      hourlyRate: pr.hourlyRate
+                    })),
+                    _comment: 'One API call per employee group'
+                  }, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {/* Step 5: Assign Supervisor (if applicable) - done after ALL employees created */}
+            {supervisorPreview && (
+              <div className="bg-orange-50 rounded border border-orange-200 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-orange-100 text-orange-800 text-xs font-semibold px-2 py-0.5 rounded">Final</span>
+                  <span className="text-xs font-mono text-gray-600">PUT /hr/v1.0/employees/{'{employeeId}'}</span>
+                  <span className="text-xs text-orange-600 italic">(after all employees created)</span>
+                </div>
+                <pre className="text-xs text-gray-800 whitespace-pre-wrap bg-white p-2 rounded border">
+                  {JSON.stringify({
+                    supervisorId: supervisorPreview.supervisorId,
+                    _comment: `Assigns "${supervisorPreview.supervisorName}" as supervisor`
+                  }, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
         </div>
       </Card>
 

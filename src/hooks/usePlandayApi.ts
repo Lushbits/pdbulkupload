@@ -93,6 +93,7 @@ interface PlandayApiActions {
   refreshEmployeeGroups: () => Promise<void>;
   refreshEmployeeTypes: () => Promise<void>;
   refreshSupervisors: () => Promise<void>;
+  refreshSalaryTypes: () => Promise<PlandaySalaryType[]>;
   refreshFieldDefinitions: () => Promise<void>;
   refreshPortalInfo: () => Promise<void>;
   refreshPlandayData: () => Promise<void>;
@@ -542,6 +543,45 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       updateState({
         isSupervisorsLoading: false,
         supervisorsError: errorMessage,
+      });
+
+      throw error;
+    }
+  }, [state.isAuthenticated, updateState, handleError]);
+
+  /**
+   * Refresh salary types from Planday (lazy loaded - only when fixed salary feature is needed)
+   */
+  const refreshSalaryTypes = useCallback(async (): Promise<PlandaySalaryType[]> => {
+    if (!state.isAuthenticated) {
+      throw new Error('Not authenticated');
+    }
+
+    updateState({
+      isSalaryTypesLoading: true,
+      salaryTypesError: null
+    });
+
+    try {
+      const salaryTypes = await PlandayApi.getSalaryTypes();
+
+      updateState({
+        salaryTypes,
+        isSalaryTypesLoading: false,
+        salaryTypesError: null,
+      });
+
+      // Update mapping service with salary types
+      MappingUtils.setSalaryTypes(salaryTypes);
+
+      console.log(`✅ Fetched ${salaryTypes.length} salary types`);
+      return salaryTypes;
+
+    } catch (error) {
+      const errorMessage = handleError(error);
+      updateState({
+        isSalaryTypesLoading: false,
+        salaryTypesError: errorMessage,
       });
 
       throw error;
@@ -1135,6 +1175,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     refreshEmployeeGroups,
     refreshEmployeeTypes,
     refreshSupervisors,
+    refreshSalaryTypes,
     refreshFieldDefinitions,
     refreshPortalInfo,
     refreshPlandayData,

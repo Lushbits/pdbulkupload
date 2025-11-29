@@ -68,7 +68,7 @@ export const API_ENDPOINTS = {
 
   // Pay API Endpoints (v1.0)
   PAYRATES_BY_GROUP: '/pay/v1.0/payrates/employeeGroups',
-  SALARY_TYPES: '/pay/v1.0/salarytypes',
+  SALARY_TYPES: '/pay/v1.0/salaries/types',  // Correct endpoint per Google Apps Script
   SALARIES: '/pay/v1.0/salaries/employees',
 
   // Contract Rules API Endpoints (v1)
