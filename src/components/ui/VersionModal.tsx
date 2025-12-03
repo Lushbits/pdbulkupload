@@ -13,6 +13,15 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.3',
+    date: '2025-12-03',
+    title: 'Skills Support & Improvements',
+    features: [
+      'Added skills support - assign skills to employees during bulk upload',
+      'Skills appear as individual mappable columns like departments and employee groups',
+    ]
+  },
+  {
     version: '0.3.2',
     date: '2025-11-29',
     title: 'API Preview & Salary Types Fix',
