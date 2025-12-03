@@ -17,6 +17,7 @@ import type {
   PlandayEmployeeGroup,
   PlandayEmployeeType,
   PlandaySupervisor,
+  PlandaySkill,
   PlandaySalaryType,
   PlandayContractRule,
   PlandayEmployeeResponse,
@@ -62,6 +63,11 @@ interface PlandayApiState {
   isSupervisorsLoading: boolean;
   supervisorsError: string | null;
 
+  // Skills state
+  skills: PlandaySkill[];
+  isSkillsLoading: boolean;
+  skillsError: string | null;
+
   // Salary type state
   salaryTypes: PlandaySalaryType[];
   isSalaryTypesLoading: boolean;
@@ -93,6 +99,7 @@ interface PlandayApiActions {
   refreshEmployeeGroups: () => Promise<void>;
   refreshEmployeeTypes: () => Promise<void>;
   refreshSupervisors: () => Promise<void>;
+  refreshSkills: () => Promise<void>;
   refreshSalaryTypes: () => Promise<PlandaySalaryType[]>;
   refreshFieldDefinitions: () => Promise<void>;
   refreshPortalInfo: () => Promise<void>;
@@ -206,6 +213,11 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     isSupervisorsLoading: false,
     supervisorsError: null,
 
+    // Skills state
+    skills: [],
+    isSkillsLoading: false,
+    skillsError: null,
+
     // Salary type state
     salaryTypes: [],
     isSalaryTypesLoading: false,
@@ -276,11 +288,12 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       }
       
       // Test connection and fetch initial data
-      const [departments, employeeGroups, employeeTypes, supervisors, salaryTypes, contractRules, fieldDefinitions] = await Promise.all([
+      const [departments, employeeGroups, employeeTypes, supervisors, skills, salaryTypes, contractRules, fieldDefinitions] = await Promise.all([
         PlandayApi.getDepartments(),
         PlandayApi.getEmployeeGroups(),
         PlandayApi.getEmployeeTypes(),
         PlandayApi.getSupervisors(),
+        PlandayApi.getSkills(),
         PlandayApi.getSalaryTypes(),
         PlandayApi.getContractRules(),
         PlandayApi.getFieldDefinitions()
@@ -289,6 +302,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       // Initialize services with fetched data
       MappingUtils.initialize(departments, employeeGroups, employeeTypes);
       MappingUtils.setSupervisors(supervisors);
+      MappingUtils.setSkills(skills);
       MappingUtils.setSalaryTypes(salaryTypes);
       MappingUtils.setContractRules(contractRules);
       ValidationService.initialize(fieldDefinitions);
@@ -302,6 +316,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         employeeGroups,
         employeeTypes,
         supervisors,
+        skills,
         salaryTypes,
         contractRules,
         fieldDefinitions,
@@ -321,6 +336,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         employeeGroups: [],
         employeeTypes: [],
         supervisors: [],
+        skills: [],
         salaryTypes: [],
         contractRules: [],
       });
@@ -363,6 +379,11 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       supervisors: [],
       isSupervisorsLoading: false,
       supervisorsError: null,
+
+      // Reset skills state
+      skills: [],
+      isSkillsLoading: false,
+      skillsError: null,
 
       // Reset salary type state
       salaryTypes: [],
@@ -550,6 +571,44 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   }, [state.isAuthenticated, updateState, handleError]);
 
   /**
+   * Refresh skills from Planday
+   */
+  const refreshSkills = useCallback(async (): Promise<void> => {
+    if (!state.isAuthenticated) {
+      throw new Error('Not authenticated');
+    }
+
+    updateState({
+      isSkillsLoading: true,
+      skillsError: null
+    });
+
+    try {
+      const skills = await PlandayApi.getSkills();
+
+      updateState({
+        skills,
+        isSkillsLoading: false,
+        skillsError: null,
+      });
+
+      // Update mapping service with skills
+      MappingUtils.setSkills(skills);
+
+      console.log(`✅ Refreshed ${skills.length} skills`);
+
+    } catch (error) {
+      const errorMessage = handleError(error);
+      updateState({
+        isSkillsLoading: false,
+        skillsError: errorMessage,
+      });
+
+      throw error;
+    }
+  }, [state.isAuthenticated, updateState, handleError]);
+
+  /**
    * Refresh salary types from Planday (lazy loaded - only when fixed salary feature is needed)
    */
   const refreshSalaryTypes = useCallback(async (): Promise<PlandaySalaryType[]> => {
@@ -671,6 +730,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         refreshEmployeeGroups(),
         refreshEmployeeTypes(),
         refreshSupervisors(),
+        refreshSkills(),
         refreshFieldDefinitions(),
         refreshPortalInfo(),
       ]);
@@ -680,7 +740,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       console.error('❌ Failed to refresh some Planday data:', error);
       throw error;
     }
-  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshEmployeeTypes, refreshSupervisors, refreshFieldDefinitions, refreshPortalInfo]);
+  }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshEmployeeTypes, refreshSupervisors, refreshSkills, refreshFieldDefinitions, refreshPortalInfo]);
 
   /**
    * Upload employees to Planday
@@ -1175,6 +1235,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     refreshEmployeeGroups,
     refreshEmployeeTypes,
     refreshSupervisors,
+    refreshSkills,
     refreshSalaryTypes,
     refreshFieldDefinitions,
     refreshPortalInfo,

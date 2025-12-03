@@ -15,6 +15,7 @@ import type {
   PlandayEmployeeGroup,
   PlandayEmployeeType,
   PlandaySupervisor,
+  PlandaySkill,
   PlandaySalaryType,
   PlandayContractRule,
   ValidationError,
@@ -83,6 +84,9 @@ export class MappingService {
   // Supervisor maps - name can map to multiple IDs if duplicates exist
   private supervisorsByName: Map<string, number[]> = new Map();
   private supervisorsById: Map<number, string> = new Map();
+  // Skill maps - for skill assignments
+  private skillsByName: Map<string, number> = new Map();
+  private skillsById: Map<number, string> = new Map();
   // Salary type maps - for fixed salary assignments
   private salaryTypesByName: Map<string, number> = new Map();
   private salaryTypesById: Map<number, string> = new Map();
@@ -95,6 +99,7 @@ export class MappingService {
   public employeeGroups: PlandayEmployeeGroup[] = [];
   public employeeTypes: PlandayEmployeeType[] = [];
   public supervisors: PlandaySupervisor[] = [];
+  public skills: PlandaySkill[] = [];
   public salaryTypes: PlandaySalaryType[] = [];
   public contractRules: PlandayContractRule[] = [];
 
@@ -168,6 +173,79 @@ export class MappingService {
     });
 
     console.log(`✅ Initialized ${supervisors.length} supervisors`);
+  }
+
+  /**
+   * Set skills data (called separately after authentication)
+   */
+  setSkills(skills: PlandaySkill[]): void {
+    this.skills = skills;
+    this.skillsByName.clear();
+    this.skillsById.clear();
+
+    skills.forEach(skill => {
+      if (skill && skill.name) {
+        const normalizedName = this.normalizeName(skill.name);
+        this.skillsByName.set(normalizedName, skill.skillId);
+        this.skillsById.set(skill.skillId, skill.name);
+      }
+    });
+
+    console.log(`✅ Initialized ${skills.length} skills`);
+  }
+
+  /**
+   * Get all available skills
+   */
+  getSkills(): PlandaySkill[] {
+    return this.skills;
+  }
+
+  /**
+   * Resolve skill name to ID
+   */
+  resolveSkill(input: string): MappingResult {
+    const result: MappingResult = {
+      ids: [],
+      errors: [],
+      warnings: [],
+      suggestions: []
+    };
+
+    if (!input || input.trim() === '') {
+      return result;
+    }
+
+    const name = input.trim();
+    const normalizedName = this.normalizeName(name);
+
+    // 1. Try numeric ID first
+    const numericId = parseInt(name);
+    if (!isNaN(numericId) && this.skillsById.has(numericId)) {
+      result.ids.push(numericId);
+      return result;
+    }
+
+    // 2. Try exact name match (case-insensitive)
+    const matchingId = this.skillsByName.get(normalizedName);
+
+    if (matchingId !== undefined) {
+      result.ids.push(matchingId);
+      return result;
+    }
+
+    // 3. No exact match - try fuzzy matching for typos
+    const availableNames = Array.from(this.skillsByName.keys());
+    const suggestion = this.findBestMatch(normalizedName, availableNames);
+
+    if (suggestion.match && suggestion.confidence > 0.7) {
+      const originalName = this.skillsById.get(this.skillsByName.get(suggestion.match)!) || suggestion.match;
+      result.errors.push(`Skill "${name}" not found. Did you mean "${originalName}"?`);
+    } else {
+      result.errors.push(`Skill "${name}" not found in Planday.`);
+    }
+
+    return result;
   }
 
   /**
@@ -915,23 +993,29 @@ export class MappingService {
     // Handle departments - NEW: Individual field approach
     const assignedDepartments: string[] = [];
     const departmentIds: number[] = [];
-    
+    let primaryDepartmentId: number | null = null;
+
     // Process individual department fields
-    
+
     // Scan for individual department fields (departments.Kitchen, departments.Bar, etc.)
     Object.keys(employee).forEach(fieldName => {
       if (fieldName.startsWith('departments.') && employee[fieldName]) {
         const departmentName = fieldName.replace('departments.', '');
         const value = employee[fieldName]?.toString()?.trim();
-        
+
         // Any non-empty value means assign this department
         if (value && value !== '' && value.toLowerCase() !== 'no' && value.toLowerCase() !== 'false') {
           assignedDepartments.push(departmentName);
-          
+
           // Convert department name to ID
           const deptId = this.departmentsByName.get(this.normalizeName(departmentName));
           if (deptId) {
             departmentIds.push(deptId);
+
+            // Check if this department should be primary (marked with "xx" or "XX")
+            if (value.toLowerCase() === 'xx') {
+              primaryDepartmentId = deptId;
+            }
           } else {
             errors.push({
               field: fieldName as any,
@@ -949,6 +1033,11 @@ export class MappingService {
     if (departmentIds.length > 0) {
       converted.departments = assignedDepartments.join(', '); // Store as comma-separated names for editing
       converted.__departmentsIds = departmentIds; // Store IDs separately for API payload
+
+      // Set primary department only if explicitly marked with "xx"
+      if (primaryDepartmentId) {
+        converted.primaryDepartmentId = primaryDepartmentId;
+      }
     } else {
       // Always create editable field, even if empty
       converted.departments = '';
@@ -1040,6 +1129,43 @@ export class MappingService {
       converted.__employeeGroupPayrates = employeeGroupPayrates;
     }
 
+    // Handle skills - Individual field approach (skills.Bartending, skills.Cooking, etc.)
+    const assignedSkills: string[] = [];
+    const skillIds: number[] = [];
+
+    // Scan for individual skill fields
+    Object.keys(employee).forEach(fieldName => {
+      if (fieldName.startsWith('skills.') && employee[fieldName]) {
+        const skillName = fieldName.replace('skills.', '');
+        const value = employee[fieldName]?.toString()?.trim();
+
+        // Any non-empty value (X, x, yes, true) means assign this skill
+        if (value && value !== '' && value.toLowerCase() !== 'no' && value.toLowerCase() !== 'false') {
+          assignedSkills.push(skillName);
+
+          // Convert skill name to ID
+          const skillId = this.skillsByName.get(this.normalizeName(skillName));
+          if (skillId) {
+            skillIds.push(skillId);
+          } else {
+            errors.push({
+              field: fieldName as any,
+              value: skillName,
+              message: `Skill "${skillName}" not found in portal`,
+              rowIndex: employee.rowIndex || 0,
+              severity: 'error'
+            });
+          }
+        }
+      }
+    });
+
+    // Set converted skills array
+    if (skillIds.length > 0) {
+      converted.skillIds = skillIds; // Store IDs for API payload (skillIds is sent directly in employee creation)
+      converted.skills = assignedSkills.join(', '); // Store as comma-separated names for display
+    }
+
     // Handle wageValidFrom date field (for payrate API, not employee creation)
     if (employee.wageValidFrom && employee.wageValidFrom.toString().trim() !== '') {
       const dateStr = employee.wageValidFrom.toString().trim();
@@ -1091,32 +1217,22 @@ export class MappingService {
       }
     }
 
-    // Handle supervisorId - convert name to ID with duplicate detection
+    // Handle supervisorId - store name for deferred resolution after all employees created
     // NOTE: supervisorId must be assigned via PUT after employee creation (not accepted in POST)
+    // IMPORTANT: We do NOT resolve supervisor name to ID here because the supervisor might be
+    // a new employee being created in the same batch (marked with isSupervisor: X).
+    // The supervisor list will be refreshed AFTER all employees are created, then names resolved to IDs.
     if (employee.supervisorId) {
       const supervisorStr = employee.supervisorId.toString().trim();
       if (supervisorStr !== '') {
-        const supervisorResult = this.resolveSupervisor(supervisorStr);
-        if (supervisorResult.errors.length > 0) {
-          errors.push({
-            field: 'supervisorId',
-            value: employee.supervisorId,
-            message: supervisorResult.errors.join(', '),
-            rowIndex: employee.rowIndex || 0,
-            severity: 'error'
-          });
-        }
-        // Store in internal field for assignment after creation (ID needed for API)
-        if (supervisorResult.ids.length === 1) {
-          // Get the supervisor name for display/logging
-          const supervisorName = this.supervisorsById.get(supervisorResult.ids[0]) || supervisorStr;
-          converted.__supervisorAssignment = {
-            supervisorId: supervisorResult.ids[0],
-            supervisorName: supervisorName
-          };
-          // Keep original value for display in UI
-          converted.supervisorId = supervisorName;
-        }
+        // Store the raw supervisor name for deferred resolution
+        // The name will be resolved to an ID after all employees are created and supervisor list is refreshed
+        converted.__supervisorAssignment = {
+          supervisorName: supervisorStr,
+          supervisorId: null // Will be resolved after employee creation
+        };
+        // Keep original value for display in UI
+        converted.supervisorId = supervisorStr;
       }
     }
 
@@ -1364,7 +1480,7 @@ export class MappingService {
     const processedFields = new Set<string>();
 
     // Fields to exclude from templates because they are auto-populated or deprecated
-    const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
+    const excludedFields = ['email', 'phone', 'phoneCountryCode', 'primaryDepartmentId']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported), primaryDepartmentId is set via "xx" in department columns
 
     // Exclude supervisor fields if not requested
     if (!includeSupervisorColumns) {
@@ -1414,7 +1530,7 @@ export class MappingService {
     // Helper function to get user-friendly display name
     const getDisplayName = (fieldName: string, originalDisplayName: string): string => {
       if (fieldName === 'userName') {
-        return 'email'; // More user-friendly than "userName"
+        return 'email/username'; // Clarify this is used for both email and login username
       }
       return originalDisplayName;
     };
@@ -1615,13 +1731,16 @@ export class MappingService {
             instructions[field.field] = 'Set to "Yes", "X", or "true" to make this employee a supervisor. Leave empty if not a supervisor.';
             break;
           default:
-            // Handle individual department and employee group fields
+            // Handle individual department, employee group, and skill fields
             if (field.field.startsWith('departments.')) {
               const departmentName = field.field.replace('departments.', '');
-              instructions[field.field] = `Check this column if employee works in ${departmentName} department. Use "Yes", "X", or any value to assign department, leave empty to skip.`;
+              instructions[field.field] = `Check this column if employee works in ${departmentName} department. Use "X" or "Yes" to assign, or "XX" to assign AND set as primary department. Leave empty to skip.`;
             } else if (field.field.startsWith('employeeGroups.')) {
               const groupName = field.field.replace('employeeGroups.', '');
               instructions[field.field] = `Assign to ${groupName} group: Use "X" to assign without rate, or enter hourly rate (e.g., 15.50) to assign with pay rate. Leave empty to skip.`;
+            } else if (field.field.startsWith('skills.')) {
+              const skillName = field.field.replace('skills.', '');
+              instructions[field.field] = `Mark with "X" to assign skill '${skillName}' to this employee. Leave empty to skip.`;
             } else if (field.isComplexSubField && field.field.includes('.')) {
               // Handle complex object sub-fields
               const [parentField, subField] = field.field.split('.');
@@ -1687,15 +1806,17 @@ export class MappingService {
       '__employeeGroupPayrates', 'wageValidFrom', // Payrate fields (handled separately after employee creation)
       '__supervisorAssignment', 'supervisorId', // Supervisor assignment (must be PUT after employee creation, not POST)
       '__fixedSalaryAssignment', 'salaryPeriod', 'salaryHours', 'salaryAmount', // Fixed salary (PUT after employee creation)
-      '__contractRuleAssignment', 'contractRule' // Contract rule (PUT after employee creation)
+      '__contractRuleAssignment', 'contractRule', // Contract rule (PUT after employee creation)
+      'skills' // Skills display field (skillIds array is sent directly, this is just for display)
     ]);
     
     // Include all fields from the converted employee, excluding internal ones
     Object.entries(converted).forEach(([key, value]) => {
-      // Skip internal fields, individual department/employee group fields, and undefined/empty values
-      if (!internalFields.has(key) && 
-          !key.startsWith('departments.') && 
-          !key.startsWith('employeeGroups.') && 
+      // Skip internal fields, individual department/employee group/skill fields, and undefined/empty values
+      if (!internalFields.has(key) &&
+          !key.startsWith('departments.') &&
+          !key.startsWith('employeeGroups.') &&
+          !key.startsWith('skills.') &&
           value != null && value !== '') {
         // Handle complex object sub-fields (e.g., "bankAccount.accountNumber")
         if (key.includes('.') && ValidationService.isComplexObjectSubField(key)) {
@@ -1935,6 +2056,27 @@ export const MappingUtils = {
   },
 
   /**
+   * Set skills data (called after authentication)
+   */
+  setSkills(skills: PlandaySkill[]): void {
+    mappingService.setSkills(skills);
+  },
+
+  /**
+   * Get stored skills data
+   */
+  getSkills(): PlandaySkill[] {
+    return [...mappingService.skills];
+  },
+
+  /**
+   * Resolve skill name to ID
+   */
+  resolveSkill(input: string): MappingResult {
+    return mappingService.resolveSkill(input);
+  },
+
+  /**
    * Set salary types data (called after authentication)
    */
   setSalaryTypes(salaryTypes: PlandaySalaryType[]): void {
@@ -2103,6 +2245,19 @@ export class ValidationService {
       });
     }
 
+    // NEW: Generate dynamic skill fields from portal data
+    if (mappingService.skills.length > 0) {
+      mappingService.skills.forEach(skill => {
+        subFields.push({
+          parentField: 'skills',
+          subField: skill.name,
+          displayName: `Skill: ${skill.name} (x)`,
+          fullFieldPath: `skills.${skill.name}`,
+          isRequired: false // Individual skill assignments are optional
+        });
+      });
+    }
+
     return subFields;
   }
 
@@ -2168,16 +2323,22 @@ export class ValidationService {
     // Add standard fields (excluding complex object parents and hardcoded excluded fields)
     // Note: We allow read-only fields during bulk import since users should be able to set initial values
     Object.keys(this.fieldDefinitions.properties)
-      .filter(field => 
-        !field.startsWith('custom_') && 
+      .filter(field =>
+        !field.startsWith('custom_') &&
         !complexParentFields.has(field) &&
         !excludedFields.includes(field)
         // Removed !this.isReadOnly(field) - allow read-only fields during bulk import
       )
       .forEach(field => {
+        // Use friendly display names for certain fields
+        let displayName = field;
+        if (field === 'userName') {
+          displayName = 'email/username';
+        }
+
         fields.push({
           field,
-          displayName: field,
+          displayName,
           isRequired: this.isRequired(field),
           isCustom: false,
           isComplexSubField: false

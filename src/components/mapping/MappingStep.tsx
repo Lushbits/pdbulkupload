@@ -749,7 +749,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                                 {(() => {
                                   const field = plandayFields.find(f => f.name === mappedField);
                                   if (!field) return mappedField;
-                                  return field.isCustom ? (field.description || field.displayName || field.name) : field.name;
+                                  return field.isCustom ? (field.description || field.displayName || field.name) : (field.displayName || field.name);
                                 })()}
                               </span>
                             </div>
@@ -938,7 +938,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                           <div className="flex items-center">
                             <span className="text-green-600 mr-2">✓</span>
                             <span className="font-mono">
-                              {selectedField.isCustom ? (selectedField.description || selectedField.displayName || selectedField.name) : selectedField.name}
+                              {selectedField.isCustom ? (selectedField.description || selectedField.displayName || selectedField.name) : (selectedField.displayName || selectedField.name)}
                             </span>
                           </div>
                         </Button>

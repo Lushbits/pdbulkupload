@@ -65,6 +65,7 @@ export const API_ENDPOINTS = {
   EMPLOYEE_TYPES: '/hr/v1.0/employeetypes',
   EMPLOYEE_FIELD_DEFINITIONS: '/hr/v1.0/employees/fielddefinitions',
   SUPERVISORS: '/hr/v1.0/employees/supervisors',
+  SKILLS: '/hr/v1.0/skills',
 
   // Pay API Endpoints (v1.0)
   PAYRATES_BY_GROUP: '/pay/v1.0/payrates/employeeGroups',

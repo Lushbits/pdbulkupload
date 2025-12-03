@@ -20,6 +20,8 @@ import type {
   PlandayEmployeeTypesResponse,
   PlandaySupervisor,
   PlandaySupervisorsResponse,
+  PlandaySkill,
+  PlandaySkillsResponse,
   PlandaySalaryType,
   PlandaySalaryTypesResponse,
   PlandayContractRule,
@@ -319,6 +321,25 @@ export class PlandayApiClient {
       return allSupervisors;
     } catch (error) {
       console.error('❌ Failed to fetch supervisors:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all skills from Planday
+   * Skills API returns a direct array, not paginated
+   */
+  async fetchSkills(): Promise<PlandaySkill[]> {
+    try {
+      // Skills endpoint returns a direct array, not a paginated response
+      const skills = await this.makeAuthenticatedRequest<PlandaySkillsResponse>(
+        API_ENDPOINTS.SKILLS
+      );
+
+      console.log(`✅ Fetched ${skills.length} skills`);
+      return skills;
+    } catch (error) {
+      console.error('❌ Failed to fetch skills:', error);
       throw error;
     }
   }
@@ -1335,6 +1356,13 @@ export const PlandayApi = {
    */
   async getSupervisors(): Promise<PlandaySupervisor[]> {
     return plandayApiClient.fetchSupervisors();
+  },
+
+  /**
+   * Fetch all skills
+   */
+  async getSkills(): Promise<PlandaySkill[]> {
+    return plandayApiClient.fetchSkills();
   },
 
   /**

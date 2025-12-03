@@ -630,6 +630,20 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
 
 
 
+  // Show loading state while correction summary is being calculated
+  if (!correctionSummary && currentPhase === 'bulk-correction') {
+    return (
+      <div className={`validation-correction-step ${className}`}>
+        <Card className="p-6">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-4"></div>
+            <span className="text-gray-600">Analyzing data for validation...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   // Render date format selection page
   if (currentPhase === 'date-format-selection') {
     return (
@@ -794,7 +808,25 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
     );
   }
 
-  return null;
+  // Fallback render - should never reach here, but prevents white screen
+  return (
+    <div className={`validation-correction-step ${className}`}>
+      <Card className="p-6">
+        <div className="text-center">
+          <div className="text-yellow-600 text-4xl mb-4">⚠️</div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Unexpected State
+          </h3>
+          <p className="text-gray-600 mb-4">
+            Current phase: {currentPhase}
+          </p>
+          <Button variant="secondary" onClick={onBack}>
+            ← Go Back
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
 };
 
 export default ValidationAndCorrectionStep; 

@@ -201,7 +201,8 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     const internalFields = new Set([
       'rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected',
       '__departmentsIds', '__employeeGroupsIds',
-      '__employeeGroupPayrates', 'wageValidFrom' // Payrate fields shown in separate preview
+      '__employeeGroupPayrates', 'wageValidFrom', // Payrate fields shown in separate preview
+      'skillIds' // Show human-readable 'skills' field instead of technical ID array
     ]);
     
     convertedEmployees.forEach(converted => {
@@ -334,8 +335,8 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
                 <th className="sticky left-0 z-30 bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200">
                   #
                 </th>
-                {allFields.filter(field => 
-                  !['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds'].includes(field) &&
+                {allFields.filter(field =>
+                  !['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds', 'skillIds'].includes(field) &&
                   !field.includes('.') // Exclude individual fields like "departments.Kitchen"
                 ).map(field => (
                   <th
@@ -350,7 +351,7 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
             <tbody className="bg-white divide-y divide-gray-200">
               {displayEmployees.map((convertedEmployee, index) => {
                 // Filter out internal fields that shouldn't be displayed
-                const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds']);
+                const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__departmentsIds', '__employeeGroupsIds', 'skillIds']);
                 
                 return (
                   <tr key={`employee-${startIndex + index}`} className="hover:bg-gray-50">

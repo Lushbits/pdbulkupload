@@ -61,6 +61,7 @@ export interface PlandayEmployeeCreateRequest {
   email?: string;
   departments: number[];
   employeeGroups?: number[];
+  skillIds?: number[];  // Array of skill IDs to assign to employee
   hiredFrom?: string;
   birthDate?: string;
   ssn?: string;
@@ -145,6 +146,19 @@ export interface PlandaySupervisorsResponse {
   };
   data: PlandaySupervisor[];
 }
+
+/**
+ * Planday Skill Types
+ * Based on actual API: https://openapi.planday.com/hr/v1.0/skills
+ * Skills can be assigned to employees via skillIds array
+ */
+export interface PlandaySkill {
+  skillId: number;  // Skill ID
+  name: string;
+}
+
+// Skills API returns a direct array, not paginated
+export type PlandaySkillsResponse = PlandaySkill[];
 
 /**
  * Planday Salary Type

@@ -198,12 +198,12 @@ export const FieldSelectionModal: React.FC<FieldSelectionModalProps> = ({
                 </div>
               )}
 
-              {/* Optional Fields */}
+              {/* Additional Fields */}
               {groupedFields.optional.length > 0 && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-900 mb-4 flex items-center">
                     <span className="text-blue-500 mr-2">⚪</span>
-                    Optional Fields ({groupedFields.optional.length})
+                    Additional Fields ({groupedFields.optional.length})
                   </h4>
                   <div className="flex flex-wrap gap-3">
                     {groupedFields.optional.map((field) => (
@@ -339,7 +339,7 @@ const FieldButton: React.FC<FieldButtonProps> = ({ field, isSelected, onClick, i
       
       {/* Field name with inline tags */}
       <div className={`font-medium font-mono ${isSelected ? 'text-green-900' : 'text-gray-900'} ${isSelected ? 'pr-5' : 'pr-2'} flex items-center gap-2`}>
-        <span>{field.isCustom ? (field.description || field.displayName || field.name) : field.name}</span>
+        <span>{field.isCustom ? (field.description || field.displayName || field.name) : (field.displayName || field.name)}</span>
         {field.isRequired && (
           <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-red-100 text-red-600 font-sans font-normal">
             Required

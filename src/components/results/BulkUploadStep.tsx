@@ -255,7 +255,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       const contractRuleResultsArray: ContractRuleSetResult[] = [];
       const payrateResultsArray: PayrateSetResult[] = [];
       const salaryResultsArray: FixedSalarySetResult[] = [];
-      const supervisorQueue: Array<{ employeeId: number; supervisorId: number; supervisorName: string }> = [];
+      const supervisorQueue: Array<{ employeeId: number; supervisorName: string }> = []; // supervisorId resolved after all employees created
 
       const totalEmployees = validation.validatedEmployees.length;
       let completedCount = 0;
@@ -384,13 +384,13 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           }
 
           // Step 5: Queue supervisor assignment (deferred until all employees created)
+          // Note: supervisorId will be resolved AFTER all employees are created (to include new supervisors)
           if (convertedEmployee.__supervisorAssignment) {
             supervisorQueue.push({
               employeeId,
-              supervisorId: convertedEmployee.__supervisorAssignment.supervisorId,
               supervisorName: convertedEmployee.__supervisorAssignment.supervisorName
             });
-            addLogEntry(`   📋 Supervisor queued: ${convertedEmployee.__supervisorAssignment.supervisorName} (will assign after all employees created)`);
+            addLogEntry(`   📋 Supervisor queued: ${convertedEmployee.__supervisorAssignment.supervisorName} (will resolve & assign after all employees created)`);
           }
 
         } catch (error) {
@@ -437,23 +437,74 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         addLogEntry(`🎉 All ${completedCount} employees uploaded with inline operations!`);
 
         // Phase 4: Deferred supervisor assignments (only operation that needs to wait)
+        // IMPORTANT: Supervisor names are resolved AFTER all employees are created because
+        // new employees marked with isSupervisor=true won't be in the supervisor list until created.
         if (supervisorQueue.length > 0) {
           setStatus('post-processing');
           addLogEntry(`⚙️ Processing deferred supervisor assignments: ${supervisorQueue.length} supervisors...`);
 
+          // Step 1: Refresh supervisor list to include newly created supervisors
+          addLogEntry(`   🔄 Refreshing supervisor list to include newly created supervisors...`);
+          try {
+            await plandayApi.refreshSupervisors();
+            addLogEntry(`   ✅ Supervisor list refreshed successfully`);
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : 'Unknown error';
+            addLogEntry(`   ⚠️ Warning: Failed to refresh supervisor list: ${errMsg}`);
+          }
+
           const supervisorResultsData: Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }> = [];
 
+          // Step 2: Resolve supervisor names to IDs and assign
           for (let i = 0; i < supervisorQueue.length; i++) {
             const assignment = supervisorQueue[i];
             setSupervisorProgress({ completed: i, total: supervisorQueue.length });
 
             try {
-              await plandayApi.assignSupervisorToEmployee(assignment.employeeId, assignment.supervisorId);
-              supervisorResultsData.push({ ...assignment, success: true });
-              addLogEntry(`   ✅ Supervisor assigned: ${assignment.supervisorName} to employee ${assignment.employeeId}`);
+              // Resolve supervisor name to ID using the refreshed supervisor list
+              const supervisorResult = MappingUtils.resolveSupervisor(assignment.supervisorName);
+
+              if (supervisorResult.errors.length > 0) {
+                // Supervisor name couldn't be resolved
+                supervisorResultsData.push({
+                  employeeId: assignment.employeeId,
+                  supervisorId: 0,
+                  supervisorName: assignment.supervisorName,
+                  success: false,
+                  error: supervisorResult.errors.join(', ')
+                });
+                addLogEntry(`   ⚠️ Supervisor not found: "${assignment.supervisorName}" - ${supervisorResult.errors.join(', ')}`);
+              } else if (supervisorResult.ids.length === 1) {
+                // Successfully resolved - assign the supervisor
+                const resolvedSupervisorId = supervisorResult.ids[0];
+                await plandayApi.assignSupervisorToEmployee(assignment.employeeId, resolvedSupervisorId);
+                supervisorResultsData.push({
+                  employeeId: assignment.employeeId,
+                  supervisorId: resolvedSupervisorId,
+                  supervisorName: assignment.supervisorName,
+                  success: true
+                });
+                addLogEntry(`   ✅ Supervisor assigned: ${assignment.supervisorName} to employee ${assignment.employeeId}`);
+              } else {
+                // Multiple matches or no matches
+                supervisorResultsData.push({
+                  employeeId: assignment.employeeId,
+                  supervisorId: 0,
+                  supervisorName: assignment.supervisorName,
+                  success: false,
+                  error: `Could not uniquely resolve supervisor "${assignment.supervisorName}"`
+                });
+                addLogEntry(`   ⚠️ Supervisor resolution failed: "${assignment.supervisorName}"`);
+              }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              supervisorResultsData.push({ ...assignment, success: false, error: errorMessage });
+              supervisorResultsData.push({
+                employeeId: assignment.employeeId,
+                supervisorId: 0,
+                supervisorName: assignment.supervisorName,
+                success: false,
+                error: errorMessage
+              });
               addLogEntry(`   ⚠️ Supervisor assignment failed: ${errorMessage}`);
             }
           }

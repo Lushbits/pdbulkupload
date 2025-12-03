@@ -612,14 +612,15 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       const internalFields = new Set(['rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected', '__employeeGroupPayrates']);
       
       Object.keys(emp).forEach(key => {
-        // Exclude individual department/employee group fields (e.g., departments.Kitchen, employeeGroups.Reception)
-        // These are converted to comma-separated editable fields (departments, employeeGroups)
-        const isIndividualDeptField = key.startsWith('departments.') || key.startsWith('employeeGroups.');
+        // Exclude individual department/employee group/skill fields (e.g., departments.Kitchen, employeeGroups.Reception, skills.Bartending)
+        // These are converted to comma-separated editable fields (departments, employeeGroups, skills)
+        const isIndividualDeptField = key.startsWith('departments.') || key.startsWith('employeeGroups.') || key.startsWith('skills.');
         // Exclude ALL internal fields that start with __ (e.g., __departmentsIds, __employeeGroupPayrates)
-        const isInternalField = key.startsWith('__');
+        // Also exclude skillIds (show human-readable 'skills' field instead)
+        const isInternalField = key.startsWith('__') || key === 'skillIds';
         
-        // Always include business fields (departments, employeeGroups) even if empty, otherwise only include non-empty fields
-        const isBusinessField = ['departments', 'employeeGroups'].includes(key);
+        // Always include business fields (departments, employeeGroups, skills) even if empty, otherwise only include non-empty fields
+        const isBusinessField = ['departments', 'employeeGroups', 'skills'].includes(key);
         
         // Debug: Log department and employee group field values for first few employees
         if (fieldSet.size < 10 && (key === 'departments' || key === 'employeeGroups')) {
@@ -639,7 +640,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     
     // Sort fields with important ones first
     const importantFields = ['firstName', 'lastName', 'userName', 'email'];
-    const businessFields = ['departments', 'employeeGroups']; // Business-critical editable fields - always show
+    const businessFields = ['departments', 'employeeGroups', 'skills']; // Business-critical editable fields - always show
     const otherFields = Array.from(fieldSet).filter(field =>
       !importantFields.includes(field) && !businessFields.includes(field)
     ).sort();
@@ -666,12 +667,15 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
   // Helper function to get display name for field
   const getFieldDisplayName = (fieldName: string): string => {
-    // Handle business fields for departments and employee groups
+    // Handle business fields for departments, employee groups, and skills
     if (fieldName === 'departments') {
       return 'Departments';
     }
     if (fieldName === 'employeeGroups') {
       return 'Employee Groups';
+    }
+    if (fieldName === 'skills') {
+      return 'Skills';
     }
     
     // Check if it's a custom field
