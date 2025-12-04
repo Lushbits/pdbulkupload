@@ -44,7 +44,7 @@ export const AUTO_MAPPING_RULES = {
   ],
   street1: [
     'address', 'street', 'street address', 'address line 1',
-    'street1', 'home address', 'residential address'
+    'street1', 'home address', 'residential address', 'street 1'
   ],
   city: [
     'city', 'town', 'municipality', 'place', 'location'
