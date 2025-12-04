@@ -155,6 +155,8 @@ export interface PlandaySupervisorsResponse {
 export interface PlandaySkill {
   skillId: number;  // Skill ID
   name: string;
+  description?: string;
+  isTimeLimited?: boolean;  // If true, skill requires ValidFrom/ValidTo dates and cannot be assigned via bulk upload
 }
 
 // Skills API returns a direct array, not paginated

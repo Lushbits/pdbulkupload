@@ -229,17 +229,22 @@ const CorrectionCard: React.FC<CorrectionCardProps> = ({
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm font-medium text-gray-600 capitalize">
-                {pattern.field === 'employeeGroups' ? 'Employee Groups' : 
-                 pattern.field === 'employeeTypes' ? 'Employee Types' : 'Departments'}
+                {pattern.field === 'employeeGroups' ? 'Employee Groups' :
+                 pattern.field === 'employeeTypes' ? 'Employee Types' :
+                 pattern.field === 'supervisors' ? 'Supervisors' : 'Departments'}
               </span>
               <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
                 Must be corrected
               </span>
             </div>
-            
+
             <div className="text-lg mb-2">
               <span className="text-red-600 font-bold">❌ "{pattern.invalidName}"</span>
-              <span className="text-gray-600 mx-2">doesn't exist in Planday</span>
+              <span className="text-gray-600 mx-2">
+                {pattern.errorMessage?.includes('Multiple')
+                  ? 'matches multiple people in Planday'
+                  : "doesn't exist in Planday"}
+              </span>
             </div>
             
             <div className="text-sm text-gray-600 mb-3">
@@ -258,54 +263,98 @@ const CorrectionCard: React.FC<CorrectionCardProps> = ({
         </div>
 
         <div className="space-y-3">
-          {pattern.suggestion && (
-            <div>
-              <Button
-                onClick={handleSuggestedCorrection}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
-              >
-                <span className="text-lg">✨</span>
-                Map to "{pattern.suggestion}" (suggested match - {confidencePercent}% confidence)
-              </Button>
-            </div>
-          )}
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {pattern.suggestion ? 'Or choose a different' : 'Choose a'} {
-                pattern.field === 'employeeGroups' ? 'employee group' : 
-                pattern.field === 'employeeTypes' ? 'employee type' : 'department'
-              }:
-            </label>
-            {/* Debug info for empty dropdown */}
-            {validOptions.length === 0 && (
-              <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-                ⚠️ No valid {
-                  pattern.field === 'employeeGroups' ? 'employee groups' : 
-                  pattern.field === 'employeeTypes' ? 'employee types' : 'departments'
-                } available.
-                Check console for debugging info.
+          {/* Special handling for ambiguous supervisor names */}
+          {pattern.field === 'supervisors' && pattern.errorMessage?.includes('Multiple') ? (
+            <div className="space-y-3">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <span className="text-amber-600 text-xl">⚠️</span>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-amber-800 mb-2">Ambiguous Supervisor Name</h4>
+                    <p className="text-sm text-amber-700 mb-3">
+                      {pattern.errorMessage}
+                    </p>
+                    <p className="text-sm text-amber-700">
+                      Select one of the matching supervisors below, or go back to your Excel file and use a specific ID.
+                    </p>
+                  </div>
+                </div>
               </div>
-            )}
-            <select
-              value={selectedOption}
-              onChange={(e) => handleDropdownSelection(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="">Select valid option...</option>
-              {validOptions.length === 0 ? (
-                <option value="" disabled>No options available</option>
-              ) : (
-                validOptions
-                  .filter(option => option.name !== pattern.suggestion)
-                  .map(option => (
-                    <option key={option.id} value={option.name}>
-                      {option.name}
-                    </option>
-                  ))
+              {/* Allow selecting from the matching supervisors */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select the correct supervisor:
+                </label>
+                <select
+                  value={selectedOption}
+                  onChange={(e) => handleDropdownSelection(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">Select the correct supervisor...</option>
+                  {validOptions
+                    .filter(opt => opt.name.toLowerCase() === pattern.invalidName.toLowerCase())
+                    .map(option => (
+                      <option key={option.id} value={option.id.toString()}>
+                        {option.name} (ID: {option.id})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <>
+              {pattern.suggestion && (
+                <div>
+                  <Button
+                    onClick={handleSuggestedCorrection}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+                  >
+                    <span className="text-lg">✨</span>
+                    Map to "{pattern.suggestion}" (suggested match - {confidencePercent}% confidence)
+                  </Button>
+                </div>
               )}
-            </select>
-          </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {pattern.suggestion ? 'Or choose a different' : 'Choose a'} {
+                    pattern.field === 'employeeGroups' ? 'employee group' :
+                    pattern.field === 'employeeTypes' ? 'employee type' :
+                    pattern.field === 'supervisors' ? 'supervisor' : 'department'
+                  }:
+                </label>
+                {/* Debug info for empty dropdown */}
+                {validOptions.length === 0 && (
+                  <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                    ⚠️ No valid {
+                      pattern.field === 'employeeGroups' ? 'employee groups' :
+                      pattern.field === 'employeeTypes' ? 'employee types' :
+                      pattern.field === 'supervisors' ? 'supervisors' : 'departments'
+                    } available.
+                    Check console for debugging info.
+                  </div>
+                )}
+                <select
+                  value={selectedOption}
+                  onChange={(e) => handleDropdownSelection(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">Select valid option...</option>
+                  {validOptions.length === 0 ? (
+                    <option value="" disabled>No options available</option>
+                  ) : (
+                    validOptions
+                      .filter(option => option.name !== pattern.suggestion)
+                      .map(option => (
+                        <option key={option.id} value={pattern.field === 'supervisors' ? option.id.toString() : option.name}>
+                          {pattern.field === 'supervisors' ? `${option.name} (ID: ${option.id})` : option.name}
+                        </option>
+                      ))
+                  )}
+                </select>
+              </div>
+            </>
+          )}
         </div>
 
         {isExpanded && (

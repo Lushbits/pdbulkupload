@@ -13,6 +13,18 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.4',
+    date: '2025-12-04',
+    title: 'Supervisor Validation & Template Ordering',
+    features: [
+      'Supervisor validation now catches errors during validation phase - no more surprises during upload',
+      'Supervisor assignments now check both Planday AND the current Excel being uploaded',
+      'Supervisors being created in the same batch are now recognized as valid assignments',
+      'Ambiguous supervisor names (multiple matches in Planday or Excel) are clearly flagged with resolution options',
+      'Excel template field ordering improved: core fields, then Departments, Employee Groups, Skills, Hourly Rates, and Custom fields grouped logically',
+    ]
+  },
+  {
     version: '0.3.3',
     date: '2025-12-03',
     title: 'Skills Support & Improvements',

@@ -216,13 +216,41 @@ export class PlandayApiClient {
       errorData = { message: response.statusText };
     }
 
-    // Enhanced error message extraction
-    const errorMessage = errorData.message || 
-                        errorData.error_description || 
-                        errorData.error || 
-                        errorData.detail || 
-                        response.statusText || 
+    // Enhanced error message extraction - handle various Planday error formats
+    let errorMessage = errorData.message ||
+                        errorData.error_description ||
+                        errorData.error ||
+                        errorData.detail ||
+                        response.statusText ||
                         'Unknown error';
+
+    // Check for nested errors array (Planday validation errors)
+    if (errorData.errors && Array.isArray(errorData.errors)) {
+      const errorMessages = errorData.errors.map((e: any) =>
+        typeof e === 'string' ? e : (e.message || e.error || JSON.stringify(e))
+      );
+      if (errorMessages.length > 0) {
+        errorMessage = errorMessages.join('; ');
+      }
+    }
+
+    // Check for ModelState validation errors (ASP.NET format)
+    if (errorData.ModelState) {
+      const modelErrors: string[] = [];
+      Object.entries(errorData.ModelState).forEach(([field, errors]) => {
+        if (Array.isArray(errors)) {
+          modelErrors.push(`${field}: ${errors.join(', ')}`);
+        }
+      });
+      if (modelErrors.length > 0) {
+        errorMessage = modelErrors.join('; ');
+      }
+    }
+
+    // Check for title in problem details format
+    if (errorData.title && errorMessage === 'Unknown error') {
+      errorMessage = errorData.title;
+    }
 
     const error = new PlandayApiError(
       response.status as PlandayErrorCodes,
@@ -232,7 +260,7 @@ export class PlandayApiClient {
 
     // Enhanced error logging for debugging
     console.error(`❌ Planday API Error (${response.status}):`, errorMessage);
-    console.error('Full error response:', errorData);
+    console.error('Full error response:', JSON.stringify(errorData, null, 2));
     console.error('Response headers:', Object.fromEntries(response.headers.entries()));
 
     throw error;
@@ -714,6 +742,10 @@ export class PlandayApiClient {
    */
   async createEmployee(employee: PlandayEmployeeCreateRequest): Promise<{ data: PlandayEmployeeResponse }> {
     try {
+      // Log the payload being sent for debugging
+      console.log(`📤 Creating employee: ${employee.firstName} ${employee.lastName}`);
+      console.log('📋 API Payload:', JSON.stringify(employee, null, 2));
+
       const response = await this.makeAuthenticatedRequest<{ data: PlandayEmployeeResponse }>(
         API_ENDPOINTS.EMPLOYEES,
         {
@@ -721,7 +753,7 @@ export class PlandayApiClient {
           body: JSON.stringify(employee),
         }
       );
-      
+
       return response;
     } catch (error) {
       console.error(`❌ Failed to create employee ${employee.firstName} ${employee.lastName}:`, error);

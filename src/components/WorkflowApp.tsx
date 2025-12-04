@@ -14,6 +14,7 @@ import ValidationAndCorrectionStep from './validation/ValidationAndCorrectionSte
 
 import FinalPreviewStep from './results/FinalPreviewStep';
 import BulkUploadStep from './results/BulkUploadStep';
+import type { PostCreationResults } from './results/BulkUploadStep';
 import ResultsVerificationStep from './results/ResultsVerificationStep';
 import { usePlandayApi } from '../hooks/usePlandayApi';
 import { APP_METADATA, WorkflowStep, MAIN_WORKFLOW_STEPS } from '../constants';
@@ -54,6 +55,9 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   // Upload results state for verification step
   const [uploadResults, setUploadResults] = useState<EmployeeUploadResult[]>([]);
   const [originalEmployees, setOriginalEmployees] = useState<PlandayEmployeeCreateRequest[]>([]);
+
+  // Post-creation operation results (supervisors, salaries, etc.)
+  const [postCreationResults, setPostCreationResults] = useState<PostCreationResults>({});
   
   // Privacy modal state
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
@@ -324,11 +328,15 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
       {currentStep === WorkflowStep.BulkUpload && employees.length > 0 && (
         <BulkUploadStep
           employees={employees}
-          onComplete={(results) => {
+          onComplete={(results, postResults) => {
             setUploadResults(results);
             // Store original employees for verification
             const originalEmps = results.map(r => r.employee);
             setOriginalEmployees(originalEmps);
+            // Store post-creation results (supervisor, salary, contract rule failures)
+            if (postResults) {
+              setPostCreationResults(postResults);
+            }
             handleNextStep(); // Go to results verification step
           }}
           onBack={() => {
@@ -342,6 +350,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
         <ResultsVerificationStep
           uploadResults={uploadResults}
           originalEmployees={originalEmployees}
+          postCreationResults={postCreationResults}
           onComplete={() => {
             // Reset everything and go back to start
             setCurrentStep(WorkflowStep.Authentication);
@@ -354,6 +363,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setResolvedBulkCorrectionPatterns(new Map());
             setUploadResults([]);
             setOriginalEmployees([]);
+            setPostCreationResults({});
           }}
           onBack={() => {
             setCurrentStep(WorkflowStep.BulkUpload);

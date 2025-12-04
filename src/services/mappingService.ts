@@ -31,12 +31,13 @@ export interface MappingResult {
 }
 
 export interface ErrorPattern {
-  field: 'departments' | 'employeeGroups' | 'employeeTypes';
+  field: 'departments' | 'employeeGroups' | 'employeeTypes' | 'supervisors';
   invalidName: string;
   count: number;
   rows: number[];
   suggestion?: string;
   confidence: number; // 0-1, how confident we are in the suggestion
+  errorMessage?: string; // Custom error message (e.g., for ambiguous supervisor names)
 }
 
 export interface BulkCorrectionSummary {
@@ -87,6 +88,7 @@ export class MappingService {
   // Skill maps - for skill assignments
   private skillsByName: Map<string, number> = new Map();
   private skillsById: Map<number, string> = new Map();
+  private timeLimitedSkills: Set<number> = new Set(); // Skills that require ValidFrom/ValidTo dates
   // Salary type maps - for fixed salary assignments
   private salaryTypesByName: Map<string, number> = new Map();
   private salaryTypesById: Map<number, string> = new Map();
@@ -182,16 +184,38 @@ export class MappingService {
     this.skills = skills;
     this.skillsByName.clear();
     this.skillsById.clear();
+    this.timeLimitedSkills.clear();
 
     skills.forEach(skill => {
       if (skill && skill.name) {
         const normalizedName = this.normalizeName(skill.name);
         this.skillsByName.set(normalizedName, skill.skillId);
         this.skillsById.set(skill.skillId, skill.name);
+
+        // Track time-limited skills (require ValidFrom/ValidTo dates)
+        if (skill.isTimeLimited) {
+          this.timeLimitedSkills.add(skill.skillId);
+        }
       }
     });
 
-    console.log(`✅ Initialized ${skills.length} skills`);
+    const timeLimitedCount = this.timeLimitedSkills.size;
+    const regularCount = skills.length - timeLimitedCount;
+    console.log(`✅ Initialized ${skills.length} skills (${regularCount} regular, ${timeLimitedCount} time-limited)`);
+  }
+
+  /**
+   * Check if a skill is time-limited (requires ValidFrom/ValidTo dates)
+   */
+  isSkillTimeLimited(skillId: number): boolean {
+    return this.timeLimitedSkills.has(skillId);
+  }
+
+  /**
+   * Get the name of a skill by ID
+   */
+  getSkillName(skillId: number): string | undefined {
+    return this.skillsById.get(skillId);
   }
 
   /**
@@ -204,7 +228,7 @@ export class MappingService {
   /**
    * Resolve skill name to ID
    */
-  resolveSkill(input: string): MappingResult {
+  resolveSkill(input: string | number | undefined | null): MappingResult {
     const result: MappingResult = {
       ids: [],
       errors: [],
@@ -212,11 +236,14 @@ export class MappingService {
       suggestions: []
     };
 
-    if (!input || input.trim() === '') {
+    // Convert input to string to handle numbers passed from Excel
+    const inputStr = input !== null && input !== undefined ? String(input) : '';
+
+    if (!inputStr || inputStr.trim() === '') {
       return result;
     }
 
-    const name = input.trim();
+    const name = inputStr.trim();
     const normalizedName = this.normalizeName(name);
 
     // 1. Try numeric ID first
@@ -270,7 +297,7 @@ export class MappingService {
   /**
    * Resolve salary type name to ID
    */
-  resolveSalaryType(input: string): MappingResult {
+  resolveSalaryType(input: string | number | undefined | null): MappingResult {
     const result: MappingResult = {
       ids: [],
       errors: [],
@@ -278,11 +305,14 @@ export class MappingService {
       suggestions: []
     };
 
-    if (!input || input.trim() === '') {
+    // Convert input to string to handle numbers passed from Excel
+    const inputStr = input !== null && input !== undefined ? String(input) : '';
+
+    if (!inputStr || inputStr.trim() === '') {
       return result;
     }
 
-    const name = input.trim();
+    const name = inputStr.trim();
     const normalizedName = this.normalizeName(name);
 
     // 1. Try numeric ID first
@@ -337,7 +367,7 @@ export class MappingService {
   /**
    * Resolve contract rule name to ID
    */
-  resolveContractRule(input: string): MappingResult {
+  resolveContractRule(input: string | number | undefined | null): MappingResult {
     const result: MappingResult = {
       ids: [],
       errors: [],
@@ -345,11 +375,14 @@ export class MappingService {
       suggestions: []
     };
 
-    if (!input || input.trim() === '') {
+    // Convert input to string to handle numbers passed from Excel
+    const inputStr = input !== null && input !== undefined ? String(input) : '';
+
+    if (!inputStr || inputStr.trim() === '') {
       return result;
     }
 
-    const name = input.trim();
+    const name = inputStr.trim();
     const normalizedName = this.normalizeName(name);
 
     // 1. Try numeric ID first
@@ -401,7 +434,7 @@ export class MappingService {
    * Resolve single employee type name to ID (no comma separation)
    * Now uses field definitions as primary source with API fallback
    */
-  resolveEmployeeType(input: string): MappingResult {
+  resolveEmployeeType(input: string | number | undefined | null): MappingResult {
     const result: MappingResult = {
       ids: [],
       errors: [],
@@ -409,11 +442,14 @@ export class MappingService {
       suggestions: []
     };
 
-    if (!input || input.trim() === '') {
+    // Convert input to string to handle numbers passed from Excel
+    const inputStr = input !== null && input !== undefined ? String(input) : '';
+
+    if (!inputStr || inputStr.trim() === '') {
       return result;
     }
 
-    const name = input.trim();
+    const name = inputStr.trim();
 
     // 1. Try field definitions validation first (PRIMARY SOURCE)
     if (FieldDefinitionValidator.isEnumField('employeeTypeId')) {
@@ -497,7 +533,7 @@ export class MappingService {
    * - If 0 matches → error with fuzzy suggestions
    * - If 2+ matches → error listing all matching IDs for user to choose
    */
-  resolveSupervisor(input: string): MappingResult {
+  resolveSupervisor(input: string | number | undefined | null): MappingResult {
     const result: MappingResult = {
       ids: [],
       errors: [],
@@ -505,11 +541,14 @@ export class MappingService {
       suggestions: []
     };
 
-    if (!input || input.trim() === '') {
+    // Convert input to string to handle numbers passed from Excel
+    const inputStr = input !== null && input !== undefined ? String(input) : '';
+
+    if (!inputStr || inputStr.trim() === '') {
       return result;
     }
 
-    const name = input.trim();
+    const name = inputStr.trim();
     const normalizedName = this.normalizeName(name);
 
     // 1. Try numeric ID first
@@ -574,7 +613,7 @@ export class MappingService {
   /**
    * Resolve comma-separated names to IDs with comprehensive error handling
    */
-  resolveNames(input: string, type: 'departments' | 'employeeGroups'): MappingResult {
+  resolveNames(input: string | number | undefined | null, type: 'departments' | 'employeeGroups'): MappingResult {
     const result: MappingResult = {
       ids: [],
       errors: [],
@@ -582,12 +621,15 @@ export class MappingService {
       suggestions: []
     };
 
-    if (!input || input.trim() === '') {
+    // Convert input to string to handle numbers passed from Excel
+    const inputStr = input !== null && input !== undefined ? String(input) : '';
+
+    if (!inputStr || inputStr.trim() === '') {
       return result;
     }
 
     // Split comma-separated values and clean them
-    const names = input
+    const names = inputStr
       .split(',')
       .map(name => name.trim())
       .filter(name => name !== '');
@@ -749,6 +791,20 @@ export class MappingService {
     let totalErrors = 0;
     let affectedRows = 0;
 
+    // Build a map of employee names from the current Excel data
+    // This allows supervisor assignments to reference employees being created in the same batch
+    const excelEmployeesByName = new Map<string, number[]>(); // name -> array of row indices (for duplicate detection)
+    employees.forEach((emp, idx) => {
+      const firstName = emp.firstName?.toString()?.trim() || '';
+      const lastName = emp.lastName?.toString()?.trim() || '';
+      if (firstName || lastName) {
+        const fullName = this.normalizeName(`${firstName} ${lastName}`.trim());
+        const existing = excelEmployeesByName.get(fullName) || [];
+        existing.push(idx);
+        excelEmployeesByName.set(fullName, existing);
+      }
+    });
+
     employees.forEach((employee, rowIndex) => {
       // Handle departments and employee groups (comma-separated)
       const commaFields: Array<'departments' | 'employeeGroups'> = ['departments', 'employeeGroups'];
@@ -830,6 +886,76 @@ export class MappingService {
           }
         }
       }
+
+      // Handle supervisor (single value) - check Planday AND Excel data for validity
+      if (employee.supervisorId) {
+        const supervisorValue = employee.supervisorId?.toString()?.trim();
+        if (supervisorValue) {
+          const normalizedSupervisorName = this.normalizeName(supervisorValue);
+
+          // First check Planday
+          const plandayResult = this.resolveSupervisor(supervisorValue);
+          const plandayIds = this.supervisorsByName.get(normalizedSupervisorName) || [];
+
+          // Then check Excel data
+          const excelMatches = excelEmployeesByName.get(normalizedSupervisorName) || [];
+
+          // Determine the validation result
+          let hasError = false;
+          let errorMessage = '';
+          let isAmbiguous = false;
+
+          // Count total matches across Planday and Excel
+          const totalPlandayMatches = plandayIds.length;
+          const totalExcelMatches = excelMatches.length;
+          const totalMatches = totalPlandayMatches + totalExcelMatches;
+
+          if (totalMatches === 0) {
+            // Not found anywhere
+            hasError = true;
+            errorMessage = `Supervisor not found: '${supervisorValue}' - not in Planday or current upload`;
+          } else if (totalMatches > 1) {
+            // Ambiguous - multiple matches across Planday and/or Excel
+            hasError = true;
+            isAmbiguous = true;
+            const sources: string[] = [];
+            if (totalPlandayMatches > 0) sources.push(`${totalPlandayMatches} in Planday`);
+            if (totalExcelMatches > 0) sources.push(`${totalExcelMatches} in current upload`);
+            errorMessage = `Multiple people named '${supervisorValue}' found (${sources.join(', ')}). Please use a unique identifier.`;
+          }
+          // If exactly 1 match (either in Planday or Excel), it's valid - no error
+
+          if (hasError) {
+            affectedRows++;
+            totalErrors++;
+
+            const key = `supervisors:${normalizedSupervisorName}`;
+            const pattern: ErrorPattern = errorPatterns.get(key) || {
+              field: 'supervisors',
+              invalidName: supervisorValue,
+              count: 0,
+              rows: [],
+              confidence: 0,
+              errorMessage: errorMessage
+            };
+
+            pattern.count++;
+            pattern.rows.push(rowIndex + 1); // 1-based row numbers
+
+            if (isAmbiguous) {
+              pattern.suggestion = undefined; // No suggestion for ambiguous names
+              pattern.confidence = 0; // Cannot auto-fix
+              pattern.errorMessage = errorMessage;
+            } else if (plandayResult.suggestions.length > 0) {
+              // Not found but has fuzzy suggestions from Planday
+              pattern.suggestion = plandayResult.suggestions[0];
+              pattern.confidence = 0.8;
+            }
+
+            errorPatterns.set(key, pattern);
+          }
+        }
+      }
     });
 
     const patterns = Array.from(errorPatterns.values())
@@ -857,26 +983,48 @@ export class MappingService {
   ): any[] {
     return employees.map(employee => {
       // Map the pattern field to the actual employee field name
-      const actualFieldName = pattern.field === 'employeeTypes' ? 'employeeTypeId' : pattern.field;
+      let actualFieldName: string;
+      if (pattern.field === 'employeeTypes') {
+        actualFieldName = 'employeeTypeId';
+      } else if (pattern.field === 'supervisors') {
+        actualFieldName = 'supervisorId';
+      } else {
+        actualFieldName = pattern.field;
+      }
+
       const fieldValue = employee[actualFieldName];
-      
-      if (!fieldValue || !fieldValue.includes(pattern.invalidName)) {
+
+      if (!fieldValue) {
+        return employee;
+      }
+
+      // Convert to string for comparison
+      const fieldValueStr = String(fieldValue);
+      const invalidNameLower = pattern.invalidName.toLowerCase();
+
+      // Check if this employee has the invalid value
+      const hasInvalidValue =
+        pattern.field === 'employeeTypes' || pattern.field === 'supervisors'
+          ? fieldValueStr.toLowerCase() === invalidNameLower
+          : fieldValueStr.toLowerCase().includes(invalidNameLower);
+
+      if (!hasInvalidValue) {
         return employee;
       }
 
       let updatedValue: string;
 
-      // Handle employee types (single value) vs departments/employee groups (comma-separated)
-      if (pattern.field === 'employeeTypes') {
-        // Employee types are single values - direct replacement
-        updatedValue = fieldValue.toLowerCase() === pattern.invalidName.toLowerCase() ? newValue : fieldValue;
+      // Handle single value fields (employeeTypes, supervisors) vs comma-separated (departments, employeeGroups)
+      if (pattern.field === 'employeeTypes' || pattern.field === 'supervisors') {
+        // Single values - direct replacement
+        updatedValue = fieldValueStr.toLowerCase() === invalidNameLower ? newValue : fieldValueStr;
       } else {
         // Handle comma-separated values for departments and employee groups
-        updatedValue = fieldValue
+        updatedValue = fieldValueStr
           .split(',')
           .map((item: string) => item.trim())
-          .map((item: string) => 
-            item.toLowerCase() === pattern.invalidName.toLowerCase() ? newValue : item
+          .map((item: string) =>
+            item.toLowerCase() === invalidNameLower ? newValue : item
           )
           .join(', ');
       }
@@ -909,9 +1057,9 @@ export class MappingService {
    * Get available options with IDs for reference
    * Uses field definitions for employee types when available
    */
-  getAvailableOptions(type: 'departments' | 'employeeGroups' | 'employeeTypes'): Array<{id: number, name: string}> {
+  getAvailableOptions(type: 'departments' | 'employeeGroups' | 'employeeTypes' | 'supervisors'): Array<{id: number, name: string}> {
     let result: Array<{id: number, name: string}>;
-    
+
     if (type === 'departments') {
       result = this.departments.map(d => ({id: d.id, name: d.name}));
     } else if (type === 'employeeGroups') {
@@ -926,6 +1074,8 @@ export class MappingService {
         result = this.employeeTypes.map(t => ({id: t.id, name: t.name}));
         console.warn('⚠️ Field definitions not available for employeeTypeId, using API fallback for options');
       }
+    } else if (type === 'supervisors') {
+      result = this.supervisors.map(s => ({id: s.id, name: s.name}));
     } else {
       result = [];
     }
@@ -1551,21 +1701,44 @@ export class MappingService {
       }
     });
     
-    // Add remaining standard fields (complex sub-fields and other fields not in logical order)
-    allAvailableFields
-      .filter(field => !field.isCustom && !processedFields.has(field.field) && !excludedFields.includes(field.field))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName)) // Alphabetical order for remaining fields
-      .forEach(field => {
-        fieldOrder.push({
-          field: field.field,
-          displayName: getDisplayName(field.field, field.displayName),
-          isRequired: field.isRequired,
-          isCustom: false,
-          isComplexSubField: field.isComplexSubField
+    // Add remaining standard fields in logical groups:
+    // 1. Departments, 2. Employee Groups, 3. Skills, 4. Other remaining fields
+
+    const remainingFields = allAvailableFields
+      .filter(field => !field.isCustom && !processedFields.has(field.field) && !excludedFields.includes(field.field));
+
+    // Helper to add fields of a category
+    const addFieldCategory = (filterFn: (field: any) => boolean) => {
+      remainingFields
+        .filter(filterFn)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName))
+        .forEach(field => {
+          fieldOrder.push({
+            field: field.field,
+            displayName: getDisplayName(field.field, field.displayName),
+            isRequired: field.isRequired,
+            isCustom: false,
+            isComplexSubField: field.isComplexSubField
+          });
+          processedFields.add(field.field);
         });
-        processedFields.add(field.field);
-      });
-    
+    };
+
+    // Add Departments (fields starting with "departments.")
+    addFieldCategory(f => f.field.startsWith('departments.'));
+
+    // Add Employee Groups (fields starting with "employeeGroups.")
+    addFieldCategory(f => f.field.startsWith('employeeGroups.'));
+
+    // Add Skills (fields starting with "skills.") - but filter out time-limited skills
+    addFieldCategory(f => f.field.startsWith('skills.'));
+
+    // Add Hourly Rates (fields starting with "hourlyRate.")
+    addFieldCategory(f => f.field.startsWith('hourlyRate.'));
+
+    // Add any other remaining standard fields
+    addFieldCategory(f => !processedFields.has(f.field));
+
     // Add custom fields at the end
     allAvailableFields
       .filter(field => field.isCustom && !processedFields.has(field.field))
@@ -1807,7 +1980,9 @@ export class MappingService {
       '__supervisorAssignment', 'supervisorId', // Supervisor assignment (must be PUT after employee creation, not POST)
       '__fixedSalaryAssignment', 'salaryPeriod', 'salaryHours', 'salaryAmount', // Fixed salary (PUT after employee creation)
       '__contractRuleAssignment', 'contractRule', // Contract rule (PUT after employee creation)
-      'skills' // Skills display field (skillIds array is sent directly, this is just for display)
+      'skills', // Skills display field (individual skill fields like skills.Bartending)
+      'skillIds', // Will be handled specially below to filter out time-limited skills
+      '__timeLimitedSkillIds' // Internal field for time-limited skills that couldn't be assigned
     ]);
     
     // Include all fields from the converted employee, excluding internal ones
@@ -1887,6 +2062,33 @@ export class MappingService {
         // Unknown value - remove it
         console.warn(`⚠️ isSupervisor unknown value "${cleanPayload.isSupervisor}", removing from payload`);
         delete cleanPayload.isSupervisor;
+      }
+    }
+
+    // Handle skillIds - filter out time-limited skills (they require ValidFrom/ValidTo dates)
+    if (converted.skillIds && Array.isArray(converted.skillIds) && converted.skillIds.length > 0) {
+      const regularSkillIds: number[] = [];
+      const timeLimitedSkillIds: number[] = [];
+
+      converted.skillIds.forEach((skillId: number) => {
+        if (mappingService.isSkillTimeLimited(skillId)) {
+          timeLimitedSkillIds.push(skillId);
+        } else {
+          regularSkillIds.push(skillId);
+        }
+      });
+
+      // Only include non-time-limited skills in the payload
+      if (regularSkillIds.length > 0) {
+        cleanPayload.skillIds = regularSkillIds;
+      }
+
+      // Store time-limited skills for warning display (this won't be sent to API)
+      if (timeLimitedSkillIds.length > 0) {
+        const timeLimitedNames = timeLimitedSkillIds.map(id => mappingService.getSkillName(id) || `ID:${id}`);
+        console.warn(`⚠️ Skipping ${timeLimitedSkillIds.length} time-limited skills (require manual assignment): ${timeLimitedNames.join(', ')}`);
+        // Store in converted object for the warning message (not in cleanPayload)
+        converted.__timeLimitedSkillIds = timeLimitedSkillIds;
       }
     }
 
@@ -2009,7 +2211,7 @@ export const MappingUtils = {
   /**
    * Get available options for dropdowns
    */
-  getAvailableOptions(type: 'departments' | 'employeeGroups' | 'employeeTypes') {
+  getAvailableOptions(type: 'departments' | 'employeeGroups' | 'employeeTypes' | 'supervisors') {
     return mappingService.getAvailableOptions(type);
   },
 

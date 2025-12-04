@@ -2,15 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { usePlandayApi } from '../../hooks/usePlandayApi';
-import type { 
-  EmployeeUploadResult, 
-  PlandayEmployeeResponse, 
-  PlandayEmployeeCreateRequest 
+import type {
+  EmployeeUploadResult,
+  PlandayEmployeeResponse,
+  PlandayEmployeeCreateRequest
 } from '../../types/planday';
+
+// Import post-creation results type
+interface PostCreationResults {
+  supervisorResults?: Array<{ employeeId: number; supervisorName: string; success: boolean; error?: string }>;
+  salaryResults?: Array<{ employeeId: number; success: boolean; error?: string }>;
+  contractRuleResults?: Array<{ employeeId: number; success: boolean; error?: string }>;
+}
 
 interface ResultsVerificationStepProps {
   uploadResults: EmployeeUploadResult[];
   originalEmployees: PlandayEmployeeCreateRequest[];
+  postCreationResults?: PostCreationResults;
   onComplete: () => void;
   onBack: () => void;
   onReset?: () => void; // New prop for resetting the entire process
@@ -45,6 +53,7 @@ interface VerificationSummary {
 const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
   uploadResults,
   originalEmployees,
+  postCreationResults,
   onComplete,
   onBack,
   onReset,
@@ -399,6 +408,97 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
     );
   };
 
+  // Render post-creation operation failures (supervisors, salaries, etc.)
+  const renderPostCreationFailures = () => {
+    const supervisorFailures = postCreationResults?.supervisorResults?.filter(r => !r.success) || [];
+    const salaryFailures = postCreationResults?.salaryResults?.filter(r => !r.success) || [];
+    const contractRuleFailures = postCreationResults?.contractRuleResults?.filter(r => !r.success) || [];
+
+    const totalFailures = supervisorFailures.length + salaryFailures.length + contractRuleFailures.length;
+
+    if (totalFailures === 0) return null;
+
+    return (
+      <Card className="mb-6">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            ⚠️ Post-Creation Operation Failures
+          </h3>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+            <p className="text-amber-800">
+              The following operations failed after employee creation. Employees were created successfully,
+              but these additional assignments need to be done manually in Planday.
+            </p>
+          </div>
+
+          {/* Supervisor Failures */}
+          {supervisorFailures.length > 0 && (
+            <div className="mb-4">
+              <h4 className="font-medium text-gray-800 mb-2">
+                👤 Supervisor Assignments ({supervisorFailures.length} failed)
+              </h4>
+              <div className="space-y-2">
+                {supervisorFailures.map((failure, index) => (
+                  <div key={index} className="bg-red-50 border border-red-200 rounded p-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="font-medium text-red-800">Employee ID: {failure.employeeId}</span>
+                        <span className="text-red-700 mx-2">→</span>
+                        <span className="text-red-700">Supervisor: {failure.supervisorName}</span>
+                      </div>
+                    </div>
+                    {failure.error && (
+                      <p className="text-red-600 text-sm mt-1">{failure.error}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Salary Failures */}
+          {salaryFailures.length > 0 && (
+            <div className="mb-4">
+              <h4 className="font-medium text-gray-800 mb-2">
+                💰 Salary Assignments ({salaryFailures.length} failed)
+              </h4>
+              <div className="space-y-2">
+                {salaryFailures.map((failure, index) => (
+                  <div key={index} className="bg-red-50 border border-red-200 rounded p-3">
+                    <span className="font-medium text-red-800">Employee ID: {failure.employeeId}</span>
+                    {failure.error && (
+                      <p className="text-red-600 text-sm mt-1">{failure.error}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Contract Rule Failures */}
+          {contractRuleFailures.length > 0 && (
+            <div className="mb-4">
+              <h4 className="font-medium text-gray-800 mb-2">
+                📋 Contract Rule Assignments ({contractRuleFailures.length} failed)
+              </h4>
+              <div className="space-y-2">
+                {contractRuleFailures.map((failure, index) => (
+                  <div key={index} className="bg-red-50 border border-red-200 rounded p-3">
+                    <span className="font-medium text-red-800">Employee ID: {failure.employeeId}</span>
+                    {failure.error && (
+                      <p className="text-red-600 text-sm mt-1">{failure.error}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  };
+
   const renderEmployeeRow = (result: VerificationResult, index: number) => {
     const globalIndex = startIndex + index + 1;
     // const statusColor = result.verified ? 'text-green-600' : 'text-red-600';
@@ -516,6 +616,9 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
 
       {/* Summary Card */}
       {renderSummaryCard()}
+
+      {/* Post-Creation Operation Failures (supervisors, salaries, etc.) */}
+      {renderPostCreationFailures()}
 
       {/* Verification Status */}
       {isVerifying && (

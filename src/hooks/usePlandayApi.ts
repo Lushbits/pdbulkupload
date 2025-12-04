@@ -536,7 +536,8 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
    * Refresh supervisors from Planday
    */
   const refreshSupervisors = useCallback(async (): Promise<void> => {
-    if (!state.isAuthenticated) {
+    // Use PlandayApi.isAuthenticated() instead of state to avoid stale closure issues
+    if (!PlandayApi.isAuthenticated()) {
       throw new Error('Not authenticated');
     }
 
@@ -568,7 +569,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
 
       throw error;
     }
-  }, [state.isAuthenticated, updateState, handleError]);
+  }, [updateState, handleError]);
 
   /**
    * Refresh skills from Planday

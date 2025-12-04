@@ -97,6 +97,26 @@ export const AUTO_MAPPING_RULES = {
     'manager flag', 'is team lead', 'is team leader', 'supervisor status',
     'makes supervisor', 'set as supervisor'
   ],
+  contractRule: [
+    'contract rule', 'contractrule', 'contract', 'contracted hours',
+    'hours per week', 'weekly hours', 'work hours', 'working hours contract',
+    'hour contract', 'employment contract', 'contract hours'
+  ],
+  salaryPeriod: [
+    'salary period', 'salaryperiod', 'pay period', 'payment period',
+    'fixed salary period', 'fixed salary - period', 'wage period',
+    'salary type', 'period type', 'payment frequency'
+  ],
+  salaryHours: [
+    'salary hours', 'salaryhours', 'expected hours', 'fixed salary hours',
+    'fixed salary - expected hours', 'contracted hours', 'monthly hours',
+    'weekly hours salary', 'hours per period', 'work hours salary'
+  ],
+  salaryAmount: [
+    'salary amount', 'salaryamount', 'fixed salary', 'fixed salary amount',
+    'fixed salary - amount', 'monthly salary', 'base salary', 'salary',
+    'wage amount', 'fixed wage', 'gross salary', 'pay amount'
+  ],
 } as const;
 
 /**

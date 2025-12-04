@@ -8,9 +8,16 @@ import { ValidationService } from '../../services/mappingService';
 
 
 
+// Post-creation operation results passed back to parent
+export interface PostCreationResults {
+  supervisorResults?: Array<{ employeeId: number; supervisorName: string; success: boolean; error?: string }>;
+  salaryResults?: Array<{ employeeId: number; success: boolean; error?: string }>;
+  contractRuleResults?: Array<{ employeeId: number; success: boolean; error?: string }>;
+}
+
 interface BulkUploadStepProps {
   employees: Employee[];
-  onComplete: (results: EmployeeUploadResult[]) => void;
+  onComplete: (results: EmployeeUploadResult[], postCreationResults?: PostCreationResults) => void;
   onBack: () => void;
   className?: string;
 }
@@ -295,6 +302,11 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           completedCount++;
           addLogEntry(`   ✅ Employee created (ID: ${employeeId})`);
 
+          // Log warning if time-limited skills were skipped
+          if (convertedEmployee.__timeLimitedSkillIds && Array.isArray(convertedEmployee.__timeLimitedSkillIds) && convertedEmployee.__timeLimitedSkillIds.length > 0) {
+            addLogEntry(`   ⚠️ ${convertedEmployee.__timeLimitedSkillIds.length} time-limited skill(s) must be assigned manually in Planday (require validity dates)`);
+          }
+
           // Step 2: Inline - Assign contract rule (if specified)
           if (convertedEmployee.__contractRuleAssignment) {
             try {
@@ -536,10 +548,35 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
     }
   };
 
-  // Handle completion - pass results to parent
+  // Handle completion - pass results to parent including post-creation results
   const handleComplete = () => {
     if (results) {
-      onComplete(results);
+      const postCreationResults: PostCreationResults = {};
+
+      // Include supervisor results if any
+      if (supervisorResults && supervisorResults.length > 0) {
+        postCreationResults.supervisorResults = supervisorResults;
+      }
+
+      // Include salary results if any
+      if (salaryResults && salaryResults.length > 0) {
+        postCreationResults.salaryResults = salaryResults.map(r => ({
+          employeeId: r.employeeId,
+          success: r.success,
+          error: r.error
+        }));
+      }
+
+      // Include contract rule results if any
+      if (contractRuleResults && contractRuleResults.length > 0) {
+        postCreationResults.contractRuleResults = contractRuleResults.map(r => ({
+          employeeId: r.employeeId,
+          success: r.success,
+          error: r.error
+        }));
+      }
+
+      onComplete(results, postCreationResults);
     }
   };
 
