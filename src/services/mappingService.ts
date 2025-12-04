@@ -2520,7 +2520,8 @@ export class ValidationService {
     const complexParentFields = new Set(complexSubFields.map(sub => sub.parentField));
     
     // Fields to exclude from mapping UI because they are auto-populated, read-only, or deprecated
-    const excludedFields = ['email', 'phone', 'phoneCountryCode']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported)
+    // primaryDepartmentId is set via "xx" marker in department columns, not direct mapping
+    const excludedFields = ['email', 'phone', 'phoneCountryCode', 'primaryDepartmentId'];
 
     // Add standard fields (excluding complex object parents and hardcoded excluded fields)
     // Note: We allow read-only fields during bulk import since users should be able to set initial values
