@@ -396,39 +396,40 @@ export class PhoneParser {
 
   /**
    * Get input format example for error messages (how users should type it)
+   * Shows LOCAL number format (without dial code) since country is provided separately
    */
   private static getInputFormatExample(countryCode: string): string {
     const examples: Record<string, string> = {
-      'DK': '4512345678',
-      'NO': '4740055171', 
-      'SE': '46123456789',
-      'FI': '35812345678',
-      'IS': '3541234567',
-      'UK': '441234567890',
-      'DE': '491234567890',
-      'FR': '33123456789',
-      'IT': '39123456789',
-      'ES': '34123456789',
-      'NL': '31123456789',
-      'CH': '41123456789',
-      'BE': '3212345678',
-      'AT': '431234567890',
-      'PL': '48123456789',
-      'US': '12345678901',
-      'CA': '12345678901',
-      'AU': '61123456789',
-      'JP': '811234567890',
-      'KR': '8212345678',
-      'CN': '8612345678901',
-      'BR': '551234567890',
-      'MX': '521234567890',
-      'IN': '911234567890',
-      'ZA': '27123456789',
-      'SG': '6512345678',
-      'VN': '84123456789'
+      'DK': '12345678',        // 8 digits
+      'NO': '40055171',        // 8 digits
+      'SE': '701234567',       // 9 digits
+      'FI': '401234567',       // 8-9 digits
+      'IS': '1234567',         // 7 digits
+      'UK': '7911123456',      // 10-11 digits
+      'DE': '15112345678',     // 10-12 digits
+      'FR': '612345678',       // 9 digits
+      'IT': '312345678',       // 9-11 digits
+      'ES': '612345678',       // 9 digits
+      'NL': '612345678',       // 9 digits
+      'CH': '781234567',       // 9 digits
+      'BE': '471234567',       // 8-9 digits
+      'AT': '6641234567',      // 10-11 digits
+      'PL': '501234567',       // 9 digits
+      'US': '2025551234',      // 10 digits
+      'CA': '4165551234',      // 10 digits
+      'AU': '412345678',       // 9 digits
+      'JP': '9012345678',      // 10-11 digits
+      'KR': '10123456',        // 8-9 digits
+      'CN': '13912345678',     // 11 digits
+      'BR': '11987654321',     // 10-11 digits
+      'MX': '5512345678',      // 10 digits
+      'IN': '9876543210',      // 10 digits
+      'ZA': '821234567',       // 9 digits
+      'SG': '91234567',        // 8 digits
+      'VN': '912345678'        // 9-10 digits
     };
-    
-    return examples[countryCode] || 'XXXXXXXXXXXX';
+
+    return examples[countryCode] || 'XXXXXXXX';
   }
 
   /**
