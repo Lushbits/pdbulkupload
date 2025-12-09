@@ -538,17 +538,20 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
   /**
    * Filter employees based on search
+   * Safely converts all values to strings before searching (handles numbers, nulls, etc.)
    */
   const filteredEmployees = employees.filter(employee => {
     if (!searchFilter) return true;
     const searchLower = searchFilter.toLowerCase();
+    const safeIncludes = (value: any) =>
+      value != null && String(value).toLowerCase().includes(searchLower);
     return (
-      employee.firstName?.toLowerCase().includes(searchLower) ||
-      employee.lastName?.toLowerCase().includes(searchLower) ||
-      employee.userName?.toLowerCase().includes(searchLower) ||
-      employee.departments?.toLowerCase().includes(searchLower) ||
-      employee.employeeGroups?.toLowerCase().includes(searchLower) ||
-      employee.employeeTypeId?.toLowerCase().includes(searchLower)
+      safeIncludes(employee.firstName) ||
+      safeIncludes(employee.lastName) ||
+      safeIncludes(employee.userName) ||
+      safeIncludes(employee.departments) ||
+      safeIncludes(employee.employeeGroups) ||
+      safeIncludes(employee.employeeTypeId)
     );
   });
 
