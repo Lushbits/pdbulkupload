@@ -13,6 +13,17 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.5',
+    date: '2025-12-09',
+    title: 'Pagination & Auto-mapping Improvements',
+    features: [
+      'Fixed missing departments and employee groups - API pagination now fetches all records (previously limited to 50)',
+      'Improved auto-mapping for departments, employee groups, and skills - Excel header "Kitchen staff" now maps to "employeeGroups.Kitchen staff"',
+      'Removed legacy .xls file support - only .xlsx files accepted (ExcelJS library limitation)',
+      'Clear error message when uploading .xls files with instructions to convert to .xlsx',
+    ]
+  },
+  {
     version: '0.3.4',
     date: '2025-12-04',
     title: 'Supervisor Validation & Template Ordering',

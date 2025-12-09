@@ -13,13 +13,10 @@ import type {
   PlandayAuthTokens,
   TokenRefreshRequest,
   PlandayDepartment,
-  PlandayDepartmentsResponse,
   PlandayEmployeeGroup,
-  PlandayEmployeeGroupsResponse,
   PlandayEmployeeType,
   PlandayEmployeeTypesResponse,
   PlandaySupervisor,
-  PlandaySupervisorsResponse,
   PlandaySkill,
   PlandaySkillsResponse,
   PlandaySalaryType,
@@ -196,6 +193,41 @@ export class PlandayApiClient {
   }
 
   /**
+   * Fetch all records from a paginated endpoint
+   * Automatically handles pagination to retrieve all records beyond the 50-record limit
+   */
+  private async fetchAllPaginated<T>(
+    endpoint: string,
+    entityName: string
+  ): Promise<T[]> {
+    const allRecords: T[] = [];
+    const pageSize = 50; // Planday's maximum limit per request
+    let offset = 0;
+    let total = 0;
+
+    do {
+      const paginatedEndpoint = `${endpoint}?limit=${pageSize}&offset=${offset}`;
+      const response = await this.makeAuthenticatedRequest<{ paging: { offset: number; limit: number; total: number }; data: T[] }>(paginatedEndpoint);
+
+      if (!response.data || !response.paging) {
+        console.warn(`⚠️ Unexpected response format for ${entityName}, returning available data`);
+        return allRecords;
+      }
+
+      allRecords.push(...response.data);
+      total = response.paging.total;
+      offset += response.data.length;
+
+      if (offset < total) {
+        console.log(`📄 Fetched ${offset}/${total} ${entityName}...`);
+      }
+    } while (offset < total);
+
+    console.log(`✅ Fetched all ${allRecords.length} ${entityName}`);
+    return allRecords;
+  }
+
+  /**
    * Handle API response with comprehensive error handling
    */
   private async handleApiResponse<T>(response: Response): Promise<T> {
@@ -268,17 +300,14 @@ export class PlandayApiClient {
 
   /**
    * Fetch all departments from Planday
+   * Handles pagination automatically (API limit: 50 per request)
    */
   async fetchDepartments(): Promise<PlandayDepartment[]> {
     try {
-  
-      
-      const response = await this.makeAuthenticatedRequest<PlandayDepartmentsResponse>(
-        API_ENDPOINTS.DEPARTMENTS
+      return await this.fetchAllPaginated<PlandayDepartment>(
+        API_ENDPOINTS.DEPARTMENTS,
+        'departments'
       );
-      
-  
-      return response.data || [];
     } catch (error) {
       console.error('❌ Failed to fetch departments:', error);
       throw error;
@@ -287,17 +316,14 @@ export class PlandayApiClient {
 
   /**
    * Fetch all employee groups from Planday
+   * Handles pagination automatically (API limit: 50 per request)
    */
   async fetchEmployeeGroups(): Promise<PlandayEmployeeGroup[]> {
     try {
-  
-      
-      const response = await this.makeAuthenticatedRequest<PlandayEmployeeGroupsResponse>(
-        API_ENDPOINTS.EMPLOYEE_GROUPS
+      return await this.fetchAllPaginated<PlandayEmployeeGroup>(
+        API_ENDPOINTS.EMPLOYEE_GROUPS,
+        'employee groups'
       );
-      
-  
-      return response.data || [];
     } catch (error) {
       console.error('❌ Failed to fetch employee groups:', error);
       throw error;
@@ -313,6 +339,7 @@ export class PlandayApiClient {
         API_ENDPOINTS.EMPLOYEE_TYPES
       );
 
+      console.log(`✅ Fetched ${response.data.length} employee types`);
       return response.data || [];
     } catch (error) {
       console.error('❌ Failed to fetch employee types:', error);
@@ -323,30 +350,15 @@ export class PlandayApiClient {
   /**
    * Fetch all supervisors (employees marked as supervisors)
    * Used for mapping supervisor names to supervisor record IDs
+   * Handles pagination automatically (API limit: 50 per request)
    */
   async fetchSupervisors(): Promise<PlandaySupervisor[]> {
     try {
-      const allSupervisors: PlandaySupervisor[] = [];
-      let offset = 0;
-      const limit = 50;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await this.makeAuthenticatedRequest<PlandaySupervisorsResponse>(
-          `${API_ENDPOINTS.SUPERVISORS}?limit=${limit}&offset=${offset}`
-        );
-
-        if (response.data && response.data.length > 0) {
-          allSupervisors.push(...response.data);
-          offset += response.data.length;
-          hasMore = response.data.length === limit;
-        } else {
-          hasMore = false;
-        }
-      }
-
-      console.log(`✅ Fetched ${allSupervisors.length} supervisors`);
-      return allSupervisors;
+      // Supervisors can exceed 50 in large organizations, use pagination
+      return await this.fetchAllPaginated<PlandaySupervisor>(
+        API_ENDPOINTS.SUPERVISORS,
+        'supervisors'
+      );
     } catch (error) {
       console.error('❌ Failed to fetch supervisors:', error);
       throw error;

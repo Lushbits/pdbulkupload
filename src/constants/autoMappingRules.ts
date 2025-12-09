@@ -40,7 +40,7 @@ export const AUTO_MAPPING_RULES = {
   ],
   birthDate: [
     'birth date', 'date of birth', 'birthday', 'born', 'dob',
-    'birth day', 'date born'
+    'birth day', 'date born', 'Birth Date (YYYY-MM-DD)'
   ],
   street1: [
     'address', 'street', 'street address', 'address line 1',
