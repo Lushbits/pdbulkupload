@@ -2,7 +2,7 @@
  * Excel Parser Service
  * Handles Excel file processing for employee data import
  * Features:
- * - File validation (.xlsx, .xls support)
+ * - File validation (.xlsx only - legacy .xls format not supported)
  * - Header detection and normalization
  * - Data extraction with error handling
  * - Progress tracking for large files
@@ -282,7 +282,7 @@ export class ExcelParser {
     const hasValidExtension = supportedExtensions.some(ext => fileName.endsWith(ext));
     
     if (!hasValidExtension) {
-      return `Invalid file type. Please upload an Excel file (${supportedExtensions.join(', ')}).`;
+      return `Invalid file type. Please upload an Excel file in .xlsx format. Legacy .xls files are not supported - please convert to .xlsx first.`;
     }
 
     return null;
@@ -474,6 +474,36 @@ export class ExcelParser {
               console.log(`👥 EMPLOYEE GROUP PATTERN: "${header}" → "${matchingField.name}" (template-generated)`);
             }
           }
+        }
+      }
+
+      // 🔗 PRIORITY 2.5: Direct suffix matching for departments, employee groups, and skills
+      // Handles cases where Excel header is just "Kitchen staff" and API field is "employeeGroups.Kitchen staff"
+      if (!bestMatch && allFields) {
+        const groupPrefixes = ['departments.', 'employeegroups.', 'skills.'];
+
+        for (const apiField of allFields) {
+          if (usedFields.has(apiField.name)) continue;
+
+          const apiFieldNameLower = apiField.name.toLowerCase().trim();
+
+          for (const prefix of groupPrefixes) {
+            if (apiFieldNameLower.startsWith(prefix)) {
+              const suffix = apiFieldNameLower.slice(prefix.length);
+
+              // Match if the Excel header equals the suffix (the group/department/skill name)
+              if (suffix === originalHeader) {
+                bestMatch = {
+                  field: apiField.name,
+                  displayName: apiField.displayName,
+                  confidence: 0.95
+                };
+                console.log(`🔗 SUFFIX MATCH: "${header}" → "${apiField.name}" (direct group/department/skill name)`);
+                break;
+              }
+            }
+          }
+          if (bestMatch) break;
         }
       }
 

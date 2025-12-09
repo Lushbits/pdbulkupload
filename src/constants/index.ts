@@ -151,8 +151,8 @@ export const VALIDATION_CONFIG = {
   // Maximum file size (10MB)
   MAX_FILE_SIZE: 10 * 1024 * 1024,
   
-  // Supported file types
-  SUPPORTED_FILE_TYPES: ['.xlsx', '.xls'] as const,
+  // Supported file types (only .xlsx - legacy .xls format not supported)
+  SUPPORTED_FILE_TYPES: ['.xlsx'] as const,
   
   // Maximum number of employees to process
   MAX_EMPLOYEES: 1000,
@@ -209,7 +209,7 @@ export const UI_CONFIG = {
 export const ERROR_MESSAGES = {
   // File upload errors
   FILE_TOO_LARGE: 'File size exceeds 10MB limit',
-  INVALID_FILE_TYPE: 'Only Excel files (.xlsx, .xls) are supported',
+  INVALID_FILE_TYPE: 'Only Excel files (.xlsx) are supported. Legacy .xls files must be converted to .xlsx first.',
   FILE_READ_ERROR: 'Error reading file. Please check the file format.',
   
   // Authentication errors

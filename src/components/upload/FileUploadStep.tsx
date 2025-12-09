@@ -71,7 +71,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
 
     // Validate file format first
     if (!ExcelUtils.isValidExcelFile(file)) {
-      setUploadError('Please upload a valid Excel file (.xlsx or .xls)');
+      setUploadError('Please upload a valid Excel file (.xlsx). Legacy .xls files are not supported - please convert to .xlsx first.');
       return;
     }
 
@@ -269,7 +269,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
                 Drag and drop your file here, or click to browse
               </p>
               <p className="text-sm text-gray-400">
-                Supports .xlsx and .xls files up to 10MB • Processed locally on your device
+                Supports .xlsx files up to 10MB • Processed locally on your device
               </p>
             </>
           )}
@@ -279,7 +279,7 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls"
+        accept=".xlsx"
         onChange={handleFileInputChange}
         className="hidden"
         disabled={isProcessing}
