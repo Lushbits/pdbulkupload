@@ -9,7 +9,7 @@
  * - Button/tag-style field selection for improved visual organization
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from './Button';
 import { ValidationService, FieldDefinitionValidator } from '../../services/mappingService';
 
@@ -41,6 +41,13 @@ export const FieldSelectionModal: React.FC<FieldSelectionModalProps> = ({
   columnName,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Reset search term when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setSearchTerm('');
+    }
+  }, [isOpen]);
 
   // Filter fields based on search term
   const filteredFields = useMemo(() => {
