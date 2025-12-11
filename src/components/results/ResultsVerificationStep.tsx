@@ -5,8 +5,10 @@ import { usePlandayApi } from '../../hooks/usePlandayApi';
 import type {
   EmployeeUploadResult,
   PlandayEmployeeResponse,
-  PlandayEmployeeCreateRequest
+  PlandayEmployeeCreateRequest,
+  ExcludedEmployee
 } from '../../types/planday';
+import { ExcelParser } from '../../services/excelParser';
 
 // Import post-creation results type
 interface PostCreationResults {
@@ -19,6 +21,7 @@ interface ResultsVerificationStepProps {
   uploadResults: EmployeeUploadResult[];
   originalEmployees: PlandayEmployeeCreateRequest[];
   postCreationResults?: PostCreationResults;
+  excludedEmployees?: ExcludedEmployee[];
   onComplete: () => void;
   onBack: () => void;
   onReset?: () => void; // New prop for resetting the entire process
@@ -54,19 +57,21 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
   uploadResults,
   originalEmployees,
   postCreationResults,
+  excludedEmployees = [],
   onComplete,
   onBack,
   onReset,
   className = ''
 }) => {
   const plandayApi = usePlandayApi();
-  
+
   const [verificationResults, setVerificationResults] = useState<VerificationResult[]>([]);
   const [summary, setSummary] = useState<VerificationSummary | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [verificationComplete, setVerificationComplete] = useState(false);
+  const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   
   // Pagination settings
   const ITEMS_PER_PAGE = 100;
@@ -619,6 +624,83 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
 
       {/* Post-Creation Operation Failures (supervisors, salaries, etc.) */}
       {renderPostCreationFailures()}
+
+      {/* Excluded Employees Section */}
+      {excludedEmployees.length > 0 && (
+        <Card>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Excluded from Upload
+              </h3>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const text = excludedEmployees.map(exc => {
+                      const errorList = exc.errors
+                        .filter(e => e.severity === 'error')
+                        .map(e => `  - ${e.field}: ${e.message}`)
+                        .join('\n');
+                      return `Row ${exc.rowIndex + 1}: ${exc.employee.firstName || ''} ${exc.employee.lastName || ''} (${exc.employee.userName || 'no email'})\n${errorList}`;
+                    }).join('\n\n');
+                    navigator.clipboard.writeText(text);
+                    setCopiedToClipboard(true);
+                    setTimeout(() => setCopiedToClipboard(false), 2000);
+                  }}
+                >
+                  {copiedToClipboard ? 'Copied!' : 'Copy to Clipboard'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    ExcelParser.exportFailedEmployees(
+                      excludedEmployees,
+                      `excluded_employees_${new Date().toISOString().split('T')[0]}.xlsx`
+                    );
+                  }}
+                >
+                  Download Excel
+                </Button>
+              </div>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-orange-600 text-lg">⚠️</span>
+                <span className="font-medium text-orange-800">
+                  {excludedEmployees.length} employee(s) were excluded due to validation errors
+                </span>
+              </div>
+              <p className="text-orange-700 mt-1 text-sm">
+                These employees were not uploaded to Planday. Review the errors below and re-upload them separately.
+              </p>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {excludedEmployees.map((exc, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div className="font-medium text-gray-900 mb-2">
+                    Row {exc.rowIndex + 1}: {exc.employee.firstName || ''} {exc.employee.lastName || ''}
+                    <span className="text-gray-500 ml-2 font-normal">({exc.employee.userName || 'no email'})</span>
+                  </div>
+                  <div className="space-y-1">
+                    {exc.errors
+                      .filter(error => error.severity === 'error')
+                      .map((error, errIndex) => (
+                        <div key={errIndex} className="text-sm bg-red-50 text-red-800 px-3 py-1.5 rounded">
+                          <strong>{error.field}:</strong> {error.message}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Verification Status */}
       {isVerifying && (

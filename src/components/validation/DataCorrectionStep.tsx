@@ -16,8 +16,9 @@ import { ValidationService } from '../../services/mappingService';
 import { VALIDATION_CONFIG } from '../../constants';
 
 import type {
-  Employee, 
-  ValidationError, 
+  Employee,
+  ValidationError,
+  ExcludedEmployee,
   PlandayDepartment,
   PlandayEmployeeGroup,
   PlandayEmployeeType,
@@ -33,7 +34,7 @@ interface DataCorrectionStepProps {
   employeeGroups: PlandayEmployeeGroup[];
   employeeTypes: PlandayEmployeeType[];
   plandayApi: UsePlandayApiReturn;
-  onComplete: (correctedEmployees: Employee[]) => void;
+  onComplete: (correctedEmployees: Employee[], excludedEmployees?: ExcludedEmployee[]) => void;
   onBack: () => void;
   className?: string;
 }
@@ -69,6 +70,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   const [bulkEditValue, setBulkEditValue] = useState('');
   const [bulkEditMode, setBulkEditMode] = useState<'replace' | 'prepend' | 'append'>('replace');
   const [searchFilter, setSearchFilter] = useState('');
+  const [showErrorsOnly, setShowErrorsOnly] = useState(false);
+  const [showProceedWithErrorsModal, setShowProceedWithErrorsModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   
   // New state for duplicate checking
@@ -536,11 +539,44 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
   // Smart suggestions function removed for now - will be added in Phase 3.2
 
+  // Calculate skipped employees and employees with errors BEFORE filtering
+  // (needed for the "show errors only" filter)
+  const skippedEmployees = useMemo(() => {
+    const skipped = new Set<number>();
+    employees.forEach((emp, index) => {
+      if (emp._skipUpload) {
+        skipped.add(index);
+      }
+    });
+    return skipped;
+  }, [employees]);
+
+  const employeesWithErrors = useMemo(() => {
+    const withErrors = new Set<number>();
+    validationErrors.forEach((errors, employeeKey) => {
+      if (errors.some(e => e.severity === 'error')) {
+        const rowIndex = parseInt(employeeKey.split('-')[1]);
+        const employee = employees[rowIndex];
+        // Only count errors for employees that will be uploaded
+        if (!employee?._skipUpload) {
+          withErrors.add(rowIndex);
+        }
+      }
+    });
+    return withErrors;
+  }, [validationErrors, employees]);
+
   /**
-   * Filter employees based on search
+   * Filter employees based on search and "show errors only" toggle
    * Safely converts all values to strings before searching (handles numbers, nulls, etc.)
    */
-  const filteredEmployees = employees.filter(employee => {
+  const filteredEmployees = employees.filter((employee, index) => {
+    // First, apply "show errors only" filter if enabled
+    if (showErrorsOnly && !employeesWithErrors.has(index)) {
+      return false;
+    }
+
+    // Then apply search filter
     if (!searchFilter) return true;
     const searchLower = searchFilter.toLowerCase();
     const safeIncludes = (value: any) =>
@@ -565,7 +601,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         return sum + errors.filter(e => e.severity === 'error').length;
       }
       return sum;
-    }, 
+    },
     0
   );
   const totalWarnings = Array.from(validationErrors.entries()).reduce(
@@ -577,31 +613,10 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         return sum + errors.filter(e => e.severity === 'warning').length;
       }
       return sum;
-    }, 
+    },
     0
   );
-  
-  // Calculate employees with no errors (not just no validation entries)
-  const employeesWithErrors = new Set<number>();
-  const skippedEmployees = new Set<number>();
-  
-  employees.forEach((emp, index) => {
-    if (emp._skipUpload) {
-      skippedEmployees.add(index);
-    }
-  });
-  
-  validationErrors.forEach((errors, employeeKey) => {
-    if (errors.some(e => e.severity === 'error')) {
-      const rowIndex = parseInt(employeeKey.split('-')[1]);
-      const employee = employees[rowIndex];
-      // Only count errors for employees that will be uploaded
-      if (!employee?._skipUpload) {
-        employeesWithErrors.add(rowIndex);
-      }
-    }
-  });
-  
+
   const validEmployees = employees.length - employeesWithErrors.size - skippedEmployees.size;
   const willBeUploaded = employees.length - skippedEmployees.size;
 
@@ -847,7 +862,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
         {/* Search and Filter */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="flex-1">
+          <div className="flex-1 flex gap-2">
             <Input
               placeholder="Search employees..."
               value={searchFilter}
@@ -857,9 +872,25 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               }
+              className="flex-1"
             />
+            {/* Show Errors Only Toggle */}
+            <Button
+              variant={showErrorsOnly ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => setShowErrorsOnly(!showErrorsOnly)}
+              className={`whitespace-nowrap ${showErrorsOnly ? 'bg-red-600 hover:bg-red-700' : ''}`}
+              disabled={employeesWithErrors.size === 0}
+            >
+              {showErrorsOnly ? 'Show All' : 'Errors Only'}
+              {employeesWithErrors.size > 0 && (
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${showErrorsOnly ? 'bg-red-800 text-white' : 'bg-red-100 text-red-800'}`}>
+                  {employeesWithErrors.size}
+                </span>
+              )}
+            </Button>
           </div>
-          
+
           {/* Row Selection Controls */}
           <div className="flex items-center space-x-2">
             <Button variant="outline" size="sm" onClick={selectAllRows}>
@@ -1115,12 +1146,12 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
           <Button variant="outline" onClick={onBack}>
             ← Back to Mapping
           </Button>
-          
+
           <div className="flex items-center space-x-4">
             <div className="text-sm text-gray-600">
               {totalErrors > 0 && (
-                <span className="text-red-600 font-medium">
-                  {totalErrors} errors must be fixed before proceeding
+                <span className="text-orange-600 font-medium">
+                  {employeesWithErrors.size} employee(s) with errors • {validEmployees} valid
                 </span>
               )}
               {totalErrors === 0 && totalWarnings > 0 && (
@@ -1134,26 +1165,95 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                 </span>
               )}
             </div>
-            
+
             <Button
               onClick={() => {
-                // Filter out employees marked to skip
-                const employeesToUpload = employees.filter(emp => !emp._skipUpload);
-                onComplete(employeesToUpload);
+                if (totalErrors > 0) {
+                  // Show confirmation modal when there are errors
+                  setShowProceedWithErrorsModal(true);
+                } else {
+                  // No errors - proceed directly
+                  const employeesToUpload = employees.filter(emp => !emp._skipUpload);
+                  onComplete(employeesToUpload);
+                }
               }}
-              disabled={totalErrors > 0 || willBeUploaded === 0}
-              className={totalErrors === 0 && willBeUploaded > 0 ? 'bg-green-600 hover:bg-green-700' : ''}
+              disabled={willBeUploaded === 0 || validEmployees === 0}
+              className={totalErrors === 0 && willBeUploaded > 0 ? 'bg-green-600 hover:bg-green-700' : totalErrors > 0 && validEmployees > 0 ? 'bg-orange-600 hover:bg-orange-700' : ''}
             >
-              {willBeUploaded === 0 ? 
-                '❌ No employees to upload' : 
-                totalErrors === 0 ? 
-                  `✅ Proceed with ${willBeUploaded} employees` : 
-                  `Fix ${totalErrors} errors first`
+              {willBeUploaded === 0 || validEmployees === 0 ?
+                'No valid employees to upload' :
+                totalErrors === 0 ?
+                  `Proceed with ${willBeUploaded} employees` :
+                  `Proceed with ${validEmployees} valid employees`
               }
             </Button>
           </div>
         </div>
       </Card>
+
+      {/* Proceed With Errors Confirmation Modal */}
+      {showProceedWithErrorsModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => setShowProceedWithErrorsModal(false)}
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-orange-100 mx-auto mb-4">
+                  <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+                  Proceed with Errors?
+                </h3>
+                <p className="text-gray-600 text-center mb-4">
+                  <strong className="text-orange-600">{employeesWithErrors.size} employee(s)</strong> have validation errors and will
+                  <strong className="text-red-600"> NOT be uploaded</strong> to Planday.
+                </p>
+                <p className="text-sm text-gray-500 text-center mb-6">
+                  Only <strong>{validEmployees}</strong> valid employee(s) will be uploaded.
+                  You can download the excluded employees after the upload completes.
+                </p>
+                <div className="flex space-x-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowProceedWithErrorsModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                    onClick={() => {
+                      setShowProceedWithErrorsModal(false);
+                      // Get valid employees (not skipped AND not having errors)
+                      const validEmployeesToUpload = employees.filter((emp, index) =>
+                        !emp._skipUpload && !employeesWithErrors.has(index)
+                      );
+                      // Get excluded employees (with errors) and their error details
+                      const excludedEmployeesList: ExcludedEmployee[] = employees
+                        .map((emp, index) => ({
+                          employee: emp,
+                          errors: validationErrors.get(`employee-${index}`) || [],
+                          rowIndex: index
+                        }))
+                        .filter((item) =>
+                          !item.employee._skipUpload && employeesWithErrors.has(item.rowIndex)
+                        );
+                      onComplete(validEmployeesToUpload, excludedEmployeesList);
+                    }}
+                  >
+                    Proceed Anyway
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }; 

@@ -805,16 +805,138 @@ export class ExcelParser {
 
     // Download the file
     const finalFilename = filename || `${data.fileName.replace(/\.[^/.]+$/, '')}_processed.xlsx`;
-    
+
     workbook.xlsx.writeBuffer().then(buffer => {
-      const blob = new Blob([buffer], { 
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = finalFilename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    });
+  }
+
+  /**
+   * Export excluded/failed employees to Excel
+   * Only includes columns that have data (no empty columns)
+   * Includes an "Errors" column with validation error reasons
+   */
+  static exportFailedEmployees(
+    excludedEmployees: Array<{ employee: any; errors: Array<{ field: string; message: string; severity?: string }> }>,
+    filename: string = 'excluded_employees.xlsx'
+  ): void {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Excluded Employees');
+
+    // Internal fields to exclude from export
+    const internalFields = new Set([
+      'rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected',
+      '__employeeGroupPayrates', '__departmentsIds', '__employeeGroupsIds',
+      '_skipUpload', 'skillIds'
+    ]);
+
+    // Collect all non-empty fields from excluded employees
+    const fieldsWithData = new Set<string>();
+    excludedEmployees.forEach(exc => {
+      Object.entries(exc.employee).forEach(([key, value]) => {
+        // Skip internal fields and empty values
+        if (!internalFields.has(key) &&
+            !key.startsWith('__') &&
+            !key.startsWith('_') &&
+            !key.startsWith('departments.') &&
+            !key.startsWith('employeeGroups.') &&
+            !key.startsWith('skills.') &&
+            value != null &&
+            value !== '') {
+          fieldsWithData.add(key);
+        }
+      });
+    });
+
+    // Build headers - always include core fields first, then others, then Errors
+    const coreFields = ['firstName', 'lastName', 'userName', 'departments', 'employeeGroups'];
+    const orderedFields: string[] = [];
+
+    // Add core fields that have data
+    coreFields.forEach(field => {
+      if (fieldsWithData.has(field)) {
+        orderedFields.push(field);
+        fieldsWithData.delete(field);
+      }
+    });
+
+    // Add remaining fields
+    Array.from(fieldsWithData).sort().forEach(field => {
+      orderedFields.push(field);
+    });
+
+    // Add Errors column at the end
+    const headers = [...orderedFields, 'Errors'];
+
+    // Add headers row
+    const headerRow = worksheet.addRow(headers);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFDC2626' } // Red for error file
+    };
+
+    // Add data rows
+    excludedEmployees.forEach(exc => {
+      const rowData = headers.map(header => {
+        if (header === 'Errors') {
+          // Format errors as "field: message" separated by "; "
+          return exc.errors
+            .filter(e => e.severity === 'error' || !e.severity)
+            .map(e => `${e.field}: ${e.message}`)
+            .join('; ');
+        }
+        const value = exc.employee[header];
+        // Handle arrays (like departments) - join with comma
+        if (Array.isArray(value)) {
+          return value.join(', ');
+        }
+        return value ?? '';
+      });
+      worksheet.addRow(rowData);
+    });
+
+    // Auto-fit columns
+    worksheet.columns.forEach((column, index) => {
+      const header = headers[index];
+      const headerLength = header ? header.length : 10;
+      const dataLengths = excludedEmployees.map(exc => {
+        if (header === 'Errors') {
+          return exc.errors
+            .filter(e => e.severity === 'error' || !e.severity)
+            .map(e => `${e.field}: ${e.message}`)
+            .join('; ').length;
+        }
+        const val = exc.employee[header];
+        if (Array.isArray(val)) {
+          return val.join(', ').length;
+        }
+        return val ? String(val).length : 0;
+      });
+      const maxLength = Math.max(headerLength, ...dataLengths);
+      column.width = Math.min(maxLength + 2, 60);
+    });
+
+    // Download the file
+    workbook.xlsx.writeBuffer().then(buffer => {
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
       a.click();
       window.URL.revokeObjectURL(url);
     });

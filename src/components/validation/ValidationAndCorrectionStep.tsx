@@ -11,6 +11,7 @@ import { DatePatternAnalyzer } from '../../utils/datePatternAnalyzer';
 import { DataCorrectionStep } from './DataCorrectionStep';
 import { DateFormatSelectionStep } from './DateFormatSelectionStep';
 import type { UsePlandayApiReturn } from '../../hooks/usePlandayApi';
+import type { ExcludedEmployee } from '../../types/planday';
 
 interface ValidationAndCorrectionStepProps {
   employees: any[];
@@ -19,7 +20,7 @@ interface ValidationAndCorrectionStepProps {
   employeeTypes: any[];
   resolvedPatterns?: Map<string, string>;
   onPatternsResolved?: (patterns: Map<string, string>) => void;
-  onComplete: (correctedEmployees: any[]) => void;
+  onComplete: (correctedEmployees: any[], excludedEmployees?: ExcludedEmployee[]) => void;
   onBack: () => void;
   plandayApi: UsePlandayApiReturn;
   className?: string;
@@ -32,7 +33,7 @@ const DataCorrectionStepWithPreprocessing: React.FC<{
   employeeGroups: any[];
   employeeTypes: any[];
   plandayApi: UsePlandayApiReturn;
-  onComplete: (correctedEmployees: any[]) => void;
+  onComplete: (correctedEmployees: any[], excludedEmployees?: ExcludedEmployee[]) => void;
   onBack: () => void;
   className?: string;
 }> = ({ employees, departments, employeeGroups, employeeTypes, plandayApi, onComplete, onBack, className }) => {
@@ -841,11 +842,11 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
         employeeGroups={employeeGroups}
         employeeTypes={employeeTypes}
         plandayApi={plandayApi}
-        onComplete={(correctedEmployees) => {
+        onComplete={(correctedEmployees, excludedEmployees) => {
           setCurrentEmployees(correctedEmployees);
           // Individual corrections completed
           // ValidationAndCorrectionStep - calling onComplete with corrected employees
-          onComplete(correctedEmployees); // Pass the corrected employees directly instead of relying on state
+          onComplete(correctedEmployees, excludedEmployees); // Pass through excluded employees
         }}
         onBack={() => {
           // Backward navigation: skip helpers and go directly to Column Mapping

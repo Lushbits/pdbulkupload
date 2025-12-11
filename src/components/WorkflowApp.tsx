@@ -18,11 +18,12 @@ import type { PostCreationResults } from './results/BulkUploadStep';
 import ResultsVerificationStep from './results/ResultsVerificationStep';
 import { usePlandayApi } from '../hooks/usePlandayApi';
 import { APP_METADATA, WorkflowStep, MAIN_WORKFLOW_STEPS } from '../constants';
-import type { 
-  ParsedExcelData, 
-  ExcelColumnMapping, 
-  ColumnMapping, 
-  Employee, 
+import type {
+  ParsedExcelData,
+  ExcelColumnMapping,
+  ColumnMapping,
+  Employee,
+  ExcludedEmployee,
   WorkflowStep as WorkflowStepType,
   EmployeeUploadResult,
   PlandayEmployeeCreateRequest
@@ -58,7 +59,10 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
 
   // Post-creation operation results (supervisors, salaries, etc.)
   const [postCreationResults, setPostCreationResults] = useState<PostCreationResults>({});
-  
+
+  // Excluded employees (those with errors that were skipped during upload)
+  const [excludedEmployees, setExcludedEmployees] = useState<ExcludedEmployee[]>([]);
+
   // Privacy modal state
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   
@@ -297,14 +301,15 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           onPatternsResolved={(patterns) => {
             setResolvedBulkCorrectionPatterns(patterns);
           }}
-          onComplete={(correctedEmployees) => {
+          onComplete={(correctedEmployees, excluded) => {
             setEmployees(correctedEmployees);
+            setExcludedEmployees(excluded || []);
             handleNextStep(); // Go to final preview
           }}
           onBack={() => {
             // Reset state when going back to Column Mapping
             setSelectedDateFormats({});
-            
+
             setCurrentStep(WorkflowStep.ColumnMapping);
             setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
           }}
@@ -351,6 +356,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           uploadResults={uploadResults}
           originalEmployees={originalEmployees}
           postCreationResults={postCreationResults}
+          excludedEmployees={excludedEmployees}
           onComplete={() => {
             // Reset everything and go back to start
             setCurrentStep(WorkflowStep.Authentication);
@@ -364,13 +370,14 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setUploadResults([]);
             setOriginalEmployees([]);
             setPostCreationResults({});
+            setExcludedEmployees([]);
           }}
           onBack={() => {
             setCurrentStep(WorkflowStep.BulkUpload);
             setCompletedSteps([
-              WorkflowStep.Authentication, 
-              WorkflowStep.FileUpload, 
-              WorkflowStep.ColumnMapping, 
+              WorkflowStep.Authentication,
+              WorkflowStep.FileUpload,
+              WorkflowStep.ColumnMapping,
               WorkflowStep.ValidationCorrection,
               WorkflowStep.FinalPreview
             ]);
@@ -387,6 +394,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setResolvedBulkCorrectionPatterns(new Map());
             setUploadResults([]);
             setOriginalEmployees([]);
+            setExcludedEmployees([]);
           }}
         />
       )}

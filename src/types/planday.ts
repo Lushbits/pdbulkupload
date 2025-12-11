@@ -400,6 +400,16 @@ export interface ValidationError {
   severity: 'error' | 'warning';
 }
 
+/**
+ * Excluded Employee - for employees skipped due to validation errors
+ * Used when user proceeds with upload despite having employees with errors
+ */
+export interface ExcludedEmployee {
+  employee: Employee;
+  errors: ValidationError[];
+  rowIndex: number;
+}
+
 export interface ColumnMapping {
   firstName?: string;
   lastName?: string;

@@ -13,6 +13,20 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.6',
+    date: '2025-12-11',
+    title: 'Proceed with Errors & Excluded Employees',
+    features: [
+      'Added "Errors Only" filter toggle in correction step - quickly filter to show only employees with validation errors',
+      'Allow proceeding to upload even when some employees have errors - excluded employees are skipped during upload',
+      'Confirmation modal warns about excluded employees before proceeding with partial upload',
+      'Results page shows "Excluded from Upload" section listing all skipped employees with their specific error reasons',
+      'Copy to Clipboard button for excluded employees - easily share the list with customers',
+      'Download Excel button exports excluded employees with only non-empty columns and an Errors column',
+      'Consultants can now complete uploads faster and send customers a clean list of employees that need correction',
+    ]
+  },
+  {
     version: '0.3.5',
     date: '2025-12-09',
     title: 'Pagination & Auto-mapping Improvements',
