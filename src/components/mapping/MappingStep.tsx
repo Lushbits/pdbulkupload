@@ -812,7 +812,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                           const badges = [];
                           if (field?.isRequired) badges.push('Required');
                           if (field?.isUnique) badges.push('Must be unique');
-                          if (field?.isReadOnly) badges.push('Read-only');
+                          // Note: Read-only badge removed - for bulk import (new employees), these fields CAN be set initially
                           if (field?.isCustom) badges.push('Custom field');
                           return badges.length > 0 ? (
                             <div>{badges.join(' • ')}</div>
@@ -961,7 +961,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                             const badges = [];
                             if (selectedField.isRequired) badges.push('Required');
                             if (selectedField.isUnique) badges.push('Must be unique');
-                            if (selectedField.isReadOnly) badges.push('Read-only');
+                            // Note: Read-only badge removed - for bulk import (new employees), these fields CAN be set initially
                             if (selectedField.isCustom) badges.push('Custom field');
                             return badges.length > 0 ? (
                               <div>{badges.join(' • ')}</div>

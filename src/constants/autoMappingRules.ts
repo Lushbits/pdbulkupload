@@ -19,9 +19,9 @@ export const AUTO_MAPPING_RULES = {
     'last name', 'last', 'surname', 'family name', 'lname', 'lastname',
     'nom', 'nachname', 'efternavn', 'sukunimi'
   ],
-  userName: [
+  email: [
     'email', 'username', 'login', 'user email', 'e-mail', 'mail',
-    'email address', 'login email', 'work email'
+    'email address', 'login email', 'work email', 'email/username', 'emailusername'
   ],
   cellPhoneCountryCode: [
     'mobile country code', 'cell country code', 'phone country code',  // Phone-specific (most important)

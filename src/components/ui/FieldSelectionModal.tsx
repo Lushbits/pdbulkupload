@@ -352,11 +352,7 @@ const FieldButton: React.FC<FieldButtonProps> = ({ field, isSelected, onClick, i
             Required
           </span>
         )}
-        {field.isReadOnly && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 font-sans font-normal">
-            Read-only
-          </span>
-        )}
+        {/* Note: Read-only badge removed - for bulk import (new employees), these fields CAN be set initially */}
       </div>
       
       {/* Field description (if available and not in custom section) */}

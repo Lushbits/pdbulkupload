@@ -1547,10 +1547,11 @@ export class MappingService {
       }
     }
 
-    // Auto-populate email field from userName
-    // Email field is not shown in mapping UI but must be populated for Planday API
-    if (converted.userName) {
-      converted.email = converted.userName;
+    // Auto-populate userName from email
+    // userName is required for Planday API employee creation (used as login)
+    // Always use the current email value (in case user corrected it)
+    if (converted.email) {
+      converted.userName = converted.email;
     }
 
     // Handle custom field type conversion using ValidationService
@@ -1594,7 +1595,7 @@ export class MappingService {
       headers: [
         'firstName',
         'lastName', 
-        'email', // More user-friendly than "userName"
+        'email',
         'departments',
         'employeeGroups',
         'hiredFrom'
@@ -1630,7 +1631,7 @@ export class MappingService {
     const processedFields = new Set<string>();
 
     // Fields to exclude from templates because they are auto-populated or deprecated
-    const excludedFields = ['email', 'phone', 'phoneCountryCode', 'primaryDepartmentId']; // email is auto-populated from userName, phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported), primaryDepartmentId is set via "xx" in department columns
+    const excludedFields = ['phone', 'phoneCountryCode', 'primaryDepartmentId']; // phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported), primaryDepartmentId is set via "xx" in department columns
 
     // Exclude supervisor fields if not requested
     if (!includeSupervisorColumns) {
@@ -1652,7 +1653,7 @@ export class MappingService {
     const logicalFieldOrder = [
       'firstName',
       'lastName',
-      'userName', // Will be displayed as "email"
+      'email',
       'cellPhone',
       'cellPhoneCountryCode',
       // departments and employeeGroups removed - now using individual fields like departments.Kitchen, employeeGroups.Waiter
@@ -1677,21 +1678,13 @@ export class MappingService {
       'payrollId'
     ];
     
-    // Helper function to get user-friendly display name
-    const getDisplayName = (fieldName: string, originalDisplayName: string): string => {
-      if (fieldName === 'userName') {
-        return 'email/username'; // Clarify this is used for both email and login username
-      }
-      return originalDisplayName;
-    };
-    
     // Add fields in logical order first
     logicalFieldOrder.forEach(fieldName => {
       const field = fieldMap.get(fieldName);
       if (field && !excludedFields.includes(field.field) && !processedFields.has(field.field)) {
         fieldOrder.push({
           field: field.field,
-          displayName: getDisplayName(field.field, field.displayName),
+          displayName: field.displayName,
           isRequired: field.isRequired,
           isCustom: field.isCustom,
           description: field.description,
@@ -1715,7 +1708,7 @@ export class MappingService {
         .forEach(field => {
           fieldOrder.push({
             field: field.field,
-            displayName: getDisplayName(field.field, field.displayName),
+            displayName: field.displayName,
             isRequired: field.isRequired,
             isCustom: false,
             isComplexSubField: field.isComplexSubField
@@ -1794,7 +1787,7 @@ export class MappingService {
           case 'lastName':
             instructions[field.field] = 'Employee\'s last name (required)';
             break;
-          case 'userName':
+          case 'email':
             instructions[field.field] = 'Email address that will be used for login (required, must be unique)';
             break;
           case 'employeeTypeId':
@@ -2093,8 +2086,9 @@ export class MappingService {
     }
 
     // Ensure required fields have defaults if needed
-    if (!cleanPayload.email && cleanPayload.userName) {
-      cleanPayload.email = cleanPayload.userName;
+    // userName is required for API - always use the current email value (in case user corrected it)
+    if (cleanPayload.email) {
+      cleanPayload.userName = cleanPayload.email;
     }
     
     // Ensure we have a default gender if not provided
@@ -2521,7 +2515,7 @@ export class ValidationService {
     
     // Fields to exclude from mapping UI because they are auto-populated, read-only, or deprecated
     // primaryDepartmentId is set via "xx" marker in department columns, not direct mapping
-    const excludedFields = ['email', 'phone', 'phoneCountryCode', 'primaryDepartmentId'];
+    const excludedFields = ['phone', 'phoneCountryCode', 'primaryDepartmentId'];
 
     // Add standard fields (excluding complex object parents and hardcoded excluded fields)
     // Note: We allow read-only fields during bulk import since users should be able to set initial values
@@ -2533,15 +2527,9 @@ export class ValidationService {
         // Removed !this.isReadOnly(field) - allow read-only fields during bulk import
       )
       .forEach(field => {
-        // Use friendly display names for certain fields
-        let displayName = field;
-        if (field === 'userName') {
-          displayName = 'email/username';
-        }
-
         fields.push({
           field,
-          displayName,
+          displayName: field,
           isRequired: this.isRequired(field),
           isCustom: false,
           isComplexSubField: false
@@ -2650,27 +2638,49 @@ export class ValidationService {
       });
     }
 
+    // Add core system fields that are always required but may not be in field definitions
+    if (!existingFieldNames.has('firstName')) {
+      fields.push({
+        field: 'firstName',
+        displayName: 'firstName',
+        isRequired: true,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Employee first name (required)'
+      });
+    }
+    if (!existingFieldNames.has('lastName')) {
+      fields.push({
+        field: 'lastName',
+        displayName: 'lastName',
+        isRequired: true,
+        isCustom: false,
+        isComplexSubField: false,
+        description: 'Employee last name (required)'
+      });
+    }
+
     return fields.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   /**
    * Get required fields for the current portal
-   * Note: userName is always required for ALL portals to create employees,
+   * Note: email is always required for ALL portals to create employees,
    * even if the API field definitions don't mark them as required
    * Note: departments are now handled via individual department fields, not the parent field
    */
   static getRequiredFields(): string[] {
     if (!this.fieldDefinitions) {
       console.warn('⚠️ Field definitions not loaded, using fallback required fields');
-      return ['firstName', 'lastName', 'userName']; // Safe fallback with business-critical fields (departments handled individually now)
+      return ['firstName', 'lastName', 'email']; // Safe fallback with business-critical fields (departments handled individually now)
     }
     
     // Start with fields marked as required by the API
     const apiRequiredFields = [...this.fieldDefinitions.required];
     
-    // Always ensure userName is marked as required
-    // This is business-critical for creating employees in ANY Planday portal
-    const businessCriticalFields = ['userName'];
+    // Always ensure email is marked as required
+    // This is business-critical for creating employees in ANY Planday portal (userName is auto-populated from email)
+    const businessCriticalFields = ['email'];
     
     for (const field of businessCriticalFields) {
       if (!apiRequiredFields.includes(field)) {
@@ -3447,14 +3457,14 @@ export class ValidationService {
     const errors: ValidationError[] = [];
     
     employees.forEach((employee, index) => {
-      const email = employee.userName;
+      const email = employee.email;
       if (email && email.trim() !== '') {
         const normalizedEmail = email.toLowerCase().trim();
         const existingEmployee = existingEmployees.get(normalizedEmail);
-        
+
         if (existingEmployee) {
           errors.push({
-            field: 'userName',
+            field: 'email',
             value: email,
             message: `Employee with email "${email}" already exists in Planday (ID: ${existingEmployee.id}, Name: ${existingEmployee.firstName} ${existingEmployee.lastName})`,
             rowIndex: index,

@@ -578,7 +578,7 @@ export class ExcelParser {
 
       // Determine if field is required
       if (bestMatch) {
-        isRequired = ['firstName', 'lastName', 'userName'].includes(bestMatch.field);
+        isRequired = ['firstName', 'lastName', 'email'].includes(bestMatch.field);
         usedFields.add(bestMatch.field);
       } else {
         console.log(`❌ NO MATCH: "${header}" - no matching API field found`);
@@ -858,7 +858,7 @@ export class ExcelParser {
     });
 
     // Build headers - always include core fields first, then others, then Errors
-    const coreFields = ['firstName', 'lastName', 'userName', 'departments', 'employeeGroups'];
+    const coreFields = ['firstName', 'lastName', 'email', 'departments', 'employeeGroups'];
     const orderedFields: string[] = [];
 
     // Add core fields that have data

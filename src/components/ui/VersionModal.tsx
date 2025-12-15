@@ -13,6 +13,17 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.7',
+    date: '2025-12-15',
+    title: 'Email Field Mapping Fix',
+    features: [
+      'Fixed email field mapping - Excel "email" column now correctly maps to Planday\'s email field',
+      'Fixed userName not updating when email is corrected in validation step - userName is now always derived from current email value',
+      'Fixed auto-mapping for "email/username" column headers',
+      'Removed misleading "Read-only" badges from mapping UI - for bulk import (new employees), these fields can be set initially',
+    ]
+  },
+  {
     version: '0.3.6',
     date: '2025-12-11',
     title: 'Proceed with Errors & Excluded Employees',

@@ -63,11 +63,11 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
         const requiredFieldErrors = ValidationService.validateRequiredFields(employee, index);
         errors.push(...requiredFieldErrors);
 
-        // Email validation (if userName is present)
-        if (employee.userName && !VALIDATION_CONFIG.EMAIL_PATTERN.test(employee.userName)) {
+        // Email validation (if email is present)
+        if (employee.email && !VALIDATION_CONFIG.EMAIL_PATTERN.test(employee.email)) {
           errors.push({
-            field: 'userName',
-            value: employee.userName,
+            field: 'email',
+            value: employee.email,
             message: 'Invalid email format',
             rowIndex: index,
             severity: 'error'
@@ -434,7 +434,7 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
                       {employee.firstName} {employee.lastName}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {employee.userName || '-'}
+                      {employee.email || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {employee.departments || '-'}

@@ -220,7 +220,7 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
     });
     
     // Sort fields with important ones first
-    const importantFields = ['firstName', 'lastName', 'userName', 'email'];
+    const importantFields = ['firstName', 'lastName', 'email'];
     const otherFields = Array.from(fieldSet).filter(field => !importantFields.includes(field)).sort();
     
     setAllFields([...importantFields.filter(field => fieldSet.has(field)), ...otherFields]);

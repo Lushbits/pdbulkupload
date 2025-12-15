@@ -96,7 +96,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         
         // Extract email addresses from employees
         const emailAddresses = employees
-          .map(emp => emp.userName)
+          .map(emp => emp.email)
           .filter(email => email && email.trim() !== '')
           .map(email => email!.toLowerCase().trim());
         
@@ -165,10 +165,10 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       errors.push(...requiredFieldErrors);
 
       // Email validation
-      if (employee.userName && !VALIDATION_CONFIG.EMAIL_PATTERN.test(employee.userName)) {
+      if (employee.email && !VALIDATION_CONFIG.EMAIL_PATTERN.test(employee.email)) {
         errors.push({
-          field: 'userName',
-          value: employee.userName,
+          field: 'email',
+          value: employee.email,
           message: 'Invalid email format',
           rowIndex: index,
           severity: 'error'
@@ -381,8 +381,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
 
     // Custom field validation now handled in validateAllEmployees for consistency
 
-    // If userName field was modified, re-check duplicates for the new email
-    if (field === 'userName' && value !== oldValue) {
+    // If email field was modified, re-check duplicates for the new email
+    if (field === 'email' && value !== oldValue) {
       // Remove the old email from existingEmployees if it was there
       if (oldValue && oldValue.trim() !== '') {
         const oldNormalizedEmail = oldValue.toLowerCase().trim();
@@ -472,7 +472,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   const handleSkipDuplicates = useCallback(() => {
     const duplicateEmails = new Set(Array.from(existingEmployees.keys()));
     const updatedEmployees = employees.map(emp => {
-      const email = emp.userName?.toLowerCase().trim();
+      const email = emp.email?.toLowerCase().trim();
       if (email && duplicateEmails.has(email)) {
         return { ...emp, _skipUpload: true }; // Add flag to skip this employee
       }
@@ -584,7 +584,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     return (
       safeIncludes(employee.firstName) ||
       safeIncludes(employee.lastName) ||
-      safeIncludes(employee.userName) ||
+      safeIncludes(employee.email) ||
       safeIncludes(employee.departments) ||
       safeIncludes(employee.employeeGroups) ||
       safeIncludes(employee.employeeTypeId)
@@ -657,7 +657,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     });
     
     // Sort fields with important ones first
-    const importantFields = ['firstName', 'lastName', 'userName', 'email'];
+    const importantFields = ['firstName', 'lastName', 'email'];
     const businessFields = ['departments', 'employeeGroups', 'skills']; // Business-critical editable fields - always show
     const otherFields = Array.from(fieldSet).filter(field =>
       !importantFields.includes(field) && !businessFields.includes(field)
@@ -675,10 +675,10 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     return fieldsToShow as (keyof Employee)[];
   }, [employees]);
 
-  // Get fields that can be bulk edited (exclude userName since emails must be unique, and internal fields)
+  // Get fields that can be bulk edited (exclude email since emails must be unique, and internal fields)
   const bulkEditableFields = useMemo(() => {
     return editableFields.filter(field =>
-      field !== 'userName' &&
+      field !== 'email' &&
       !field.toString().startsWith('__') // Exclude internal ID fields like __departmentsIds
     );
   }, [editableFields]);
@@ -912,7 +912,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
               Bulk Edit ({selectedRows.size} rows selected)
             </h4>
             <p className="text-xs text-blue-700 mb-3">
-              📧 Email addresses (userName) cannot be bulk edited since each employee needs a unique email.
+              📧 Email addresses cannot be bulk edited since each employee needs a unique email.
             </p>
             <div className="flex flex-col md:flex-row gap-3">
               <select
@@ -992,9 +992,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
                     {ValidationService.isRequired(field.toString()) && (
                       <span className="text-red-500 ml-1">*</span>
                     )}
-                    {ValidationService.isReadOnly(field.toString()) && (
-                      <span className="text-blue-500 ml-1" title="Read-only field">🔒</span>
-                    )}
+                    {/* Note: Read-only lock removed - for bulk import (new employees), these fields CAN be set initially */}
                     {ValidationService.isUnique(field.toString()) && (
                       <span className="text-orange-500 ml-1" title="Must be unique">⚡</span>
                     )}
