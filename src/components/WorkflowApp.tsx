@@ -253,7 +253,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setCurrentStep(WorkflowStep.Authentication);
             setCompletedSteps([]);
           }}
-          onCancel={() => {}}
+          onCancel={handleCancelUpload}
           onFileProcessed={(data, mappings) => {
             setExcelData(data);
             setColumnMappings(mappings);
