@@ -72,9 +72,9 @@ export const API_ENDPOINTS = {
   SALARY_TYPES: '/pay/v1.0/salaries/types',  // Correct endpoint per Google Apps Script
   SALARIES: '/pay/v1.0/salaries/employees',
 
-  // Contract Rules API Endpoints (v1.0)
-  CONTRACT_RULES: '/contractrules/v1.0/contractrules',
-  CONTRACT_RULES_EMPLOYEES: '/contractrules/v1.0/employees',
+  // Contract Rules API Endpoints (v1 - must use v1, not v1.0, for CORS to work)
+  CONTRACT_RULES: '/contractrules/v1/contractrules',
+  CONTRACT_RULES_EMPLOYEES: '/contractrules/v1/employees',
 } as const;
 
 /**
