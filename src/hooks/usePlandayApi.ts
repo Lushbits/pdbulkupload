@@ -287,6 +287,19 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         // Continue with authentication even if portal info fails
       }
       
+      // Helper for optional fetches that return empty array on failure (e.g., CORS issues)
+      const fetchOptional = async <T>(
+        fetchFn: () => Promise<T[]>,
+        name: string
+      ): Promise<T[]> => {
+        try {
+          return await fetchFn();
+        } catch (error) {
+          console.warn(`⚠️ Could not fetch ${name}, feature will be unavailable:`, error);
+          return [];
+        }
+      };
+
       // Test connection and fetch initial data
       const [departments, employeeGroups, employeeTypes, supervisors, skills, salaryTypes, contractRules, fieldDefinitions] = await Promise.all([
         PlandayApi.getDepartments(),
@@ -295,7 +308,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         PlandayApi.getSupervisors(),
         PlandayApi.getSkills(),
         PlandayApi.getSalaryTypes(),
-        PlandayApi.getContractRules(),
+        fetchOptional(() => PlandayApi.getContractRules(), 'contract rules'),
         PlandayApi.getFieldDefinitions()
       ]);
 

@@ -17,8 +17,9 @@ const versionHistory = [
     date: '2026-01-08',
     title: 'Contract Rules API Fix',
     features: [
-      'Fixed CORS error when fetching contract rules - was using wrong API version (v1 instead of v1.0)',
-      'Portals with no contract rules configured now connect successfully',
+      'Fixed contract rules API version (v1 -> v1.0)',
+      'Made contract rules fetching optional - authentication succeeds even if Planday blocks CORS for this endpoint',
+      'Portals without contract rules access can now connect and use all other features',
     ]
   },
   {
