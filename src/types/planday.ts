@@ -205,7 +205,7 @@ export interface FixedSalarySetResult {
 
 /**
  * Planday Contract Rule Types
- * Based on actual API: https://openapi.planday.com/contractrules/v1/contractrules
+ * Based on actual API: https://openapi.planday.com/contractrules/v1.0/contractrules
  */
 export interface PlandayContractRule {
   id: number;

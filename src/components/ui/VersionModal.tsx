@@ -13,6 +13,15 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.8',
+    date: '2026-01-08',
+    title: 'Contract Rules API Fix',
+    features: [
+      'Fixed CORS error when fetching contract rules - was using wrong API version (v1 instead of v1.0)',
+      'Portals with no contract rules configured now connect successfully',
+    ]
+  },
+  {
     version: '0.3.7',
     date: '2025-12-15',
     title: 'Email Field Mapping Fix',

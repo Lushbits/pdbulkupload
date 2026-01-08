@@ -583,7 +583,7 @@ export class PlandayApiClient {
    * Assign a contract rule to an employee via PUT request
    * This is done inline after employee creation (not deferred like supervisors)
    *
-   * Endpoint: PUT /contractrules/v1/employees/{employeeId}?contractRuleId={contractRuleId}
+   * Endpoint: PUT /contractrules/v1.0/employees/{employeeId}?contractRuleId={contractRuleId}
    * Body: {"employeeId": "123456"} (employeeId as string)
    */
   async assignContractRule(employeeId: number, contractRuleId: number): Promise<void> {

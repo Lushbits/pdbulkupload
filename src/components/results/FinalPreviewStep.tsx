@@ -438,7 +438,7 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
               <div className="bg-purple-50 rounded border border-purple-200 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-0.5 rounded">Step 2</span>
-                  <span className="text-xs font-mono text-gray-600">PUT /contractrules/v1/employees/{'{employeeId}'}?contractRuleId={contractRulePreview.contractRuleId}</span>
+                  <span className="text-xs font-mono text-gray-600">PUT /contractrules/v1.0/employees/{'{employeeId}'}?contractRuleId={contractRulePreview.contractRuleId}</span>
                 </div>
                 <pre className="text-xs text-gray-800 whitespace-pre-wrap bg-white p-2 rounded border">
                   {JSON.stringify({
