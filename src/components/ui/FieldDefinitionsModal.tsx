@@ -163,11 +163,11 @@ export const FieldDefinitionsModal: React.FC<FieldDefinitionsModalProps> = ({
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Required:</span>
-                    <div className="text-gray-600">{fieldDefinitions.required.length}</div>
+                    <div className="text-gray-600">{(fieldDefinitions.required || []).length}</div>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Read-only:</span>
-                    <div className="text-gray-600">{fieldDefinitions.readOnly.length}</div>
+                    <div className="text-gray-600">{(fieldDefinitions.readOnly || []).length}</div>
                   </div>
                 </div>
               </div>

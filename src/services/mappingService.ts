@@ -2675,8 +2675,8 @@ export class ValidationService {
       return ['firstName', 'lastName', 'email']; // Safe fallback with business-critical fields (departments handled individually now)
     }
     
-    // Start with fields marked as required by the API
-    const apiRequiredFields = [...this.fieldDefinitions.required];
+    // Start with fields marked as required by the API (defensive: handle missing required array)
+    const apiRequiredFields = [...(this.fieldDefinitions.required || [])];
     
     // Always ensure email is marked as required
     // This is business-critical for creating employees in ANY Planday portal (userName is auto-populated from email)
@@ -2796,7 +2796,7 @@ export class ValidationService {
           fieldName,
           fieldType,
           description: fieldConfig.description,
-          isRequired: this.fieldDefinitions.required.includes(fieldName),
+          isRequired: (this.fieldDefinitions.required || []).includes(fieldName),
           enumValues,
           enumOptions
         });
@@ -2997,7 +2997,7 @@ export class ValidationService {
       fieldName,
       fieldType,
       description: fieldConfig.description,
-      isRequired: this.fieldDefinitions.required.includes(fieldName),
+      isRequired: (this.fieldDefinitions.required || []).includes(fieldName),
       enumValues,
       enumOptions
     };
@@ -3645,7 +3645,7 @@ export class ValidationService {
     return {
       isLoaded: !!this.fieldDefinitions,
       portalId: this.fieldDefinitions?.portalId || null,
-      requiredFieldsCount: this.fieldDefinitions?.required.length || 0,
+      requiredFieldsCount: this.fieldDefinitions?.required?.length || 0,
       customFieldsCount: this.getCustomFields().length,
     };
   }
@@ -3697,8 +3697,8 @@ export class ValidationService {
     const standardFields = apiFieldNames.filter(field => !field.startsWith('custom_'));
     const customFieldsFromApi = apiFieldNames.filter(field => field.startsWith('custom_'));
 
-    // Check for required field overrides
-    const apiRequiredFields = this.fieldDefinitions.required;
+    // Check for required field overrides (defensive: handle missing required array)
+    const apiRequiredFields = this.fieldDefinitions.required || [];
     const processedRequiredFields = this.getRequiredFields();
     const requiredFieldOverrides = processedRequiredFields.filter(
       (field: string) => !apiRequiredFields.includes(field)

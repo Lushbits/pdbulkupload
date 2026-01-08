@@ -15,11 +15,12 @@ const versionHistory = [
   {
     version: '0.3.8',
     date: '2026-01-08',
-    title: 'Contract Rules API Fix',
+    title: 'Contract Rules & Field Definitions Fix',
     features: [
-      'Fixed contract rules API - reverted to v1 endpoint (v1.0 has CORS issues)',
+      'Fixed contract rules API - reverted to v1 endpoint (CORS issue reported to Planday and fixed)',
       'Made contract rules fetching optional - authentication succeeds even if endpoint is unavailable',
-      'Portals without contract rules access can now connect and use all other features',
+      'Fixed template download crash on portals with missing required fields array in field definitions',
+      'Added defensive checks for optional field definition properties across the codebase',
     ]
   },
   {
