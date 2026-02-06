@@ -950,12 +950,19 @@ export class ExcelParser {
     examples: string[][];
     instructions: Record<string, string>;
     fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
+    fieldDescriptions?: Record<string, {
+      description: string;
+      required: boolean;
+      fieldType: string;
+      options: string;
+      guidance: string;
+    }>;
   }): void {
     const workbook = new ExcelJS.Workbook();
-    
+
     // Main data sheet
     const dataSheet = workbook.addWorksheet('Employee Data');
-    
+
     // Add headers
     const headerRow = dataSheet.addRow(templateData.headers);
     headerRow.font = { bold: true };
@@ -975,40 +982,84 @@ export class ExcelParser {
     dataSheet.columns.forEach((column, index) => {
       const header = templateData.headers[index];
       const headerLength = header ? header.length : 10;
-      const exampleLengths = templateData.examples.map(row => 
+      const exampleLengths = templateData.examples.map(row =>
         row[index] ? row[index].toString().length : 0
       );
       const maxLength = Math.max(headerLength, ...exampleLengths);
       column.width = Math.min(maxLength + 2, 50);
     });
 
-    // Instructions sheet
-    const instructionsSheet = workbook.addWorksheet('Instructions');
-    
-    instructionsSheet.addRow(['Field Instructions']);
-    instructionsSheet.getRow(1).font = { bold: true, size: 16 };
-    instructionsSheet.addRow([]);
+    // Descriptions sheet (5-column layout)
+    const descSheet = workbook.addWorksheet('Descriptions');
 
-    // Add field instructions
+    // Set column widths
+    descSheet.columns = [
+      { width: 25 },  // A: Field Name
+      { width: 45 },  // B: Description
+      { width: 12 },  // C: Required
+      { width: 35 },  // D: Field Type
+      { width: 50 },  // E: Guidance
+    ];
+
+    // Header row
+    const descHeaderRow = descSheet.addRow(['Field Name', 'Description', 'Required', 'Field Type', 'Guidance']);
+    descHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    descHeaderRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4A90E2' }
+    };
+
+    // Add field rows
     templateData.fieldOrder.forEach(field => {
-      const instruction = templateData.instructions[field.field];
-      if (instruction) {
-        instructionsSheet.addRow([field.displayName, instruction]);
+      const desc = templateData.fieldDescriptions?.[field.field];
+      if (desc) {
+        const row = descSheet.addRow([
+          field.displayName,
+          desc.description,
+          desc.required ? 'REQUIRED' : '',
+          desc.fieldType,
+          desc.guidance
+        ]);
+
+        // Bold the "REQUIRED" text in column C
+        if (desc.required) {
+          row.getCell(3).font = { bold: true };
+        }
+      } else {
+        // Fallback: use old instructions if fieldDescriptions not available
+        const instruction = templateData.instructions[field.field];
+        descSheet.addRow([
+          field.displayName,
+          instruction || '',
+          field.isRequired ? 'REQUIRED' : '',
+          '',
+          ''
+        ]);
+        if (field.isRequired) {
+          const lastRow = descSheet.lastRow;
+          if (lastRow) {
+            lastRow.getCell(3).font = { bold: true };
+          }
+        }
       }
     });
 
-    // Style instructions sheet
-    instructionsSheet.columns = [
-      { width: 25 },
-      { width: 60 }
-    ];
+    // Enable text wrap on columns B, D, E for readability
+    descSheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 1) {
+        [2, 4, 5].forEach(col => {
+          row.getCell(col).alignment = { wrapText: true, vertical: 'top' };
+        });
+      }
+    });
 
     // Download the template
     workbook.xlsx.writeBuffer().then(buffer => {
-      const blob = new Blob([buffer], { 
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -1148,6 +1199,13 @@ export class ExcelParserService {
     examples: string[][];
     instructions: Record<string, string>;
     fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string }>;
+    fieldDescriptions?: Record<string, {
+      description: string;
+      required: boolean;
+      fieldType: string;
+      options: string;
+      guidance: string;
+    }>;
   }): void {
     ExcelParser.downloadTemplate(templateData);
   }

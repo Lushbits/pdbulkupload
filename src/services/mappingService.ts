@@ -1618,6 +1618,13 @@ export class MappingService {
     examples: string[][];
     instructions: Record<string, string>;
     fieldOrder: Array<{ field: string; displayName: string; isRequired: boolean; isCustom: boolean; description?: string; isComplexSubField?: boolean }>;
+    fieldDescriptions: Record<string, {
+      description: string;
+      required: boolean;
+      fieldType: string;
+      options: string;
+      guidance: string;
+    }>;
   } {
     const { includeSupervisorColumns = false, includeFixedSalaryColumns = false } = options || {};
 
@@ -1943,11 +1950,258 @@ export class MappingService {
       }
     });
     
+    // Build fieldDescriptions for the Descriptions sheet
+    const fieldDescriptions: Record<string, {
+      description: string;
+      required: boolean;
+      fieldType: string;
+      options: string;
+      guidance: string;
+    }> = {};
+
+    // Helper to determine field type for standard fields
+    const getStandardFieldType = (fieldName: string): string => {
+      // Date fields
+      if (['hiredFrom', 'birthDate', 'wageValidFrom'].includes(fieldName)) return 'Date';
+      // Number fields
+      if (['salaryHours', 'salaryAmount'].includes(fieldName)) return 'Number';
+      // Dropdown fields
+      if (['cellPhoneCountryCode', 'employeeTypeId', 'gender', 'contractRule', 'salaryPeriod'].includes(fieldName)) return 'Dropdown';
+      // Yes/No fields
+      if (fieldName === 'isSupervisor') return 'Yes/No';
+      // Phone field
+      if (fieldName === 'cellPhone') return 'Text (phone number)';
+      // Complex sub-field categories
+      if (fieldName.startsWith('departments.')) return 'Checkbox (X/Yes/XX)';
+      if (fieldName.startsWith('employeeGroups.')) return 'Checkbox or Hourly Rate';
+      if (fieldName.startsWith('skills.')) return 'Checkbox (X)';
+      if (fieldName.startsWith('hourlyRate.')) return 'Number';
+      if (fieldName.startsWith('bankAccount.')) return 'Text';
+      // Default text fields
+      return 'Text';
+    };
+
+    fieldOrder.forEach(field => {
+      let description = '';
+      let fieldType = '';
+      let optionsStr = '';
+      let guidance = '';
+
+      if (field.isCustom) {
+        // Custom field - use existing utilities
+        description = field.description || 'Custom field';
+        try {
+          const customType = ValidationService.getCustomFieldType(field.field);
+          fieldType = ValidationService.getFieldTypeDisplayName(customType);
+
+          // Get guidance from conversion hints
+          const hints = ValidationService.getConversionHints(customType, field.field);
+          guidance = hints.join('. ');
+
+          // Get dropdown options for enum fields
+          if (FieldDefinitionValidator.isEnumField(field.field)) {
+            const enumOptions = FieldDefinitionValidator.getFieldOptions(field.field);
+            if (enumOptions.length > 0) {
+              optionsStr = enumOptions.map(opt => opt.name).join(', ');
+            }
+          }
+        } catch {
+          fieldType = 'Text';
+          guidance = 'Enter appropriate value';
+        }
+      } else {
+        // Standard field
+        fieldType = getStandardFieldType(field.field);
+        description = instructions[field.field] || '';
+
+        // Build options and guidance per field
+        switch (field.field) {
+          case 'firstName':
+            description = "Employee's first name";
+            guidance = 'e.g., John';
+            break;
+          case 'lastName':
+            description = "Employee's last name";
+            guidance = 'e.g., Smith';
+            break;
+          case 'email':
+            description = 'Email address used for Planday login (must be unique)';
+            guidance = 'e.g., john.smith@example.com';
+            break;
+          case 'cellPhone':
+            description = 'Mobile phone number';
+            guidance = 'e.g., 12345678 (digits only, no country code prefix)';
+            break;
+          case 'cellPhoneCountryCode':
+            description = 'Country code for cell phone (ISO 3166-1 alpha-2)';
+            try {
+              const countryOpts = FieldDefinitionValidator.getFieldOptions('cellPhoneCountryCode');
+              if (countryOpts.length > 0) {
+                optionsStr = countryOpts.slice(0, 15).map(opt => opt.name).join(', ') +
+                  (countryOpts.length > 15 ? ` (+${countryOpts.length - 15} more)` : '');
+              }
+            } catch { /* keep empty */ }
+            guidance = 'e.g., DK, SE, NO, UK, US';
+            break;
+          case 'employeeTypeId':
+            description = 'Employee type classification';
+            try {
+              const empTypeOpts = FieldDefinitionValidator.getFieldOptions('employeeTypeId');
+              if (empTypeOpts.length > 0) {
+                optionsStr = empTypeOpts.map(opt => opt.name).join(', ');
+              }
+            } catch { /* keep empty */ }
+            guidance = 'Use exact name from dropdown options';
+            break;
+          case 'contractRule':
+            description = 'Contract rule defining contracted hours per period';
+            if (mappingService.contractRules.length > 0) {
+              optionsStr = mappingService.contractRules.map(cr => cr.name).join(', ');
+            }
+            guidance = 'Use exact name from your portal';
+            break;
+          case 'hiredFrom':
+            description = 'Date the employee was/will be hired';
+            guidance = 'Format: YYYY-MM-DD (e.g., 2024-01-15)';
+            break;
+          case 'wageValidFrom':
+            description = 'Date when hourly rates and fixed salaries take effect';
+            guidance = 'Format: YYYY-MM-DD (e.g., 2024-01-15)';
+            break;
+          case 'salaryPeriod':
+            description = 'Fixed salary period type';
+            if (mappingService.salaryTypes.length > 0) {
+              optionsStr = mappingService.salaryTypes.map(st => st.name).join(', ');
+            }
+            guidance = 'Use exact name from your portal';
+            break;
+          case 'salaryHours':
+            description = 'Expected working hours for the salary period';
+            guidance = 'e.g., 160 for monthly, 37 for weekly';
+            break;
+          case 'salaryAmount':
+            description = 'Fixed salary amount for the period';
+            guidance = 'e.g., 30000 (numeric value, no currency symbol)';
+            break;
+          case 'supervisorId':
+            description = 'Supervisor to assign (must already exist in Planday)';
+            guidance = "Enter supervisor's full name or Planday ID";
+            break;
+          case 'isSupervisor':
+            description = 'Whether this employee should be a supervisor';
+            guidance = 'Yes, X, or true to enable. Leave empty if not.';
+            break;
+          case 'gender':
+            description = 'Employee gender';
+            try {
+              const genderOpts = FieldDefinitionValidator.getFieldOptions('gender');
+              if (genderOpts.length > 0) {
+                optionsStr = genderOpts.map(opt => opt.name).join(', ');
+              }
+            } catch { /* keep empty */ }
+            guidance = 'Use exact value from dropdown options';
+            break;
+          case 'birthDate':
+            description = 'Employee date of birth';
+            guidance = 'Format: YYYY-MM-DD (e.g., 1990-03-15)';
+            break;
+          case 'street1':
+            description = 'Street address';
+            guidance = 'e.g., 123 Main Street';
+            break;
+          case 'city':
+            description = 'City of residence';
+            guidance = 'e.g., Copenhagen';
+            break;
+          case 'zip':
+            description = 'ZIP or postal code';
+            guidance = 'e.g., 1000';
+            break;
+          case 'jobTitle':
+            description = 'Job title or position';
+            guidance = 'e.g., Bartender, Chef, Manager';
+            break;
+          case 'ssn':
+            description = 'Social Security Number';
+            guidance = 'Format depends on country. Enter as text.';
+            break;
+          case 'payrollId':
+            description = 'ID in external payroll system';
+            guidance = 'e.g., EMP-001 (alphanumeric)';
+            break;
+          default:
+            // Handle sub-field categories
+            if (field.field.startsWith('departments.')) {
+              const deptName = field.field.replace('departments.', '');
+              description = `Assign to "${deptName}" department`;
+              guidance = 'X or Yes = assign, XX = assign as primary department. Leave empty to skip.';
+            } else if (field.field.startsWith('employeeGroups.')) {
+              const groupName = field.field.replace('employeeGroups.', '');
+              description = `Assign to "${groupName}" employee group`;
+              guidance = 'X = assign without rate, or enter hourly rate (e.g., 15.50). Leave empty to skip.';
+            } else if (field.field.startsWith('skills.')) {
+              const skillName = field.field.replace('skills.', '');
+              description = `Assign "${skillName}" skill`;
+              guidance = 'X to assign. Leave empty to skip.';
+            } else if (field.field.startsWith('hourlyRate.')) {
+              const rateName = field.field.replace('hourlyRate.', '');
+              description = `Hourly rate for "${rateName}"`;
+              guidance = 'Numeric value (e.g., 15.50). Leave empty to skip.';
+            } else if (field.isComplexSubField && field.field.includes('.')) {
+              const [parentField, subField] = field.field.split('.');
+              if (parentField === 'bankAccount') {
+                if (subField === 'accountNumber') {
+                  description = 'Bank account number';
+                  guidance = 'Enter account number as text';
+                } else if (subField === 'registrationNumber') {
+                  description = 'Bank registration number';
+                  guidance = 'Enter registration number as text';
+                } else {
+                  description = `Bank account ${subField}`;
+                  guidance = 'Enter value as text';
+                }
+              } else {
+                description = `${parentField} - ${subField}`;
+                guidance = 'Enter appropriate value';
+              }
+            } else {
+              // Fallback: try to get enum options for unknown standard fields
+              try {
+                if (FieldDefinitionValidator.isEnumField(field.field)) {
+                  const enumOptions = FieldDefinitionValidator.getFieldOptions(field.field);
+                  if (enumOptions.length > 0) {
+                    optionsStr = enumOptions.slice(0, 10).map(opt => opt.name).join(', ');
+                    fieldType = 'Dropdown';
+                  }
+                }
+              } catch { /* keep defaults */ }
+              if (!description) description = instructions[field.field] || `Value for ${field.displayName}`;
+              if (!guidance) guidance = 'Enter appropriate value';
+            }
+        }
+      }
+
+      // Append options to fieldType display if present
+      let fieldTypeDisplay = fieldType;
+      if (optionsStr) {
+        fieldTypeDisplay += ` — Options: ${optionsStr}`;
+      }
+
+      fieldDescriptions[field.field] = {
+        description,
+        required: field.isRequired,
+        fieldType: fieldTypeDisplay,
+        options: optionsStr,
+        guidance
+      };
+    });
+
     return {
       headers,
       examples,
       instructions,
-      fieldOrder
+      fieldOrder,
+      fieldDescriptions
     };
   }
 
@@ -3001,6 +3255,14 @@ export class ValidationService {
       enumValues,
       enumOptions
     };
+  }
+
+  /**
+   * Get the detected type for a custom field by field name (public accessor)
+   */
+  static getCustomFieldType(fieldName: string): CustomFieldType {
+    const info = this.getCustomFieldInfo(fieldName);
+    return info ? info.fieldType : 'unknown';
   }
 
   /**

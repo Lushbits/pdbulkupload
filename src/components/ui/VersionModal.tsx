@@ -20,6 +20,7 @@ const versionHistory = [
       'Fixed "[object Object]" showing as error message during validation/upload - API error responses are now always displayed as readable strings',
       'Fixed nested API validation errors that could also produce unreadable error messages',
       'Fixed potential crash when portal field definitions are missing readOnly or unique arrays',
+      'Improved Excel template "Descriptions" sheet - now has 5 columns: Field Name, Description, Required (bold), Field Type with dropdown options, and Guidance/examples',
     ]
   },
   {
