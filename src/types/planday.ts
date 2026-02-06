@@ -285,6 +285,7 @@ export interface PlandayEmployeeResponse {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  [key: string]: any;  // Allow dynamic fields from API
 }
 
 /**

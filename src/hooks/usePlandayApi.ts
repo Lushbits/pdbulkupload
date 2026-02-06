@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { PlandayApi, PlandayApiError } from '../services/plandayApi';
+import { PlandayApi, PlandayApiError, discoverFieldsFromEmployees, mergeDiscoveredFields } from '../services/plandayApi';
 import { MappingUtils, ValidationService, FieldDefinitionValidator } from '../services/mappingService';
 import type {
   PlandayDepartment,
@@ -301,7 +301,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
       };
 
       // Test connection and fetch initial data
-      const [departments, employeeGroups, employeeTypes, supervisors, skills, salaryTypes, contractRules, fieldDefinitions] = await Promise.all([
+      const [departments, employeeGroups, employeeTypes, supervisors, skills, salaryTypes, contractRules, fieldDefinitions, employeeSample] = await Promise.all([
         PlandayApi.getDepartments(),
         PlandayApi.getEmployeeGroups(),
         PlandayApi.getEmployeeTypes(),
@@ -309,8 +309,15 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         PlandayApi.getSkills(),
         PlandayApi.getSalaryTypes(),
         fetchOptional(() => PlandayApi.getContractRules(), 'contract rules'),
-        PlandayApi.getFieldDefinitions()
+        PlandayApi.getFieldDefinitions(),
+        PlandayApi.fetchEmployeeSample(5)
       ]);
+
+      // Discover and merge fields from employee sample before initializing services
+      if (employeeSample.length > 0) {
+        const discoveredFields = discoverFieldsFromEmployees(employeeSample);
+        mergeDiscoveredFields(fieldDefinitions, discoveredFields);
+      }
 
       // Initialize services with fetched data
       MappingUtils.initialize(departments, employeeGroups, employeeTypes);
@@ -675,9 +682,18 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     });
 
     try {
-      // Fetch field definitions
-      const fieldDefinitions = await PlandayApi.getFieldDefinitions();
-      
+      // Fetch field definitions and employee sample in parallel
+      const [fieldDefinitions, employeeSample] = await Promise.all([
+        PlandayApi.getFieldDefinitions(),
+        PlandayApi.fetchEmployeeSample(5)
+      ]);
+
+      // Discover and merge fields from employee sample
+      if (employeeSample.length > 0) {
+        const discoveredFields = discoverFieldsFromEmployees(employeeSample);
+        mergeDiscoveredFields(fieldDefinitions, discoveredFields);
+      }
+
       updateState({
         fieldDefinitions,
         isFieldDefinitionsLoading: false,
@@ -696,7 +712,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         isFieldDefinitionsLoading: false,
         fieldDefinitionsError: errorMessage,
       });
-      
+
       throw error;
     }
   }, [state.isAuthenticated, updateState, handleError]);
@@ -1183,13 +1199,14 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         
         // If no cached data or incomplete data, fetch from API
         
-        const [departments, employeeGroups, employeeTypes, fieldDefinitions] = await Promise.all([
+        const [departments, employeeGroups, employeeTypes, fieldDefinitions, employeeSample] = await Promise.all([
           PlandayApi.getDepartments(),
           PlandayApi.getEmployeeGroups(),
           PlandayApi.getEmployeeTypes(),
-          PlandayApi.getFieldDefinitions()
+          PlandayApi.getFieldDefinitions(),
+          PlandayApi.fetchEmployeeSample(5)
         ]);
-        
+
         // Fetch portal info separately (non-critical)
         let portalInfo = null;
         try {
@@ -1199,7 +1216,13 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
         } catch (portalError) {
           console.warn('⚠️ Could not fetch portal info during restoration:', portalError);
         }
-        
+
+        // Discover and merge fields from employee sample before initializing services
+        if (employeeSample.length > 0) {
+          const discoveredFields = discoverFieldsFromEmployees(employeeSample);
+          mergeDiscoveredFields(fieldDefinitions, discoveredFields);
+        }
+
         // Initialize services
         MappingUtils.initialize(departments, employeeGroups, employeeTypes);
         ValidationService.initialize(fieldDefinitions);

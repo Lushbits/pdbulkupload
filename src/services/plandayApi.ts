@@ -670,6 +670,20 @@ export class PlandayApiClient {
   }
 
   /**
+   * Fetch a small sample of employees for field discovery.
+   * Returns raw employee records; catches errors internally and returns [] on failure.
+   */
+  async fetchEmployeeSample(sampleSize: number = 5): Promise<Record<string, any>[]> {
+    try {
+      const result = await this.fetchEmployees(sampleSize, 0);
+      return result.employees as Record<string, any>[];
+    } catch (error) {
+      console.warn('⚠️ Could not fetch employee sample for field discovery:', error);
+      return [];
+    }
+  }
+
+  /**
    * Check if employees with specific email addresses already exist in Planday
    * Returns a map of email -> existing employee data
    */
@@ -1356,6 +1370,83 @@ export class PlandayApiError extends Error {
  */
 export const plandayApiClient = new PlandayApiClient();
 
+// ─── Field Discovery Utilities ───────────────────────────────────────────────
+
+/**
+ * Fields that only appear in GET responses and should not be offered for mapping
+ */
+export const RESPONSE_ONLY_FIELDS = new Set([
+  'id', 'isActive', 'createdAt', 'updatedAt', 'portalId',
+  'deactivatedDate', 'modifiedAt', 'profileImageUrl',
+  'initials', 'displayName', 'fullName',
+  'departments', 'employeeGroups', 'skills', 'supervisor',
+  'userName', // auto-derived from email, should not be mapped independently
+]);
+
+/**
+ * Core fields that should always be treated as required when they exist on a portal
+ */
+export const CORE_REQUIRED_FIELDS = ['firstName', 'lastName', 'email'];
+
+/**
+ * Extract unique field keys from a sample of employees, excluding response-only fields.
+ */
+export function discoverFieldsFromEmployees(employees: Record<string, any>[]): string[] {
+  const discoveredKeys = new Set<string>();
+  for (const emp of employees) {
+    for (const key of Object.keys(emp)) {
+      if (!RESPONSE_ONLY_FIELDS.has(key)) {
+        discoveredKeys.add(key);
+      }
+    }
+  }
+  return Array.from(discoveredKeys);
+}
+
+/**
+ * Merge discovered fields into field definitions.
+ * - Adds missing fields to `properties` with a generic string type
+ * - For core required fields (firstName, lastName, email): adds to `required[]` if not already present
+ * Returns list of newly added field keys.
+ */
+export function mergeDiscoveredFields(
+  fieldDefinitions: PlandayFieldDefinitionsSchema,
+  discoveredFields: string[]
+): string[] {
+  const newFields: string[] = [];
+
+  // Ensure required array exists (some portals omit it from API response)
+  if (!fieldDefinitions.required) {
+    fieldDefinitions.required = [];
+  }
+
+  for (const field of discoveredFields) {
+    if (!fieldDefinitions.properties[field]) {
+      fieldDefinitions.properties[field] = {
+        type: 'string',
+        description: 'Discovered from existing employee data',
+      };
+      newFields.push(field);
+    }
+
+    // Ensure core required fields are in the required array
+    if (
+      CORE_REQUIRED_FIELDS.includes(field) &&
+      !fieldDefinitions.required.includes(field)
+    ) {
+      fieldDefinitions.required.push(field);
+    }
+  }
+
+  if (newFields.length > 0) {
+    console.log(`✅ Discovered ${newFields.length} additional fields from employee data:`, newFields);
+  } else {
+    console.log('ℹ️ No additional fields discovered from employee data');
+  }
+
+  return newFields;
+}
+
 /**
  * Convenience functions for common operations
  */
@@ -1496,6 +1587,13 @@ export const PlandayApi = {
    */
   async getFieldDefinitions(type: 'Post' | 'Put' = 'Post'): Promise<PlandayFieldDefinitionsSchema> {
     return plandayApiClient.fetchEmployeeFieldDefinitions(type);
+  },
+
+  /**
+   * Fetch a small sample of employees for field discovery
+   */
+  async fetchEmployeeSample(sampleSize: number = 5): Promise<Record<string, any>[]> {
+    return plandayApiClient.fetchEmployeeSample(sampleSize);
   },
 
   /**
