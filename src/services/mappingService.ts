@@ -1967,13 +1967,13 @@ export class MappingService {
       if (['salaryHours', 'salaryAmount'].includes(fieldName)) return 'Number';
       // Dropdown fields
       if (['cellPhoneCountryCode', 'employeeTypeId', 'gender', 'contractRule', 'salaryPeriod'].includes(fieldName)) return 'Dropdown';
-      // Yes/No fields
-      if (fieldName === 'isSupervisor') return 'Yes/No';
+      // Checkbox fields
+      if (fieldName === 'isSupervisor') return 'Checkbox (X)';
       // Phone field
       if (fieldName === 'cellPhone') return 'Text (phone number)';
       // Complex sub-field categories
       if (fieldName.startsWith('departments.')) return 'Checkbox (X/XX)';
-      if (fieldName.startsWith('employeeGroups.')) return 'Checkbox or Hourly Rate';
+      if (fieldName.startsWith('employeeGroups.')) return 'Hourly Rate';
       if (fieldName.startsWith('skills.')) return 'Checkbox (X)';
       if (fieldName.startsWith('hourlyRate.')) return 'Number';
       if (fieldName.startsWith('bankAccount.')) return 'Text';
@@ -1997,9 +1997,13 @@ export class MappingService {
             ? 'Checkbox (X)'
             : ValidationService.getFieldTypeDisplayName(customType);
 
-          // Get guidance from conversion hints
-          const hints = ValidationService.getConversionHints(customType, field.field);
-          guidance = hints.join('. ');
+          // Get guidance - use standard checkbox text for booleans
+          if (customType === 'optionalBoolean') {
+            guidance = 'X to assign. Leave empty to skip.';
+          } else {
+            const hints = ValidationService.getConversionHints(customType, field.field);
+            guidance = hints.join('. ');
+          }
 
           // Get dropdown options for enum fields
           if (FieldDefinitionValidator.isEnumField(field.field)) {
@@ -2092,7 +2096,7 @@ export class MappingService {
             break;
           case 'isSupervisor':
             description = 'Whether this employee should be a supervisor';
-            guidance = 'Yes, X, or true to enable. Leave empty if not.';
+            guidance = 'X to assign. Leave empty to skip.';
             break;
           case 'gender':
             description = 'Employee gender';
