@@ -2706,7 +2706,7 @@ export class ValidationService {
     if (!this.fieldDefinitions) {
       return [];
     }
-    return this.fieldDefinitions.readOnly;
+    return this.fieldDefinitions.readOnly || [];
   }
 
   /**
@@ -2716,7 +2716,7 @@ export class ValidationService {
     if (!this.fieldDefinitions) {
       return [];
     }
-    return this.fieldDefinitions.unique;
+    return this.fieldDefinitions.unique || [];
   }
 
   /**

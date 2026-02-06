@@ -256,10 +256,15 @@ export class PlandayApiClient {
                         response.statusText ||
                         'Unknown error';
 
+    // Ensure errorMessage is a string (API sometimes returns objects)
+    if (typeof errorMessage !== 'string') {
+      errorMessage = JSON.stringify(errorMessage);
+    }
+
     // Check for nested errors array (Planday validation errors)
     if (errorData.errors && Array.isArray(errorData.errors)) {
       const errorMessages = errorData.errors.map((e: any) =>
-        typeof e === 'string' ? e : (e.message || e.error || JSON.stringify(e))
+        typeof e === 'string' ? e : (typeof e.message === 'string' ? e.message : typeof e.error === 'string' ? e.error : JSON.stringify(e))
       );
       if (errorMessages.length > 0) {
         errorMessage = errorMessages.join('; ');

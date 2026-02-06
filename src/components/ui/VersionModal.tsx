@@ -13,6 +13,16 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.3.9',
+    date: '2026-02-06',
+    title: 'Error Message Display Fix',
+    features: [
+      'Fixed "[object Object]" showing as error message during validation/upload - API error responses are now always displayed as readable strings',
+      'Fixed nested API validation errors that could also produce unreadable error messages',
+      'Fixed potential crash when portal field definitions are missing readOnly or unique arrays',
+    ]
+  },
+  {
     version: '0.3.8',
     date: '2026-01-08',
     title: 'Contract Rules & Field Definitions Fix',
