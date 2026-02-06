@@ -989,8 +989,8 @@ export class ExcelParser {
       column.width = Math.min(maxLength + 2, 50);
     });
 
-    // Descriptions sheet (5-column layout)
-    const descSheet = workbook.addWorksheet('Descriptions');
+    // Instructions sheet (5-column layout)
+    const descSheet = workbook.addWorksheet('Instructions');
 
     // Set column widths
     descSheet.columns = [

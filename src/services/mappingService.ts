@@ -1724,22 +1724,17 @@ export class MappingService {
         });
     };
 
-    // Add Departments (fields starting with "departments.")
-    addFieldCategory(f => f.field.startsWith('departments.'));
-
-    // Add Employee Groups (fields starting with "employeeGroups.")
-    addFieldCategory(f => f.field.startsWith('employeeGroups.'));
-
-    // Add Skills (fields starting with "skills.") - but filter out time-limited skills
+    // Add Skills (fields starting with "skills.")
     addFieldCategory(f => f.field.startsWith('skills.'));
 
     // Add Hourly Rates (fields starting with "hourlyRate.")
     addFieldCategory(f => f.field.startsWith('hourlyRate.'));
 
     // Add any other remaining standard fields
-    addFieldCategory(f => !processedFields.has(f.field));
+    addFieldCategory(f => !processedFields.has(f.field) && !f.field.startsWith('departments.') && !f.field.startsWith('employeeGroups.'));
 
-    // Add custom fields at the end
+    // Add custom fields
+
     allAvailableFields
       .filter(field => field.isCustom && !processedFields.has(field.field))
       .forEach(field => {
@@ -1753,7 +1748,13 @@ export class MappingService {
         });
         processedFields.add(field.field);
       });
-    
+
+    // Add Departments last (fields starting with "departments.")
+    addFieldCategory(f => f.field.startsWith('departments.'));
+
+    // Add Employee Groups last (fields starting with "employeeGroups.")
+    addFieldCategory(f => f.field.startsWith('employeeGroups.'));
+
     // Generate headers (only include relevant fields)
     const headers = fieldOrder.map(f => f.displayName);
     
