@@ -1972,7 +1972,7 @@ export class MappingService {
       // Phone field
       if (fieldName === 'cellPhone') return 'Text (phone number)';
       // Complex sub-field categories
-      if (fieldName.startsWith('departments.')) return 'Checkbox (X/Yes/XX)';
+      if (fieldName.startsWith('departments.')) return 'Checkbox (X/XX)';
       if (fieldName.startsWith('employeeGroups.')) return 'Checkbox or Hourly Rate';
       if (fieldName.startsWith('skills.')) return 'Checkbox (X)';
       if (fieldName.startsWith('hourlyRate.')) return 'Number';
@@ -1992,7 +1992,10 @@ export class MappingService {
         description = field.description || 'Custom field';
         try {
           const customType = ValidationService.getCustomFieldType(field.field);
-          fieldType = ValidationService.getFieldTypeDisplayName(customType);
+          // Show booleans as "Checkbox (X)" consistent with skills/departments
+          fieldType = customType === 'optionalBoolean'
+            ? 'Checkbox (X)'
+            : ValidationService.getFieldTypeDisplayName(customType);
 
           // Get guidance from conversion hints
           const hints = ValidationService.getConversionHints(customType, field.field);
@@ -2062,11 +2065,11 @@ export class MappingService {
             break;
           case 'hiredFrom':
             description = 'Date the employee was/will be hired';
-            guidance = 'Format: YYYY-MM-DD (e.g., 2024-01-15)';
+            guidance = 'Recommended: YYYY-MM-DD (e.g., 2024-01-15). Other common formats are also accepted.';
             break;
           case 'wageValidFrom':
             description = 'Date when hourly rates and fixed salaries take effect';
-            guidance = 'Format: YYYY-MM-DD (e.g., 2024-01-15)';
+            guidance = 'Recommended: YYYY-MM-DD (e.g., 2024-01-15). Other common formats are also accepted.';
             break;
           case 'salaryPeriod':
             description = 'Fixed salary period type';
@@ -2085,7 +2088,7 @@ export class MappingService {
             break;
           case 'supervisorId':
             description = 'Supervisor to assign (must already exist in Planday)';
-            guidance = "Enter supervisor's full name or Planday ID";
+            guidance = "Enter EXACT name of supervisor";
             break;
           case 'isSupervisor':
             description = 'Whether this employee should be a supervisor';
@@ -2103,7 +2106,7 @@ export class MappingService {
             break;
           case 'birthDate':
             description = 'Employee date of birth';
-            guidance = 'Format: YYYY-MM-DD (e.g., 1990-03-15)';
+            guidance = 'Recommended: YYYY-MM-DD (e.g., 1990-03-15). Other common formats are also accepted.';
             break;
           case 'street1':
             description = 'Street address';
@@ -2134,7 +2137,7 @@ export class MappingService {
             if (field.field.startsWith('departments.')) {
               const deptName = field.field.replace('departments.', '');
               description = `Assign to "${deptName}" department`;
-              guidance = 'X or Yes = assign, XX = assign as primary department. Leave empty to skip.';
+              guidance = 'X = assign, XX = assign as primary department. Leave empty to skip.';
             } else if (field.field.startsWith('employeeGroups.')) {
               const groupName = field.field.replace('employeeGroups.', '');
               description = `Assign to "${groupName}" employee group`;
