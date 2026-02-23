@@ -4,8 +4,8 @@
  */
 
 // Notion API configuration
-const NOTION_API_TOKEN = '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';
-const DATABASE_ID = '21c42cb43d568056b341d44e868ae7cb';
+const NOTION_API_TOKEN = import.meta.env.VITE_NOTION_API_TOKEN || '';
+const DATABASE_ID = import.meta.env.VITE_NOTION_DATABASE_ID || '';
 const NOTION_API_VERSION = '2022-06-28';
 
 // TypeScript types for Notion API responses
