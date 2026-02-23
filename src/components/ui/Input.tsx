@@ -1,11 +1,6 @@
 import React, { forwardRef } from 'react';
 
 /**
- * Input component variants
- */
-type InputVariant = 'default' | 'error' | 'success';
-
-/**
  * Input component sizes
  */
 type InputSize = 'sm' | 'md' | 'lg';
@@ -14,7 +9,6 @@ type InputSize = 'sm' | 'md' | 'lg';
  * Props for the Input component
  */
 export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
-  variant?: InputVariant;
   size?: InputSize;
   label?: string;
   error?: string;
@@ -32,7 +26,7 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
  * Follows the design system defined in Tailwind CSS configuration.
  * 
  * Features:
- * - Multiple variants (default, error, success)
+ * - Automatic variant styling based on error/success props
  * - Different sizes (sm, md, lg)
  * - Label and help text support
  * - Error and success states with messages
@@ -42,7 +36,6 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
  * - Forward ref support for form libraries
  */
 export const Input = forwardRef<HTMLInputElement, InputProps>(({
-  variant = 'default',
   size = 'md',
   label,
   error,

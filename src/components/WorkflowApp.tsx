@@ -50,9 +50,6 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   // Bulk correction state - persists across navigation but resets when going back to mapping
   const [resolvedBulkCorrectionPatterns, setResolvedBulkCorrectionPatterns] = useState<Map<string, string>>(new Map());
   
-  // Date format selection state
-  const [_selectedDateFormats, setSelectedDateFormats] = useState<{[columnName: string]: string}>({});
-  
   // Upload results state for verification step
   const [uploadResults, setUploadResults] = useState<EmployeeUploadResult[]>([]);
   const [originalEmployees, setOriginalEmployees] = useState<PlandayEmployeeCreateRequest[]>([]);
@@ -142,7 +139,6 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
     setMappedColumns({});
     setCustomValues({});
     setResolvedBulkCorrectionPatterns(new Map());
-    setSelectedDateFormats({});
     setUploadResults([]);
     setOriginalEmployees([]);
     
@@ -281,9 +277,6 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           }}
           onBack={() => {
             // Reset state when going back to Column Mapping
-            // User navigating back to Column Mapping - preserving bulk corrections
-            setSelectedDateFormats({});
-            
             setCurrentStep(WorkflowStep.ColumnMapping);
             setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
           }}
@@ -308,8 +301,6 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           }}
           onBack={() => {
             // Reset state when going back to Column Mapping
-            setSelectedDateFormats({});
-
             setCurrentStep(WorkflowStep.ColumnMapping);
             setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
           }}

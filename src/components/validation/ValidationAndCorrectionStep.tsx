@@ -625,8 +625,8 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   const handleProceedToIndividualCorrections = async () => {
     // If there are pending corrections, apply them and immediately proceed (first-time completion)
     let employeesToUse = currentEmployees;
-    let newResolvedPatterns = new Map(resolvedPatterns);
-    let hadPendingCorrections = pendingCorrections.size > 0;
+    const newResolvedPatterns = new Map(resolvedPatterns);
+    const hadPendingCorrections = pendingCorrections.size > 0;
     
     if (pendingCorrections.size > 0) {
       

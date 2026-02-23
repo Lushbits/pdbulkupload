@@ -51,7 +51,7 @@ const DateFormatHelper: React.FC<DateFormatHelperProps> = ({
       if (sampleValues.length > 0) {
         // Check if dates could be ambiguous (e.g., 01/02/2024 - could be Jan 2 or Feb 1)
         const hasAmbiguousPattern = sampleValues.some(val => {
-          const parts = val.split(/[\/\-\.]/);
+          const parts = val.split(/[/\-.]/);
           if (parts.length === 3) {
             const [first, second] = parts;
             return parseInt(first) <= 12 && parseInt(second) <= 12 && first !== second;
@@ -99,7 +99,7 @@ const DateFormatHelper: React.FC<DateFormatHelperProps> = ({
       try {
         // In a real implementation, we would convert dates based on selected formats
         // For now, we'll just pass through the employees unchanged
-        let correctedEmployees = employees;
+        const correctedEmployees = employees;
         
         // Apply date format corrections here
         // ... date conversion logic would go here ...

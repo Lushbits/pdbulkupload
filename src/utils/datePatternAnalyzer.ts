@@ -114,8 +114,8 @@ export class DatePatternAnalyzer {
     
     // All supported ambiguous date patterns
     const ambiguousPatterns = [
-      /^\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}$/,     // YYYY-MM-DD vs YYYY-DD-MM
-      /^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/,   // MM/DD/YYYY vs DD/MM/YYYY
+      /^\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}$/,     // YYYY-MM-DD vs YYYY-DD-MM
+      /^\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}$/,   // MM/DD/YYYY vs DD/MM/YYYY
       /^\d{8}$/                                     // 8-digit patterns
     ];
     
@@ -316,10 +316,10 @@ export class DatePatternAnalyzer {
     
     if (pattern.type === 'YEAR_FIRST') {
       // For YYYY-XX-XX, extract the XX positions
-      match = dateStr.match(/^\d{4}[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+      match = dateStr.match(/^\d{4}[/\-.](\d{1,2})[/\-.](\d{1,2})$/);
     } else if (pattern.type === 'YEAR_LAST') {
       // For XX/XX/YYYY, extract the XX positions
-      match = dateStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]\d{2,4}$/);
+      match = dateStr.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.]\d{2,4}$/);
     } else if (pattern.type === 'EIGHT_DIGIT') {
       // Handle multiple 8-digit interpretations
       return this.extractEightDigitPositions(dateStr);

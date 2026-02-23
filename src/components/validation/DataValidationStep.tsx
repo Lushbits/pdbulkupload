@@ -117,7 +117,7 @@ export const DataValidationStep: React.FC<DataValidationStepProps> = ({
                 severity: 'error' as const
               })));
             }
-          } catch (error) {
+          } catch {
             // Fallback to simple format check if mapping service fails
             const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
             if (!dateRegex.test(employee.hiredFrom)) {

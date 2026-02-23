@@ -298,7 +298,7 @@ const FieldButton: React.FC<FieldButtonProps> = ({ field, isSelected, onClick, i
   const enumOptions = (() => {
     try {
       return FieldDefinitionValidator.getFieldOptions(field.name);
-    } catch (error) {
+    } catch {
       return [];
     }
   })();

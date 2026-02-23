@@ -128,7 +128,7 @@ export class DateParser {
       }
       
       // Check slash/dash/dot separated dates where both numbers <= 12
-      const separatorMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+      const separatorMatch = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
       if (separatorMatch) {
         const [, first, second] = separatorMatch;
         const firstNum = parseInt(first, 10);
@@ -141,7 +141,7 @@ export class DateParser {
       }
       
       // Check YYYY-first dates for MM/DD vs DD/MM ambiguity
-      const yyyyFirstMatch = trimmed.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+      const yyyyFirstMatch = trimmed.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/);
       if (yyyyFirstMatch) {
         const [, , first, second] = yyyyFirstMatch;
         const firstNum = parseInt(first, 10);
@@ -189,7 +189,7 @@ export class DateParser {
     }
     
     // Handle YYYY/MM/DD and YYYY.MM.DD formats (unambiguous)
-    const yyyyFirstMatch = trimmed.match(/^(\d{4})[\/\.](\d{1,2})[\/\.](\d{1,2})$/);
+    const yyyyFirstMatch = trimmed.match(/^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/);
     if (yyyyFirstMatch) {
       const [, year, month, day] = yyyyFirstMatch;
       const paddedMonth = month.padStart(2, '0');
@@ -201,7 +201,7 @@ export class DateParser {
     }
     
     // Handle separator-based dates (DD/MM/YYYY, MM/DD/YYYY, etc.)
-    const separatorMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    const separatorMatch = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
     if (separatorMatch) {
       return this.parseSeparatorDate(separatorMatch);
     }
@@ -215,13 +215,14 @@ export class DateParser {
         const day = String(date.getUTCDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       }
-    } catch (error) {
+    } catch {
       // Fallback failed
     }
-    
+
     return null;
   }
-  
+
+
   /**
    * Parse separator-based dates with smart detection
    */

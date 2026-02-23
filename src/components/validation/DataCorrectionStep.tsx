@@ -226,7 +226,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
               severity: 'error' as const
             })));
           }
-        } catch (error) {
+        } catch {
           // Fallback to simple format check if mapping service fails
           const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
           if (!dateRegex.test(hiredFromStr)) {
@@ -326,7 +326,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     try {
       // Only log if multiple emails to reduce noise
       if (emailAddresses.length > 1) {
-  
+        // Logging intentionally removed to reduce noise
       }
       
       // Check only the specific emails that were modified
@@ -352,7 +352,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       
       // Only log results summary to reduce noise
       if (existingEmps.size > 0) {
-
+        // Logging intentionally removed to reduce noise
       }
     } catch (error) {
       console.error('❌ Failed to re-check duplicates:', error);
@@ -642,7 +642,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         
         // Debug: Log department and employee group field values for first few employees
         if (fieldSet.size < 10 && (key === 'departments' || key === 'employeeGroups')) {
-
+          // Debug logging removed
         }
         
         if (!internalFields.has(key) && !isIndividualDeptField && !isInternalField) {
