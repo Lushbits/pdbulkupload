@@ -143,7 +143,7 @@ export const VALIDATION_CONFIG = {
   EMAIL_PATTERN: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
   
   // Phone number cleaning patterns
-  PHONE_CLEANUP_PATTERN: /[\s\-\(\)]/g,
+  PHONE_CLEANUP_PATTERN: /[\s\-()]/g,
   
   // Date format for Planday API (YYYY-MM-DD)
   DATE_FORMAT: 'YYYY-MM-DD',

@@ -42,7 +42,7 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
  * - Forward ref support for form libraries
  */
 export const Input = forwardRef<HTMLInputElement, InputProps>(({
-  variant = 'default',
+  variant: _variant = 'default',
   size = 'md',
   label,
   error,

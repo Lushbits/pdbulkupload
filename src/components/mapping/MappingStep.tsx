@@ -589,7 +589,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
   };
 
   const mappedFieldsCount = Object.values(columnMappings).filter(field => field && field !== '__IGNORE__').length;
-  const customValuesCount = Object.entries(customValues).filter(([_, value]) => value.trim()).length;
+  const customValuesCount = Object.entries(customValues).filter(([, value]) => value.trim()).length;
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -836,7 +836,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                                 </div>
                               );
                             }
-                          } catch (error) {
+                          } catch {
                             // No enum options available
                           }
                           return null;
@@ -985,7 +985,7 @@ const MappingStep: React.FC<MappingStepProps> = ({
                                   </div>
                                 );
                               }
-                            } catch (error) {
+                            } catch {
                               // No enum options available
                             }
                             return null;

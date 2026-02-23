@@ -1781,7 +1781,7 @@ export class MappingService {
               instruction += `. Available options: ${optionsList}`;
             }
           }
-        } catch (error) {
+        } catch {
           // Keep original description if enum detection fails
         }
         
@@ -1808,7 +1808,7 @@ export class MappingService {
               } else {
                 instructions[field.field] = 'Employee type ID (use values from your Planday portal)';
               }
-            } catch (error) {
+            } catch {
               instructions[field.field] = 'Employee type ID (use values from your Planday portal)';
             }
             break;
@@ -1822,7 +1822,7 @@ export class MappingService {
               } else {
                 instructions[field.field] = 'Country code (ISO 3166-1 alpha-2, e.g., DK, SE, NO, UK)';
               }
-            } catch (error) {
+            } catch {
               instructions[field.field] = 'Country code (ISO 3166-1 alpha-2, e.g., DK, SE, NO, UK)';
             }
             break;
@@ -1836,7 +1836,7 @@ export class MappingService {
               } else {
                 instructions[field.field] = 'Gender (Male/Female)';
               }
-            } catch (error) {
+            } catch {
               instructions[field.field] = 'Gender (Male/Female)';
             }
             break;
@@ -1943,14 +1943,14 @@ export class MappingService {
                 } else {
                   instructions[field.field] = `Enter appropriate value for ${field.field}`;
                 }
-              } catch (error) {
+              } catch {
                 instructions[field.field] = `Enter appropriate value for ${field.field}`;
               }
             }
         }
       }
     });
-    
+
     // Build fieldDescriptions for the Descriptions sheet
     const fieldDescriptions: Record<string, {
       description: string;
@@ -3609,13 +3609,13 @@ export class ValidationService {
           'Also: YYYY/MM/DD, YYYYMMDD, named months'
         ];
         
-      case 'optionalEnum':
+      case 'optionalEnum': {
         // Enhanced enum hints with actual field definition options
         const baseHints = [
           'Must use one of the predefined dropdown options',
           'Case-insensitive matching supported'
         ];
-        
+
         // Add specific enum options if field name is provided and field definitions are available
         if (fieldName) {
           try {
@@ -3625,13 +3625,14 @@ export class ValidationService {
               const moreText = enumOptions.length > 6 ? ` (+${enumOptions.length - 6} more)` : '';
               baseHints.push(`Options: ${optionsText}${moreText}`);
             }
-          } catch (error) {
+          } catch {
             // Fall back to base hints if field definitions not available
           }
         }
-        
+
         return baseHints;
-        
+      }
+
       case 'optionalImage':
         return ['Image uploads not supported in bulk import'];
         
@@ -4421,7 +4422,7 @@ export class DateParser {
       }
       
       // Check slash/dash/dot separated dates where both numbers <= 12
-      const separatorMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+      const separatorMatch = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
       if (separatorMatch) {
         const [, first, second] = separatorMatch;
         const firstNum = parseInt(first, 10);
@@ -4469,7 +4470,7 @@ export class DateParser {
     }
     
     // Handle YYYY/MM/DD and YYYY.MM.DD formats (unambiguous)
-    const yyyyFirstMatch = trimmed.match(/^(\d{4})[\/\.](\d{1,2})[\/\.](\d{1,2})$/);
+    const yyyyFirstMatch = trimmed.match(/^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/);
     if (yyyyFirstMatch) {
       const [, year, month, day] = yyyyFirstMatch;
       const paddedMonth = month.padStart(2, '0');
@@ -4481,7 +4482,7 @@ export class DateParser {
     }
     
     // Handle separator-based dates (DD/MM/YYYY, MM/DD/YYYY, etc.)
-    const separatorMatch = trimmed.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    const separatorMatch = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
     if (separatorMatch) {
       return this.parseSeparatorDate(separatorMatch);
     }
@@ -4495,13 +4496,13 @@ export class DateParser {
         const day = String(date.getUTCDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       }
-    } catch (error) {
+    } catch {
       // Fallback failed
     }
-    
+
     return null;
   }
-  
+
   /**
    * Parse separator-based dates with smart detection
    */

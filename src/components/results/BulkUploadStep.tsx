@@ -44,13 +44,11 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   const [processingLog, setProcessingLog] = useState<string[]>([]);
   const [validationErrors, setValidationErrors] = useState<Array<{employee: string, errors: string[]}>>([]);
   // Progress state is no longer needed for payrates/salaries since they're processed inline per employee
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [payrateProgress, _setPayrateProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [payrateProgress] = useState<{ completed: number; total: number } | null>(null);
   const [payrateResults, setPayrateResults] = useState<PayrateSetResult[] | null>(null);
   const [supervisorProgress, setSupervisorProgress] = useState<{ completed: number; total: number } | null>(null);
   const [supervisorResults, setSupervisorResults] = useState<Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }> | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [salaryProgress, _setSalaryProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [salaryProgress] = useState<{ completed: number; total: number } | null>(null);
   const [salaryResults, setSalaryResults] = useState<FixedSalarySetResult[] | null>(null);
   const [contractRuleResults, setContractRuleResults] = useState<ContractRuleSetResult[] | null>(null);
 
@@ -242,7 +240,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             } else {
               throw new Error('Unable to connect to Planday API. Please check your authentication and try again.');
             }
-          } catch (error) {
+          } catch {
             throw new Error('Unable to connect to Planday API. Please check your authentication and try again.');
           }
         } else {

@@ -362,6 +362,7 @@ export class ExcelParser {
     // Handle string values that might contain unwanted characters
     // Remove common Excel artifacts
     strValue = strValue
+      // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001F\u007F]/g, '') // Remove control characters
       .replace(/\u00A0/g, ' ') // Replace non-breaking spaces with regular spaces
       .trim();
@@ -374,7 +375,7 @@ export class ExcelParser {
         if (!isNaN(num) && num > 1000000000) {
           return num.toFixed(0);
         }
-      } catch (e) {
+      } catch {
         // If parsing fails, return the original string
       }
     }

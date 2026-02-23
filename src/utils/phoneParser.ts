@@ -90,13 +90,13 @@ export class PhoneParser {
           processedInput = Math.round(numericValue).toString();
           // Converted scientific notation from Excel
         }
-      } catch (error) {
+      } catch {
         console.warn(`⚠️ Could not convert scientific notation: ${input}`);
       }
     }
 
     // Clean the input - remove spaces, dashes, parentheses
-    const cleaned = processedInput.replace(/[\s\-\(\)]/g, '');
+    const cleaned = processedInput.replace(/[\s\-()]/g, '');
     
     if (cleaned.length === 0) {
       return {
@@ -542,13 +542,13 @@ export class PhoneParser {
           processedInput = Math.round(numericValue).toString();
           // Converted scientific notation from Excel
         }
-      } catch (error) {
+      } catch {
         console.warn(`⚠️ Could not convert scientific notation: ${input}`);
       }
     }
 
     // Clean the input - remove spaces, dashes, parentheses
-    const cleaned = processedInput.replace(/[\s\-\(\)]/g, '');
+    const cleaned = processedInput.replace(/[\s\-()]/g, '');
     
     if (cleaned.length === 0) {
       return {

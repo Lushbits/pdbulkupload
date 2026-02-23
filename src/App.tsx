@@ -22,7 +22,7 @@ function App() {
   useEffect(() => {
     // Only expose debug functions in development environment
     if (process.env.NODE_ENV === 'development') {
-      // @ts-ignore - Intentionally adding to window for debugging
+      // @ts-expect-error - Intentionally adding to window for debugging
       window.debugPlanday = {
         diagnoseFieldInconsistencies: () => ValidationService.diagnoseFieldInconsistencies(),
         getPlandayApi: () => plandayApi,
@@ -36,9 +36,9 @@ function App() {
     
     return () => {
       // Clean up debug functions if they exist
-      // @ts-ignore - debugPlanday may not exist in production
+      // @ts-expect-error - debugPlanday may not exist in production
       if (typeof window !== 'undefined' && window.debugPlanday) {
-        // @ts-ignore
+        // @ts-expect-error - cleaning up debug functions
         delete window.debugPlanday;
       }
     };

@@ -50,8 +50,8 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   // Bulk correction state - persists across navigation but resets when going back to mapping
   const [resolvedBulkCorrectionPatterns, setResolvedBulkCorrectionPatterns] = useState<Map<string, string>>(new Map());
   
-  // Date format selection state
-  const [_selectedDateFormats, setSelectedDateFormats] = useState<{[columnName: string]: string}>({});
+  // Date format selection state - setSelectedDateFormats used in MappingStep callback
+  const [, setSelectedDateFormats] = useState<{[columnName: string]: string}>({});
   
   // Upload results state for verification step
   const [uploadResults, setUploadResults] = useState<EmployeeUploadResult[]>([]);
