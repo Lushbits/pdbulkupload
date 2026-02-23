@@ -152,7 +152,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
               <ul className="text-sm mb-4 ml-4 list-disc space-y-1">
                 <li><strong>HTTPS encryption</strong>: All communications are encrypted in transit</li>
                 <li><strong>Client-side validation</strong>: Data validation occurs locally in your browser before any transmission</li>
-                <li><strong>All-or-nothing batches</strong>: Employee data is processed in secure batches - if any fail, none are committed</li>
+                <li><strong>Fail-safe processing</strong>: Uploads stop on first error; some records may already be created before the error occurs</li>
                 <li><strong>No server-side logging</strong>: We do not log, store, or monitor your data processing activities on our servers</li>
                 <li><strong>Automatic cleanup</strong>: All processed data is cleared from browser memory when you close the application</li>
               </ul>
