@@ -442,7 +442,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       // Check if upload was successful
       if (failedCount > 0) {
         setStatus('error');
-        setErrorMessage(`Atomic upload failed: ${failedCount} employees failed to upload. ${completedCount} employees were successfully uploaded before the failure.`);
+        setErrorMessage(`Upload failed: ${failedCount} employees failed to upload. ${completedCount} employees were successfully uploaded before the failure.`);
         addLogEntry(`❌ ATOMIC UPLOAD FAILED: Not all employees could be uploaded.`);
         addLogEntry(`📊 Final result: ${completedCount} successful, ${failedCount} failed`);
       } else {
@@ -637,14 +637,14 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             {status === 'authenticating' && 'Re-authenticating with Planday'}
             {status === 'uploading' && 'Uploading to Planday'}
             {status === 'post-processing' && 'Finalizing Employee Setup'}
-            {status === 'completed' && 'Atomic Upload Complete!'}
-            {status === 'error' && 'Atomic Upload Failed'}
+            {status === 'completed' && 'Upload Complete!'}
+            {status === 'error' && 'Upload Failed'}
           </h2>
           <p className="text-gray-600">
-            {status === 'preparing' && 'Initializing atomic upload process...'}
+            {status === 'preparing' && 'Initializing upload process...'}
             {status === 'validating' && `Pre-validating all ${employees.length} employees. Upload will only proceed if ALL are valid.`}
             {status === 'authenticating' && 'Authentication expired. Automatically refreshing your session...'}
-            {status === 'uploading' && `Atomic upload in progress - all ${employees.length} employees must succeed.`}
+            {status === 'uploading' && `Upload in progress - all ${employees.length} employees must succeed.`}
             {status === 'post-processing' && 'Setting pay rates and assigning supervisors...'}
             {status === 'completed' && 'All employees have been successfully uploaded to Planday!'}
             {status === 'error' && 'Upload stopped due to validation or API errors. No partial uploads.'}
@@ -914,7 +914,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
                 <p className="text-red-700 text-sm mb-4">
                   {validationErrors.length} employees failed validation. ALL issues must be fixed before upload can proceed.
                   <br/>
-                  <strong>Atomic Upload:</strong> No employees have been uploaded to Planday.
+                  <strong>Note:</strong> No employees have been uploaded to Planday.
                 </p>
               </div>
             </div>
@@ -953,7 +953,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         </Card>
       )}
 
-      {/* Atomic Upload Failure Details */}
+      {/* Upload Failure Details */}
       {status === 'error' && results && results.length > 0 && (
         <Card className="border-red-200 bg-red-50">
           <div className="space-y-4">
@@ -962,11 +962,11 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <h4 className="font-medium text-red-800 mb-2">Atomic Upload Failed</h4>
+                <h4 className="font-medium text-red-800 mb-2">Upload Failed</h4>
                 <p className="text-red-700 text-sm mb-4">
                   {errorMessage}
                   <br/>
-                  <strong>Atomic Upload:</strong> Upload stopped at first failure to maintain data integrity.
+                  <strong>Note:</strong> Upload stopped at first failure to maintain data integrity.
                 </p>
               </div>
             </div>
