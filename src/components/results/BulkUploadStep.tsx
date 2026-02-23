@@ -43,12 +43,9 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [processingLog, setProcessingLog] = useState<string[]>([]);
   const [validationErrors, setValidationErrors] = useState<Array<{employee: string, errors: string[]}>>([]);
-  // Progress state is no longer needed for payrates/salaries since they're processed inline per employee
-  const [payrateProgress] = useState<{ completed: number; total: number } | null>(null);
   const [payrateResults, setPayrateResults] = useState<PayrateSetResult[] | null>(null);
   const [supervisorProgress, setSupervisorProgress] = useState<{ completed: number; total: number } | null>(null);
   const [supervisorResults, setSupervisorResults] = useState<Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }> | null>(null);
-  const [salaryProgress] = useState<{ completed: number; total: number } | null>(null);
   const [salaryResults, setSalaryResults] = useState<FixedSalarySetResult[] | null>(null);
   const [contractRuleResults, setContractRuleResults] = useState<ContractRuleSetResult[] | null>(null);
 
@@ -702,46 +699,10 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       )}
 
       {/* Post-Processing Progress */}
-      {status === 'post-processing' && (payrateProgress || salaryProgress || supervisorProgress) && (
+      {status === 'post-processing' && supervisorProgress && (
         <Card>
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Post-Processing</h3>
-
-            {/* Pay Rate Progress */}
-            {payrateProgress && (
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-700">Pay Rates</span>
-                  <span className="text-sm text-gray-600">
-                    {payrateProgress.completed} / {payrateProgress.total}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${(payrateProgress.completed / payrateProgress.total) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
-            {/* Fixed Salary Progress */}
-            {salaryProgress && (
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-700">Fixed Salaries</span>
-                  <span className="text-sm text-gray-600">
-                    {salaryProgress.completed} / {salaryProgress.total}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${(salaryProgress.completed / salaryProgress.total) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
 
             {/* Supervisor Progress */}
             {supervisorProgress && (
