@@ -4,4 +4,5 @@
  */
 
 export { PhoneParser } from './phoneParser';
-export { DateParser } from './dateParser'; 
+export { DateParser } from './dateParser';
+export { normalizeDecimal } from './numericParser';
