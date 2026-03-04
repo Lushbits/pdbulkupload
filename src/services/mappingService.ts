@@ -23,6 +23,8 @@ import type {
   PlandayEmployeeCreateRequest
 } from '../types/planday';
 
+import { normalizeDecimal } from '../utils/numericParser';
+
 export interface MappingResult {
   ids: number[];
   errors: string[];
@@ -1229,7 +1231,7 @@ export class MappingService {
             // "X", "x", "yes", "true" = assignment only, numeric value = hourly rate
             const lowerValue = value.toLowerCase();
             if (lowerValue !== 'x' && lowerValue !== 'yes' && lowerValue !== 'true') {
-              const numericValue = parseFloat(value);
+              const numericValue = normalizeDecimal(value);
               if (!isNaN(numericValue)) {
                 if (numericValue > 0) {
                   // Store as hourly rate
@@ -1444,8 +1446,8 @@ export class MappingService {
         salaryValid = false;
       }
 
-      // Validate hours is a number
-      const salaryHours = parseFloat(salaryHoursStr);
+      // Validate hours is a number (supports both , and . as decimal separators)
+      const salaryHours = normalizeDecimal(salaryHoursStr);
       if (isNaN(salaryHours) || salaryHours <= 0) {
         errors.push({
           field: 'salaryHours',
@@ -1457,8 +1459,8 @@ export class MappingService {
         salaryValid = false;
       }
 
-      // Validate amount is a number
-      const salaryAmount = parseFloat(salaryAmountStr);
+      // Validate amount is a number (supports both , and . as decimal separators)
+      const salaryAmount = normalizeDecimal(salaryAmountStr);
       if (isNaN(salaryAmount) || salaryAmount < 0) {
         errors.push({
           field: 'salaryAmount',
@@ -2085,11 +2087,11 @@ export class MappingService {
             break;
           case 'salaryHours':
             description = 'Expected working hours for the salary period';
-            guidance = 'e.g., 160 for monthly, 37 for weekly';
+            guidance = 'e.g., 160 for monthly, 37.5 or 37,5 for weekly. Both . and , accepted as decimal separator.';
             break;
           case 'salaryAmount':
             description = 'Fixed salary amount for the period';
-            guidance = 'e.g., 30000 (numeric value, no currency symbol)';
+            guidance = 'e.g., 30000 or 30000,50 (numeric value, no currency symbol). Both . and , accepted as decimal separator.';
             break;
           case 'supervisorId':
             description = 'Supervisor to assign (must already exist in Planday)';
@@ -2146,7 +2148,7 @@ export class MappingService {
             } else if (field.field.startsWith('employeeGroups.')) {
               const groupName = field.field.replace('employeeGroups.', '');
               description = `Assign to "${groupName}" employee group`;
-              guidance = 'X = assign without rate, or enter hourly rate (e.g., 15.50). Leave empty to skip.';
+              guidance = 'X = assign without rate, or enter hourly rate (e.g., 15.50 or 15,50). Both . and , accepted. Leave empty to skip.';
             } else if (field.field.startsWith('skills.')) {
               const skillName = field.field.replace('skills.', '');
               description = `Assign "${skillName}" skill`;
@@ -2154,7 +2156,7 @@ export class MappingService {
             } else if (field.field.startsWith('hourlyRate.')) {
               const rateName = field.field.replace('hourlyRate.', '');
               description = `Hourly rate for "${rateName}"`;
-              guidance = 'Numeric value (e.g., 15.50). Leave empty to skip.';
+              guidance = 'Numeric value (e.g., 15.50 or 15,50). Both . and , accepted as decimal separator. Leave empty to skip.';
             } else if (field.isComplexSubField && field.field.includes('.')) {
               const [parentField, subField] = field.field.split('.');
               if (parentField === 'bankAccount') {
@@ -3322,13 +3324,8 @@ export class ValidationService {
     rowIndex: number,
     result: CustomFieldConversionResult
   ): number | null {
-    // Handle string numbers with potential formatting
-    let cleanValue = String(value).trim();
-    
-    // Remove common formatting (commas, spaces)
-    cleanValue = cleanValue.replace(/[,\s]/g, '');
-    
-    const numValue = Number(cleanValue);
+    // Handle string numbers with potential formatting (supports both , and . as decimal separators)
+    const numValue = normalizeDecimal(value);
     
     if (isNaN(numValue)) {
       result.errors.push({
@@ -3443,7 +3440,7 @@ export class ValidationService {
     
     // Check if it's a numeric value that matches enum options
     if (fieldInfo.enumOptions) {
-      const numericValue = Number(strValue);
+      const numericValue = normalizeDecimal(strValue);
       if (!isNaN(numericValue)) {
         const numericMatch = fieldInfo.enumOptions.find(option => option.value === numericValue);
         if (numericMatch) {
@@ -3600,7 +3597,7 @@ export class ValidationService {
       case 'optionalNumeric':
         return [
           'Use numeric values (integers or decimals)',
-          'Commas and spaces will be removed automatically'
+          'Both . and , accepted as decimal separator (e.g., 15.50 or 15,50)'
         ];
         
       case 'optionalDate':
