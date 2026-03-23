@@ -1646,6 +1646,7 @@ export class MappingService {
     // Fields to exclude from templates because they are auto-populated or deprecated
     const excludedFields = [
       'phone', 'phoneCountryCode', 'primaryDepartmentId', // phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported), primaryDepartmentId is set via "xx" in department columns
+      'cellPhoneCountryPrefix', // unsupported for bulk upload
       'contractRulesRuleId', // internal reference, not user-settable
       'countryId',           // internal ID, not useful for bulk import
       'description',         // not a standard employee field for creation
@@ -2800,6 +2801,7 @@ export class ValidationService {
     // primaryDepartmentId is set via "xx" marker in department columns, not direct mapping
     const excludedFields = [
       'phone', 'phoneCountryCode', 'primaryDepartmentId',
+      'cellPhoneCountryPrefix', // unsupported for bulk upload
       'contractRulesRuleId', // internal reference, not user-settable
       'countryId',           // internal ID, not useful for bulk import
       'description',         // not a standard employee field for creation
