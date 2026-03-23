@@ -860,7 +860,7 @@ export class MappingService {
           affectedRows++;
           totalErrors += result.errors.length;
 
-          const name = employee.employeeTypeId.trim();
+          const name = employee.employeeTypeId.toString().trim();
           const normalizedName = this.normalizeName(name);
 
           if (!this.employeeTypesByName.has(normalizedName) && !this.employeeTypesById.has(parseInt(name))) {
@@ -1369,7 +1369,7 @@ export class MappingService {
         (converted as any).__employeeTypeId = numericId;
         // Store human-readable name for UI display
         const typeName = this.employeeTypesById.get(numericId);
-        converted.employeeTypeId = typeName || numericId;
+        converted.employeeTypeId = typeName || String(numericId);
       }
     }
 
