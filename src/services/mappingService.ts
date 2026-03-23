@@ -1640,7 +1640,18 @@ export class MappingService {
     const processedFields = new Set<string>();
 
     // Fields to exclude from templates because they are auto-populated or deprecated
-    const excludedFields = ['phone', 'phoneCountryCode', 'primaryDepartmentId']; // phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported), primaryDepartmentId is set via "xx" in department columns
+    const excludedFields = [
+      'phone', 'phoneCountryCode', 'primaryDepartmentId', // phone/phoneCountryCode fields removed (only cellPhone/cellPhoneCountryCode supported), primaryDepartmentId is set via "xx" in department columns
+      'contractRulesRuleId', // internal reference, not user-settable
+      'countryId',           // internal ID, not useful for bulk import
+      'description',         // not a standard employee field for creation
+      'isPublic',            // internal flag
+      'subdivisionId',       // internal reference
+      'securityGroups',      // managed separately, not via bulk upload
+      'dateTimeCreated',     // read-only system timestamp
+      'dateTimeModified',    // read-only system timestamp
+      'hiredDate',           // duplicate of hiredFrom; only hiredFrom should be shown
+    ];
 
     // Exclude supervisor fields if not requested
     if (!includeSupervisorColumns) {
@@ -2779,7 +2790,18 @@ export class ValidationService {
     
     // Fields to exclude from mapping UI because they are auto-populated, read-only, or deprecated
     // primaryDepartmentId is set via "xx" marker in department columns, not direct mapping
-    const excludedFields = ['phone', 'phoneCountryCode', 'primaryDepartmentId'];
+    const excludedFields = [
+      'phone', 'phoneCountryCode', 'primaryDepartmentId',
+      'contractRulesRuleId', // internal reference, not user-settable
+      'countryId',           // internal ID, not useful for bulk import
+      'description',         // not a standard employee field for creation
+      'isPublic',            // internal flag
+      'subdivisionId',       // internal reference
+      'securityGroups',      // managed separately, not via bulk upload
+      'dateTimeCreated',     // read-only system timestamp
+      'dateTimeModified',    // read-only system timestamp
+      'hiredDate',           // duplicate of hiredFrom; only hiredFrom should be shown
+    ];
 
     // Add standard fields (excluding complex object parents and hardcoded excluded fields)
     // Note: We allow read-only fields during bulk import since users should be able to set initial values
