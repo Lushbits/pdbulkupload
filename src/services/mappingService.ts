@@ -1364,8 +1364,12 @@ export class MappingService {
       // Set the ID if we found a match - ensure it's always a number
       if (typeResult.ids.length > 0) {
         const resolvedId = typeResult.ids[0];
-        // Ensure employeeTypeId is always a number, not a string
-        converted.employeeTypeId = typeof resolvedId === 'string' ? parseInt(resolvedId, 10) : resolvedId;
+        const numericId = typeof resolvedId === 'string' ? parseInt(resolvedId, 10) : resolvedId;
+        // Store numeric ID internally for API payload (same pattern as departments/employeeGroups)
+        (converted as any).__employeeTypeId = numericId;
+        // Store human-readable name for UI display
+        const typeName = this.employeeTypesById.get(numericId);
+        converted.employeeTypeId = typeName || numericId;
       }
     }
 
@@ -2243,7 +2247,7 @@ export class MappingService {
     // Define internal fields that should be excluded from the API payload
     const internalFields = new Set([
       'rowIndex', 'originalData', '__internal_id', '_id', '_bulkCorrected',
-      '__departmentsIds', '__employeeGroupsIds', // Internal ID fields for API payload
+      '__departmentsIds', '__employeeGroupsIds', '__employeeTypeId', // Internal ID fields for API payload
       '__employeeGroupPayrates', 'wageValidFrom', // Payrate fields (handled separately after employee creation)
       '__supervisorAssignment', 'supervisorId', // Supervisor assignment (must be PUT after employee creation, not POST)
       '__fixedSalaryAssignment', 'salaryPeriod', 'salaryHours', 'salaryAmount', // Fixed salary (PUT after employee creation)
@@ -2300,6 +2304,10 @@ export class MappingService {
     }
     if (converted.__employeeGroupsIds && Array.isArray(converted.__employeeGroupsIds) && converted.__employeeGroupsIds.length > 0) {
       cleanPayload.employeeGroups = converted.__employeeGroupsIds;
+    }
+    // Special handling: Use internal numeric ID for employeeTypeId (display field stores name)
+    if ((converted as any).__employeeTypeId != null) {
+      cleanPayload.employeeTypeId = (converted as any).__employeeTypeId;
     }
 
     // Convert primaryDepartmentId from name to ID if it's a string
