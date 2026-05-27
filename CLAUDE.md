@@ -61,6 +61,9 @@ npm run preview  # Preview production build locally
 - Progress tracking for long-running operations
 - Lazy loading for modal components
 
+## Issues
+GitHub issues are often filed thin by non-technical reporters. When the user links an issue for review, see [ISSUE_CONVENTIONS.md](ISSUE_CONVENTIONS.md) — it defines the triage workflow (reproduce in code, separate symptom from cause, ask targeted questions) and the body/title/label/closing format to follow.
+
 ## Testing
 No test framework configured. Manual testing required for changes.
 
