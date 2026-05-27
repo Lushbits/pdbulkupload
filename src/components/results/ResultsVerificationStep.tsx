@@ -25,6 +25,7 @@ interface ResultsVerificationStepProps {
   onComplete: () => void;
   onBack: () => void;
   onReset?: () => void; // New prop for resetting the entire process
+  onBackToEditTable?: () => void; // Return to the edit table, stripping already-created rows
   className?: string;
 }
 
@@ -61,6 +62,7 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
   onComplete,
   onBack,
   onReset,
+  onBackToEditTable,
   className = ''
 }) => {
   const plandayApi = usePlandayApi();
@@ -764,6 +766,12 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
         </Button>
         
         <div className="flex space-x-3">
+          {onBackToEditTable && (
+            <Button onClick={onBackToEditTable} variant="outline">
+              Go back to edit table
+            </Button>
+          )}
+
           {verificationComplete && (
             <Button onClick={startVerification} variant="outline">
               Re-verify
