@@ -23,7 +23,6 @@ interface ResultsVerificationStepProps {
   postCreationResults?: PostCreationResults;
   excludedEmployees?: ExcludedEmployee[];
   onComplete: () => void;
-  onBack: () => void;
   onReset?: () => void; // New prop for resetting the entire process
   onBackToEditTable?: () => void; // Return to the edit table, stripping already-created rows
   className?: string;
@@ -60,7 +59,6 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
   postCreationResults,
   excludedEmployees = [],
   onComplete,
-  onBack,
   onReset,
   onBackToEditTable,
   className = ''
@@ -759,12 +757,8 @@ const ResultsVerificationStep: React.FC<ResultsVerificationStepProps> = ({
         </Card>
       )}
 
-      {/* Actions */}
-      <div className="flex justify-between items-center pt-6">
-        <Button variant="outline" onClick={onBack}>
-          Back to Upload
-        </Button>
-        
+      {/* Actions (step-back lives in the top navigation bar) */}
+      <div className="flex justify-end items-center pt-6">
         <div className="flex space-x-3">
           {onBackToEditTable && (
             <Button onClick={onBackToEditTable} variant="outline">

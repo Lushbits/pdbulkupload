@@ -18,13 +18,14 @@ export interface PostCreationResults {
 interface BulkUploadStepProps {
   employees: Employee[];
   onComplete: (results: EmployeeUploadResult[], postCreationResults?: PostCreationResults) => void;
-  onBack: () => void;
   /**
    * Return to the validation/correction (edit) table with the uploaded data still in memory.
    * Rows that were created in Planday (success + partial) are stripped before re-entry so a
    * re-run can't duplicate them; failed rows remain for correction and retry.
    */
   onBackToEditTable: (results: EmployeeUploadResult[]) => void;
+  /** Reports whether an upload is actively running, so the parent can block top-level navigation. */
+  onBusyChange?: (busy: boolean) => void;
   className?: string;
 }
 
@@ -40,8 +41,8 @@ interface BulkUploadStepProps {
 const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   employees,
   onComplete,
-  onBack,
   onBackToEditTable,
+  onBusyChange,
   className = ''
 }) => {
   const [status, setStatus] = useState<'preparing' | 'validating' | 'authenticating' | 'uploading' | 'post-processing' | 'completed' | 'aborted' | 'error'>('preparing');
@@ -62,6 +63,18 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
 
   const plandayApi = usePlandayApi();
+
+  // Report active-upload state upward so the parent can disable top-level "Back"
+  // while a run is in flight (mirrors the in-step back button's disabled states).
+  useEffect(() => {
+    const busy = status === 'validating' || status === 'authenticating' || status === 'uploading' || status === 'post-processing';
+    onBusyChange?.(busy);
+  }, [status, onBusyChange]);
+
+  // Clear the busy flag if this step unmounts mid-run.
+  useEffect(() => {
+    return () => onBusyChange?.(false);
+  }, [onBusyChange]);
 
   // Add log entry for progress tracking
   const addLogEntry = (message: string) => {
@@ -1111,20 +1124,8 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         </Card>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex justify-between items-center pt-6">
-        <Button
-          variant="secondary"
-          onClick={onBack}
-          disabled={status === 'uploading' || status === 'validating' || status === 'authenticating' || status === 'post-processing'}
-          className="flex items-center space-x-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-          </svg>
-          <span>Back to Preview</span>
-        </Button>
-
+      {/* Action Buttons (step-back lives in the top navigation bar) */}
+      <div className="flex justify-end items-center pt-6">
         <div className="space-x-3">
           {/* Validation Error - Go back to the edit table to fix issues */}
           {status === 'error' && validationErrors.length > 0 && (
