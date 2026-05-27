@@ -60,6 +60,14 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   // Excluded employees (those with errors that were skipped during upload)
   const [excludedEmployees, setExcludedEmployees] = useState<ExcludedEmployee[]>([]);
 
+  // Notice shown after a "go back to edit table" round-trip, informing the user which
+  // already-created rows were removed and which need manual fixing in Planday.
+  const [roundTripNotice, setRoundTripNotice] = useState<{
+    removedSuccess: number;
+    partial: Array<{ name: string; errors: string[] }>;
+    remaining: number;
+  } | null>(null);
+
   // Privacy modal state
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   
@@ -127,9 +135,53 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   };
 
   /**
+   * Return to the Validation/Correction (edit) table after an upload/abort, keeping the
+   * already-mapped/corrected data in memory. Rows that were created in Planday (successful
+   * AND partial) are stripped so a re-run can't duplicate them; failed rows remain for
+   * correction and retry. The user is informed about what was removed and what needs
+   * manual fixing.
+   */
+  const handleBackToEditTable = (results: EmployeeUploadResult[]) => {
+    // uploadResult.rowIndex is the position within the `employees` array that was uploaded
+    // (the validation gate guarantees a 1:1 alignment), so we can filter by index directly.
+    const createdRowIndexes = new Set(
+      results.filter(r => r.success).map(r => r.rowIndex)
+    );
+
+    const fullySuccessful = results.filter(r => r.success && !(r.partialErrors && r.partialErrors.length));
+    const partial = results.filter(r => r.success && r.partialErrors && r.partialErrors.length > 0);
+
+    const remaining = employees.filter((_, idx) => !createdRowIndexes.has(idx));
+    setEmployees(remaining);
+
+    // Only show a notice if something was actually created (a pure validation bounce removes nothing)
+    if (createdRowIndexes.size > 0) {
+      setRoundTripNotice({
+        removedSuccess: fullySuccessful.length,
+        partial: partial.map(r => ({
+          name: `${r.employee.firstName} ${r.employee.lastName}`,
+          errors: r.partialErrors || []
+        })),
+        remaining: remaining.length
+      });
+    } else {
+      setRoundTripNotice(null);
+    }
+
+    // Clear stale upload results - the next run produces fresh ones
+    setUploadResults([]);
+    setOriginalEmployees([]);
+    setPostCreationResults({});
+
+    setCurrentStep(WorkflowStep.ValidationCorrection);
+    setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload, WorkflowStep.ColumnMapping]);
+  };
+
+  /**
    * Cancel upload and start over
    */
   const handleCancelUpload = () => {
+    setRoundTripNotice(null);
     // Reset everything and go back to authentication
     setCurrentStep(WorkflowStep.Authentication);
     setCompletedSteps([]);
@@ -283,29 +335,91 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
         />
       )}
 
-      {currentStep === WorkflowStep.ValidationCorrection && employees.length > 0 && (
-        <ValidationAndCorrectionStep
-          key={`validation-${currentStep}-${employees.length}`} // Removed patterns.size to prevent re-mount when patterns are saved
-          employees={employees}
-          departments={departments}
-          employeeGroups={employeeGroups}
-          employeeTypes={employeeTypes}
-          resolvedPatterns={resolvedBulkCorrectionPatterns}
-          onPatternsResolved={(patterns) => {
-            setResolvedBulkCorrectionPatterns(patterns);
-          }}
-          onComplete={(correctedEmployees, excluded) => {
-            setEmployees(correctedEmployees);
-            setExcludedEmployees(excluded || []);
-            handleNextStep(); // Go to final preview
-          }}
-          onBack={() => {
-            // Reset state when going back to Column Mapping
-            setCurrentStep(WorkflowStep.ColumnMapping);
-            setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
-          }}
-          plandayApi={plandayApi}
-        />
+      {currentStep === WorkflowStep.ValidationCorrection && (
+        <>
+          {/* Round-trip notice: informs the user which created rows were removed */}
+          {roundTripNotice && (
+            <Card className="mb-6 border-blue-200 bg-blue-50">
+              <div className="p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <h3 className="font-semibold text-blue-900">Returned to the edit table</h3>
+                  <button
+                    onClick={() => setRoundTripNotice(null)}
+                    className="text-blue-500 hover:text-blue-700 text-sm"
+                    aria-label="Dismiss notice"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                {roundTripNotice.removedSuccess > 0 && (
+                  <p className="text-sm text-blue-800">
+                    <strong>{roundTripNotice.removedSuccess}</strong> fully-created employee(s) were removed from the table
+                    because they already exist in Planday — re-uploading them would create duplicates.
+                  </p>
+                )}
+                {roundTripNotice.partial.length > 0 && (
+                  <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">
+                    <p className="mb-1">
+                      <strong>{roundTripNotice.partial.length}</strong> employee(s) were created but had follow-up errors.
+                      They <strong>already exist in Planday</strong> and were removed from the table so they aren’t re-created.
+                      Fix these manually or via the bulk update tool:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 max-h-40 overflow-y-auto">
+                      {roundTripNotice.partial.map((p, i) => (
+                        <li key={i}>
+                          <span className="font-medium">{p.name}</span>
+                          {p.errors.length > 0 && <span> — {p.errors.join('; ')}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-sm text-blue-800">
+                  <strong>{roundTripNotice.remaining}</strong> employee(s) remain for correction and retry.
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {employees.length > 0 ? (
+            <ValidationAndCorrectionStep
+              key={`validation-${currentStep}-${employees.length}`} // Removed patterns.size to prevent re-mount when patterns are saved
+              employees={employees}
+              departments={departments}
+              employeeGroups={employeeGroups}
+              employeeTypes={employeeTypes}
+              resolvedPatterns={resolvedBulkCorrectionPatterns}
+              onPatternsResolved={(patterns) => {
+                setResolvedBulkCorrectionPatterns(patterns);
+              }}
+              onComplete={(correctedEmployees, excluded) => {
+                setRoundTripNotice(null);
+                setEmployees(correctedEmployees);
+                setExcludedEmployees(excluded || []);
+                handleNextStep(); // Go to final preview
+              }}
+              onBack={() => {
+                // Reset state when going back to Column Mapping
+                setRoundTripNotice(null);
+                setCurrentStep(WorkflowStep.ColumnMapping);
+                setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
+              }}
+              plandayApi={plandayApi}
+            />
+          ) : (
+            <Card>
+              <div className="text-center py-12">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Nothing left to edit</h3>
+                <p className="text-gray-600 mb-6">
+                  All employees were created in Planday, so there are no rows left to correct.
+                </p>
+                <Button variant="secondary" onClick={handleCancelUpload}>
+                  Start over
+                </Button>
+              </div>
+            </Card>
+          )}
+        </>
       )}
 
       {currentStep === WorkflowStep.FinalPreview && employees.length > 0 && (
@@ -339,6 +453,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setCurrentStep(WorkflowStep.FinalPreview);
             setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload, WorkflowStep.ColumnMapping, WorkflowStep.ValidationCorrection]);
           }}
+          onBackToEditTable={handleBackToEditTable}
         />
       )}
 
@@ -348,6 +463,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
           originalEmployees={originalEmployees}
           postCreationResults={postCreationResults}
           excludedEmployees={excludedEmployees}
+          onBackToEditTable={() => handleBackToEditTable(uploadResults)}
           onComplete={() => {
             // Reset everything and go back to start
             setCurrentStep(WorkflowStep.Authentication);

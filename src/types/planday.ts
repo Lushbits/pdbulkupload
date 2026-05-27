@@ -348,11 +348,18 @@ export interface EmployeeUploadResult {
   error?: string;
   plandayId?: number;
   rowIndex: number;
+  /**
+   * Post-creation / inline operation failures (supervisor, salary, pay-rate, contract-rule).
+   * When present and non-empty on a successful row, the employee WAS created in Planday but
+   * one or more follow-up operations failed — i.e. a "partial" success.
+   */
+  partialErrors?: string[];
 }
 
 export interface BulkUploadProgress {
   total: number;
   completed: number;
+  partial?: number; // employees created but with follow-up/inline operation failures
   failed: number;
   inProgress: boolean;
   currentBatch: number;

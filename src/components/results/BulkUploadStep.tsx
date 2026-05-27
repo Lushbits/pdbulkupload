@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import type { Employee, BulkUploadProgress, EmployeeUploadResult, PlandayEmployeeCreateRequest, PayrateSetResult, FixedSalarySetResult, ContractRuleSetResult } from '../../types/planday';
@@ -19,25 +19,32 @@ interface BulkUploadStepProps {
   employees: Employee[];
   onComplete: (results: EmployeeUploadResult[], postCreationResults?: PostCreationResults) => void;
   onBack: () => void;
+  /**
+   * Return to the validation/correction (edit) table with the uploaded data still in memory.
+   * Rows that were created in Planday (success + partial) are stripped before re-entry so a
+   * re-run can't duplicate them; failed rows remain for correction and retry.
+   */
+  onBackToEditTable: (results: EmployeeUploadResult[]) => void;
   className?: string;
 }
 
 /**
  * Bulk Upload Step Component
- * 
+ *
  * This step handles the actual upload of validated employee data to Planday:
- * - Converts employee data to Planday API format
- * - Shows real-time upload progress with batch processing
- * - Handles errors gracefully with retry options
- * - Provides detailed feedback on successful vs failed uploads
+ * - Re-validates all employees as a gate before any upload starts
+ * - Best-effort upload: a failing row records its error and the loop continues
+ * - Live Successful / Partial / Failure counters that update per row
+ * - Abort button that stops the run at the current row (after a confirmation)
  */
 const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   employees,
   onComplete,
   onBack,
+  onBackToEditTable,
   className = ''
 }) => {
-  const [status, setStatus] = useState<'preparing' | 'validating' | 'authenticating' | 'uploading' | 'post-processing' | 'completed' | 'error'>('preparing');
+  const [status, setStatus] = useState<'preparing' | 'validating' | 'authenticating' | 'uploading' | 'post-processing' | 'completed' | 'aborted' | 'error'>('preparing');
   const [progress, setProgress] = useState<BulkUploadProgress | null>(null);
   const [results, setResults] = useState<EmployeeUploadResult[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -48,6 +55,11 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   const [supervisorResults, setSupervisorResults] = useState<Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }> | null>(null);
   const [salaryResults, setSalaryResults] = useState<FixedSalarySetResult[] | null>(null);
   const [contractRuleResults, setContractRuleResults] = useState<ContractRuleSetResult[] | null>(null);
+
+  // Abort handling: ref is read inside the async upload loop, state drives the UI.
+  const abortRef = useRef(false);
+  const [abortPending, setAbortPending] = useState(false);
+  const [showAbortConfirm, setShowAbortConfirm] = useState(false);
 
   const plandayApi = usePlandayApi();
 
@@ -116,7 +128,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         }
       }
     }
-    
+
     // Check unique fields across all employees
     const uniqueFieldErrors = ValidationService.validateUniqueFields(employees);
     if (uniqueFieldErrors.length > 0) {
@@ -134,7 +146,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         addLogEntry(`❌ ${employeeName}: ${error.message}`);
       });
     }
-    
+
     const isValid = allErrors.length === 0;
 
     if (isValid) {
@@ -151,24 +163,24 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
     };
   };
 
-  // Start the atomic upload process with pre-validation
+  // Start the best-effort upload process with a pre-validation gate
   const startUpload = async () => {
     try {
-      // Phase 1: Pre-validation
+      // Phase 1: Pre-validation gate
       setStatus('validating');
       setErrorMessage(null);
       setValidationErrors([]);
-      addLogEntry('🚀 Starting atomic upload process...');
+      addLogEntry('🚀 Starting upload process...');
 
-      // Validate ALL employees first
+      // Validate ALL employees first - the upload cannot start while anything is invalid
       const validation = await validateAllEmployees(employees);
-      
+
       if (!validation.isValid) {
-        // Validation failed - show errors and stop
+        // Validation failed - the user must go back to the edit table to fix it
         setStatus('error');
         setValidationErrors(validation.errors);
-        setErrorMessage(`Validation failed for ${validation.errors.length} employees. All issues must be fixed before upload can proceed.`);
-        addLogEntry(`🛑 Upload aborted due to validation errors. NO employees were uploaded.`);
+        setErrorMessage(`Validation failed for ${validation.errors.length} employees. Go back to the edit table to fix these issues before uploading.`);
+        addLogEntry(`🛑 Upload blocked by validation errors. NO employees were uploaded.`);
         return;
       }
 
@@ -178,20 +190,20 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         hookIsAuthenticated: plandayApi.isAuthenticated,
         timestamp: new Date().toISOString()
       });
-      
+
       if (!plandayApi.isAuthenticated) {
         addLogEntry('⚠️ Not authenticated - attempting automatic re-authentication...');
         setStatus('authenticating');
-        
+
         // Try to get stored refresh token for automatic re-authentication
         const storedRefreshToken = sessionStorage.getItem('planday_refresh_token');
-        
+
         if (storedRefreshToken) {
           addLogEntry('🔄 Found stored refresh token, attempting to re-authenticate...');
-          
+
           try {
             const authSuccess = await plandayApi.authenticate(storedRefreshToken);
-            
+
             if (authSuccess) {
               addLogEntry('✅ Automatic re-authentication successful!');
               setStatus('validating'); // Go back to validating status
@@ -208,26 +220,26 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           throw new Error('Not authenticated with Planday. Please re-authenticate.');
         }
       }
-      
+
       // Double-check by testing connection
       addLogEntry('🔗 Testing API connection...');
       const connectionOk = await plandayApi.testConnection();
       if (!connectionOk) {
         addLogEntry('❌ API connection test failed - trying one more re-authentication attempt...');
-        
+
         // One more attempt at re-authentication
         const storedRefreshToken = sessionStorage.getItem('planday_refresh_token');
         if (storedRefreshToken) {
           addLogEntry('🔄 Final re-authentication attempt...');
           setStatus('authenticating');
-          
+
           try {
             const authSuccess = await plandayApi.authenticate(storedRefreshToken);
-            
+
             if (authSuccess) {
               addLogEntry('✅ Final re-authentication successful!');
               setStatus('validating'); // Go back to validating status
-              
+
               // Test connection again
               const finalConnectionOk = await plandayApi.testConnection();
               if (!finalConnectionOk) {
@@ -244,14 +256,15 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           throw new Error('Unable to connect to Planday API. Please check your authentication and try again.');
         }
       }
-      
+
       addLogEntry('🔐 Authentication verified and API connection successful');
 
-      // Phase 3: Sequential upload with inline operations (Google Apps Script pattern)
-      // Each employee is fully processed before moving to the next row
+      // Phase 3: Sequential best-effort upload with inline operations
+      // Each employee is fully processed before moving to the next row. A failing row
+      // records its error and the loop continues to the next employee.
       setStatus('uploading');
-      addLogEntry(`🚀 Starting sequential upload of ${validation.validatedEmployees.length} employees...`);
-      addLogEntry(`📋 Each employee will be fully processed (with inline operations) before moving to the next.`);
+      addLogEntry(`🚀 Starting upload of ${validation.validatedEmployees.length} employees...`);
+      addLogEntry(`📋 Failed rows are recorded and skipped; the rest still upload.`);
 
       const uploadResults: EmployeeUploadResult[] = [];
       const contractRuleResultsArray: ContractRuleSetResult[] = [];
@@ -260,148 +273,57 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       const supervisorQueue: Array<{ employeeId: number; supervisorName: string }> = []; // supervisorId resolved after all employees created
 
       const totalEmployees = validation.validatedEmployees.length;
-      let completedCount = 0;
+      let successCount = 0;
+      let partialCount = 0;
       let failedCount = 0;
+      let abortedDuringUpload = false;
+
+      const updateLiveProgress = (current: number, inProgress: boolean) => {
+        setProgress({
+          currentBatch: current,
+          totalBatches: totalEmployees,
+          total: totalEmployees,
+          completed: successCount,
+          partial: partialCount,
+          failed: failedCount,
+          inProgress
+        });
+      };
 
       // Process each employee sequentially
       for (let i = 0; i < totalEmployees; i++) {
+        // Abort: stop before processing the next row. Any in-flight row has already
+        // settled and been recorded, so no row is left in an indeterminate state.
+        if (abortRef.current) {
+          abortedDuringUpload = true;
+          addLogEntry(`⏹️ Upload aborted by user. ${i} of ${totalEmployees} rows processed; remaining ${totalEmployees - i} row(s) were not uploaded.`);
+          break;
+        }
+
         const apiPayload = validation.validatedEmployees[i];
         const convertedEmployee = validation.convertedEmployees[i];
         const employeeName = `${apiPayload.firstName} ${apiPayload.lastName}`;
-        const rowIndex = convertedEmployee.rowIndex || i;
+        const rowIndex = convertedEmployee.rowIndex ?? i;
         const validFrom = convertedEmployee.wageValidFrom || new Date().toISOString().split('T')[0];
 
         addLogEntry(`📝 Processing ${i + 1}/${totalEmployees}: ${employeeName}...`);
+        updateLiveProgress(i + 1, true);
 
-        // Update progress
-        setProgress({
-          currentBatch: i + 1,
-          totalBatches: totalEmployees,
-          total: totalEmployees,
-          completed: completedCount,
-          failed: failedCount,
-          inProgress: true
-        });
+        let employeeId: number | null = null;
+        const inlineErrors: string[] = [];
 
+        // Step 1: Create the employee
         try {
-          // Step 1: Create the employee
           const createResult = await plandayApi.createEmployee(apiPayload);
-          const employeeId = createResult.data.id;
-
-          uploadResults.push({
-            success: true,
-            plandayId: employeeId,
-            employee: apiPayload,
-            rowIndex
-          });
-          completedCount++;
+          employeeId = createResult.data.id;
           addLogEntry(`   ✅ Employee created (ID: ${employeeId})`);
 
           // Log warning if time-limited skills were skipped
           if (convertedEmployee.__timeLimitedSkillIds && Array.isArray(convertedEmployee.__timeLimitedSkillIds) && convertedEmployee.__timeLimitedSkillIds.length > 0) {
             addLogEntry(`   ⚠️ ${convertedEmployee.__timeLimitedSkillIds.length} time-limited skill(s) must be assigned manually in Planday (require validity dates)`);
           }
-
-          // Step 2: Inline - Assign contract rule (if specified)
-          if (convertedEmployee.__contractRuleAssignment) {
-            try {
-              await plandayApi.assignContractRule(
-                employeeId,
-                convertedEmployee.__contractRuleAssignment.contractRuleId
-              );
-              contractRuleResultsArray.push({
-                employeeId,
-                contractRuleId: convertedEmployee.__contractRuleAssignment.contractRuleId,
-                contractRuleName: convertedEmployee.__contractRuleAssignment.contractRuleName,
-                success: true
-              });
-              addLogEntry(`   ✅ Contract rule assigned: ${convertedEmployee.__contractRuleAssignment.contractRuleName}`);
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              contractRuleResultsArray.push({
-                employeeId,
-                contractRuleId: convertedEmployee.__contractRuleAssignment.contractRuleId,
-                contractRuleName: convertedEmployee.__contractRuleAssignment.contractRuleName,
-                success: false,
-                error: errorMessage
-              });
-              addLogEntry(`   ⚠️ Contract rule failed: ${errorMessage}`);
-            }
-          }
-
-          // Step 3: Inline - Assign fixed salary (if specified)
-          if (convertedEmployee.__fixedSalaryAssignment) {
-            try {
-              await plandayApi.assignFixedSalary(
-                employeeId,
-                convertedEmployee.__fixedSalaryAssignment.salaryTypeId,
-                convertedEmployee.__fixedSalaryAssignment.hours,
-                convertedEmployee.__fixedSalaryAssignment.salary,
-                validFrom
-              );
-              salaryResultsArray.push({
-                employeeId,
-                salaryTypeId: convertedEmployee.__fixedSalaryAssignment.salaryTypeId,
-                salaryTypeName: convertedEmployee.__fixedSalaryAssignment.salaryTypeName,
-                hours: convertedEmployee.__fixedSalaryAssignment.hours,
-                salary: convertedEmployee.__fixedSalaryAssignment.salary,
-                success: true
-              });
-              addLogEntry(`   ✅ Fixed salary assigned: ${convertedEmployee.__fixedSalaryAssignment.salaryTypeName} - ${convertedEmployee.__fixedSalaryAssignment.salary}`);
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              salaryResultsArray.push({
-                employeeId,
-                salaryTypeId: convertedEmployee.__fixedSalaryAssignment.salaryTypeId,
-                salaryTypeName: convertedEmployee.__fixedSalaryAssignment.salaryTypeName,
-                hours: convertedEmployee.__fixedSalaryAssignment.hours,
-                salary: convertedEmployee.__fixedSalaryAssignment.salary,
-                success: false,
-                error: errorMessage
-              });
-              addLogEntry(`   ⚠️ Fixed salary failed: ${errorMessage}`);
-            }
-          }
-
-          // Step 4: Inline - Assign hourly pay rates (if specified)
-          const payrates = convertedEmployee.__employeeGroupPayrates || [];
-          for (const pr of payrates) {
-            try {
-              await plandayApi.setEmployeeGroupPayrate(pr.groupId, employeeId, pr.hourlyRate, validFrom);
-              payrateResultsArray.push({
-                employeeId,
-                groupId: pr.groupId,
-                groupName: pr.groupName,
-                rate: pr.hourlyRate,
-                success: true
-              });
-              addLogEntry(`   ✅ Pay rate assigned: ${pr.groupName} - ${pr.hourlyRate}/hr`);
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              payrateResultsArray.push({
-                employeeId,
-                groupId: pr.groupId,
-                groupName: pr.groupName,
-                rate: pr.hourlyRate,
-                success: false,
-                error: errorMessage
-              });
-              addLogEntry(`   ⚠️ Pay rate failed for ${pr.groupName}: ${errorMessage}`);
-            }
-          }
-
-          // Step 5: Queue supervisor assignment (deferred until all employees created)
-          // Note: supervisorId will be resolved AFTER all employees are created (to include new supervisors)
-          if (convertedEmployee.__supervisorAssignment) {
-            supervisorQueue.push({
-              employeeId,
-              supervisorName: convertedEmployee.__supervisorAssignment.supervisorName
-            });
-            addLogEntry(`   📋 Supervisor queued: ${convertedEmployee.__supervisorAssignment.supervisorName} (will resolve & assign after all employees created)`);
-          }
-
         } catch (error) {
-          // Employee creation failed
+          // Employee creation failed - record and continue with the next row (best-effort)
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           uploadResults.push({
             success: false,
@@ -411,129 +333,246 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
           });
           failedCount++;
           addLogEntry(`   ❌ Employee creation failed: ${errorMessage}`);
-
-          // ATOMIC: Stop on first failure
-          addLogEntry(`🛑 ATOMIC FAILURE: Upload stopped due to failure at row ${rowIndex + 1}.`);
-          addLogEntry(`⚠️ ${completedCount} employees were successfully uploaded before this failure.`);
-          break;
+          updateLiveProgress(i + 1, true);
+          continue;
         }
-      }
 
-      // Update final progress
-      setProgress({
-        currentBatch: totalEmployees,
-        totalBatches: totalEmployees,
-        total: totalEmployees,
-        completed: completedCount,
-        failed: failedCount,
-        inProgress: false
-      });
+        // Step 2: Inline - Assign contract rule (if specified)
+        if (convertedEmployee.__contractRuleAssignment) {
+          try {
+            await plandayApi.assignContractRule(
+              employeeId,
+              convertedEmployee.__contractRuleAssignment.contractRuleId
+            );
+            contractRuleResultsArray.push({
+              employeeId,
+              contractRuleId: convertedEmployee.__contractRuleAssignment.contractRuleId,
+              contractRuleName: convertedEmployee.__contractRuleAssignment.contractRuleName,
+              success: true
+            });
+            addLogEntry(`   ✅ Contract rule assigned: ${convertedEmployee.__contractRuleAssignment.contractRuleName}`);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            contractRuleResultsArray.push({
+              employeeId,
+              contractRuleId: convertedEmployee.__contractRuleAssignment.contractRuleId,
+              contractRuleName: convertedEmployee.__contractRuleAssignment.contractRuleName,
+              success: false,
+              error: errorMessage
+            });
+            inlineErrors.push(`Contract rule (${convertedEmployee.__contractRuleAssignment.contractRuleName}): ${errorMessage}`);
+            addLogEntry(`   ⚠️ Contract rule failed: ${errorMessage}`);
+          }
+        }
+
+        // Step 3: Inline - Assign fixed salary (if specified)
+        if (convertedEmployee.__fixedSalaryAssignment) {
+          try {
+            await plandayApi.assignFixedSalary(
+              employeeId,
+              convertedEmployee.__fixedSalaryAssignment.salaryTypeId,
+              convertedEmployee.__fixedSalaryAssignment.hours,
+              convertedEmployee.__fixedSalaryAssignment.salary,
+              validFrom
+            );
+            salaryResultsArray.push({
+              employeeId,
+              salaryTypeId: convertedEmployee.__fixedSalaryAssignment.salaryTypeId,
+              salaryTypeName: convertedEmployee.__fixedSalaryAssignment.salaryTypeName,
+              hours: convertedEmployee.__fixedSalaryAssignment.hours,
+              salary: convertedEmployee.__fixedSalaryAssignment.salary,
+              success: true
+            });
+            addLogEntry(`   ✅ Fixed salary assigned: ${convertedEmployee.__fixedSalaryAssignment.salaryTypeName} - ${convertedEmployee.__fixedSalaryAssignment.salary}`);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            salaryResultsArray.push({
+              employeeId,
+              salaryTypeId: convertedEmployee.__fixedSalaryAssignment.salaryTypeId,
+              salaryTypeName: convertedEmployee.__fixedSalaryAssignment.salaryTypeName,
+              hours: convertedEmployee.__fixedSalaryAssignment.hours,
+              salary: convertedEmployee.__fixedSalaryAssignment.salary,
+              success: false,
+              error: errorMessage
+            });
+            inlineErrors.push(`Fixed salary (${convertedEmployee.__fixedSalaryAssignment.salaryTypeName}): ${errorMessage}`);
+            addLogEntry(`   ⚠️ Fixed salary failed: ${errorMessage}`);
+          }
+        }
+
+        // Step 4: Inline - Assign hourly pay rates (if specified)
+        const payrates = convertedEmployee.__employeeGroupPayrates || [];
+        for (const pr of payrates) {
+          try {
+            await plandayApi.setEmployeeGroupPayrate(pr.groupId, employeeId, pr.hourlyRate, validFrom);
+            payrateResultsArray.push({
+              employeeId,
+              groupId: pr.groupId,
+              groupName: pr.groupName,
+              rate: pr.hourlyRate,
+              success: true
+            });
+            addLogEntry(`   ✅ Pay rate assigned: ${pr.groupName} - ${pr.hourlyRate}/hr`);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            payrateResultsArray.push({
+              employeeId,
+              groupId: pr.groupId,
+              groupName: pr.groupName,
+              rate: pr.hourlyRate,
+              success: false,
+              error: errorMessage
+            });
+            inlineErrors.push(`Pay rate (${pr.groupName}): ${errorMessage}`);
+            addLogEntry(`   ⚠️ Pay rate failed for ${pr.groupName}: ${errorMessage}`);
+          }
+        }
+
+        // Step 5: Queue supervisor assignment (deferred until all employees created)
+        // Note: supervisorId will be resolved AFTER all employees are created (to include new supervisors)
+        if (convertedEmployee.__supervisorAssignment) {
+          supervisorQueue.push({
+            employeeId,
+            supervisorName: convertedEmployee.__supervisorAssignment.supervisorName
+          });
+          addLogEntry(`   📋 Supervisor queued: ${convertedEmployee.__supervisorAssignment.supervisorName} (will resolve & assign after all employees created)`);
+        }
+
+        // Record the row result. Inline failures => "partial" (created, but follow-up failed).
+        const isPartial = inlineErrors.length > 0;
+        uploadResults.push({
+          success: true,
+          plandayId: employeeId,
+          employee: apiPayload,
+          rowIndex,
+          partialErrors: isPartial ? inlineErrors : undefined
+        });
+        if (isPartial) {
+          partialCount++;
+        } else {
+          successCount++;
+        }
+        updateLiveProgress(i + 1, true);
+      }
 
       // Set inline operation results
       if (contractRuleResultsArray.length > 0) setContractRuleResults(contractRuleResultsArray);
       if (payrateResultsArray.length > 0) setPayrateResults(payrateResultsArray);
       if (salaryResultsArray.length > 0) setSalaryResults(salaryResultsArray);
 
-      // Check if upload was successful
-      if (failedCount > 0) {
-        setStatus('error');
-        setErrorMessage(`Upload failed: ${failedCount} employees failed to upload. ${completedCount} employees were successfully uploaded before the failure.`);
-        addLogEntry(`❌ ATOMIC UPLOAD FAILED: Not all employees could be uploaded.`);
-        addLogEntry(`📊 Final result: ${completedCount} successful, ${failedCount} failed`);
-      } else {
-        addLogEntry(`🎉 All ${completedCount} employees uploaded with inline operations!`);
+      // Phase 4: Deferred supervisor assignments for the employees that were created.
+      // IMPORTANT: Supervisor names are resolved AFTER all employees are created because
+      // new employees marked with isSupervisor=true won't be in the supervisor list until created.
+      if (supervisorQueue.length > 0) {
+        setStatus('post-processing');
+        addLogEntry(`⚙️ Processing deferred supervisor assignments: ${supervisorQueue.length} supervisors...`);
 
-        // Phase 4: Deferred supervisor assignments (only operation that needs to wait)
-        // IMPORTANT: Supervisor names are resolved AFTER all employees are created because
-        // new employees marked with isSupervisor=true won't be in the supervisor list until created.
-        if (supervisorQueue.length > 0) {
-          setStatus('post-processing');
-          addLogEntry(`⚙️ Processing deferred supervisor assignments: ${supervisorQueue.length} supervisors...`);
+        // Step 1: Refresh supervisor list to include newly created supervisors
+        addLogEntry(`   🔄 Refreshing supervisor list to include newly created supervisors...`);
+        try {
+          await plandayApi.refreshSupervisors();
+          addLogEntry(`   ✅ Supervisor list refreshed successfully`);
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : 'Unknown error';
+          addLogEntry(`   ⚠️ Warning: Failed to refresh supervisor list: ${errMsg}`);
+        }
 
-          // Step 1: Refresh supervisor list to include newly created supervisors
-          addLogEntry(`   🔄 Refreshing supervisor list to include newly created supervisors...`);
-          try {
-            await plandayApi.refreshSupervisors();
-            addLogEntry(`   ✅ Supervisor list refreshed successfully`);
-          } catch (error) {
-            const errMsg = error instanceof Error ? error.message : 'Unknown error';
-            addLogEntry(`   ⚠️ Warning: Failed to refresh supervisor list: ${errMsg}`);
+        const supervisorResultsData: Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }> = [];
+
+        // Attach a supervisor failure to the employee's row result (marks it as partial)
+        const markRowPartial = (empId: number, message: string) => {
+          const entry = uploadResults.find(r => r.success && r.plandayId === empId);
+          if (entry) {
+            if (!entry.partialErrors) entry.partialErrors = [];
+            entry.partialErrors.push(message);
           }
+        };
 
-          const supervisorResultsData: Array<{ employeeId: number; supervisorId: number; supervisorName: string; success: boolean; error?: string }> = [];
+        // Step 2: Resolve supervisor names to IDs and assign
+        for (let i = 0; i < supervisorQueue.length; i++) {
+          const assignment = supervisorQueue[i];
+          setSupervisorProgress({ completed: i, total: supervisorQueue.length });
 
-          // Step 2: Resolve supervisor names to IDs and assign
-          for (let i = 0; i < supervisorQueue.length; i++) {
-            const assignment = supervisorQueue[i];
-            setSupervisorProgress({ completed: i, total: supervisorQueue.length });
+          try {
+            // Resolve supervisor name to ID using the refreshed supervisor list
+            const supervisorResult = MappingUtils.resolveSupervisor(assignment.supervisorName);
 
-            try {
-              // Resolve supervisor name to ID using the refreshed supervisor list
-              const supervisorResult = MappingUtils.resolveSupervisor(assignment.supervisorName);
-
-              if (supervisorResult.errors.length > 0) {
-                // Supervisor name couldn't be resolved
-                supervisorResultsData.push({
-                  employeeId: assignment.employeeId,
-                  supervisorId: 0,
-                  supervisorName: assignment.supervisorName,
-                  success: false,
-                  error: supervisorResult.errors.join(', ')
-                });
-                addLogEntry(`   ⚠️ Supervisor not found: "${assignment.supervisorName}" - ${supervisorResult.errors.join(', ')}`);
-              } else if (supervisorResult.ids.length === 1) {
-                // Successfully resolved - assign the supervisor
-                const resolvedSupervisorId = supervisorResult.ids[0];
-                await plandayApi.assignSupervisorToEmployee(assignment.employeeId, resolvedSupervisorId);
-                supervisorResultsData.push({
-                  employeeId: assignment.employeeId,
-                  supervisorId: resolvedSupervisorId,
-                  supervisorName: assignment.supervisorName,
-                  success: true
-                });
-                addLogEntry(`   ✅ Supervisor assigned: ${assignment.supervisorName} to employee ${assignment.employeeId}`);
-              } else {
-                // Multiple matches or no matches
-                supervisorResultsData.push({
-                  employeeId: assignment.employeeId,
-                  supervisorId: 0,
-                  supervisorName: assignment.supervisorName,
-                  success: false,
-                  error: `Could not uniquely resolve supervisor "${assignment.supervisorName}"`
-                });
-                addLogEntry(`   ⚠️ Supervisor resolution failed: "${assignment.supervisorName}"`);
-              }
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            if (supervisorResult.errors.length > 0) {
+              // Supervisor name couldn't be resolved
               supervisorResultsData.push({
                 employeeId: assignment.employeeId,
                 supervisorId: 0,
                 supervisorName: assignment.supervisorName,
                 success: false,
-                error: errorMessage
+                error: supervisorResult.errors.join(', ')
               });
-              addLogEntry(`   ⚠️ Supervisor assignment failed: ${errorMessage}`);
+              markRowPartial(assignment.employeeId, `Supervisor (${assignment.supervisorName}): ${supervisorResult.errors.join(', ')}`);
+              addLogEntry(`   ⚠️ Supervisor not found: "${assignment.supervisorName}" - ${supervisorResult.errors.join(', ')}`);
+            } else if (supervisorResult.ids.length === 1) {
+              // Successfully resolved - assign the supervisor
+              const resolvedSupervisorId = supervisorResult.ids[0];
+              await plandayApi.assignSupervisorToEmployee(assignment.employeeId, resolvedSupervisorId);
+              supervisorResultsData.push({
+                employeeId: assignment.employeeId,
+                supervisorId: resolvedSupervisorId,
+                supervisorName: assignment.supervisorName,
+                success: true
+              });
+              addLogEntry(`   ✅ Supervisor assigned: ${assignment.supervisorName} to employee ${assignment.employeeId}`);
+            } else {
+              // Multiple matches or no matches
+              supervisorResultsData.push({
+                employeeId: assignment.employeeId,
+                supervisorId: 0,
+                supervisorName: assignment.supervisorName,
+                success: false,
+                error: `Could not uniquely resolve supervisor "${assignment.supervisorName}"`
+              });
+              markRowPartial(assignment.employeeId, `Supervisor (${assignment.supervisorName}): could not uniquely resolve`);
+              addLogEntry(`   ⚠️ Supervisor resolution failed: "${assignment.supervisorName}"`);
             }
-          }
-
-          setSupervisorProgress({ completed: supervisorQueue.length, total: supervisorQueue.length });
-          setSupervisorResults(supervisorResultsData);
-
-          const successfulSupervisors = supervisorResultsData.filter(r => r.success).length;
-          const failedSupervisors = supervisorResultsData.filter(r => !r.success).length;
-
-          if (failedSupervisors > 0) {
-            addLogEntry(`⚠️ Supervisor assignments: ${successfulSupervisors} successful, ${failedSupervisors} failed`);
-          } else {
-            addLogEntry(`✅ All ${successfulSupervisors} supervisor assignments successful!`);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            supervisorResultsData.push({
+              employeeId: assignment.employeeId,
+              supervisorId: 0,
+              supervisorName: assignment.supervisorName,
+              success: false,
+              error: errorMessage
+            });
+            markRowPartial(assignment.employeeId, `Supervisor (${assignment.supervisorName}): ${errorMessage}`);
+            addLogEntry(`   ⚠️ Supervisor assignment failed: ${errorMessage}`);
           }
         }
 
-        setStatus('completed');
-        addLogEntry(`🎉 ATOMIC SUCCESS: Upload process complete!`);
+        setSupervisorProgress({ completed: supervisorQueue.length, total: supervisorQueue.length });
+        setSupervisorResults(supervisorResultsData);
+
+        const successfulSupervisors = supervisorResultsData.filter(r => r.success).length;
+        const failedSupervisors = supervisorResultsData.filter(r => !r.success).length;
+
+        if (failedSupervisors > 0) {
+          addLogEntry(`⚠️ Supervisor assignments: ${successfulSupervisors} successful, ${failedSupervisors} failed`);
+        } else {
+          addLogEntry(`✅ All ${successfulSupervisors} supervisor assignments successful!`);
+        }
       }
 
+      // Recompute final counts - supervisor failures may have moved success -> partial
+      successCount = uploadResults.filter(r => r.success && !(r.partialErrors && r.partialErrors.length)).length;
+      partialCount = uploadResults.filter(r => r.success && r.partialErrors && r.partialErrors.length > 0).length;
+      failedCount = uploadResults.filter(r => !r.success).length;
+      updateLiveProgress(totalEmployees, false);
+
       setResults(uploadResults);
+
+      if (abortedDuringUpload) {
+        setStatus('aborted');
+        addLogEntry(`⏹️ Upload aborted. Final: ${successCount} successful, ${partialCount} partial, ${failedCount} failed.`);
+      } else {
+        setStatus('completed');
+        addLogEntry(`✅ Upload complete. Final: ${successCount} successful, ${partialCount} partial, ${failedCount} failed.`);
+      }
 
     } catch (error) {
       console.error('❌ Upload failed:', error);
@@ -575,6 +614,14 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
     }
   };
 
+  // Confirm the abort: the loop will stop before the next row.
+  const confirmAbort = () => {
+    abortRef.current = true;
+    setAbortPending(true);
+    setShowAbortConfirm(false);
+    addLogEntry('⏹️ Abort requested - finishing the current row, then stopping...');
+  };
+
   // Auto-start upload when component mounts
   useEffect(() => {
     // Small delay to allow UI to render before starting
@@ -587,11 +634,46 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
     return () => clearTimeout(timer);
   }, [status]);
 
-  // Calculate progress percentage
-  const progressPercentage = progress ? Math.round((progress.completed + progress.failed) / progress.total * 100) : 0;
+  // Calculate progress percentage (success + partial + failed of total)
+  const partialCount = progress?.partial || 0;
+  const progressPercentage = progress ? Math.round((progress.completed + partialCount + progress.failed) / progress.total * 100) : 0;
+
+  // Terminal states where the run is over and the round-trip / results actions apply
+  const isTerminal = status === 'completed' || status === 'aborted';
+  const hasSuccessfulRows = !!results && results.some(r => r.success);
 
   return (
     <div className={`space-y-6 ${className}`}>
+      {/* Abort Confirmation Modal */}
+      {showAbortConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-start space-x-3 mb-4">
+              <svg className="w-6 h-6 text-red-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Abort upload?</h3>
+                <p className="text-sm text-gray-600">
+                  The current employee being processed will finish first, then the upload will stop.
+                  Employees already uploaded will <strong>stay in Planday</strong> — they are not rolled back.
+                  Remaining rows will <strong>not</strong> be processed.
+                  Afterwards you can use “Go back to edit table” to fix and retry the remaining rows.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <Button variant="secondary" onClick={() => setShowAbortConfirm(false)}>
+                Keep uploading
+              </Button>
+              <Button variant="error" onClick={confirmAbort}>
+                Abort upload
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <Card>
         <div className="text-center">
@@ -620,6 +702,11 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
             )}
+            {status === 'aborted' && (
+              <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z M9 9h6v6H9z" />
+              </svg>
+            )}
             {status === 'error' && (
               <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -633,16 +720,18 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             {status === 'uploading' && 'Uploading to Planday'}
             {status === 'post-processing' && 'Finalizing Employee Setup'}
             {status === 'completed' && 'Upload Complete!'}
+            {status === 'aborted' && 'Upload Aborted'}
             {status === 'error' && 'Upload Failed'}
           </h2>
           <p className="text-gray-600">
             {status === 'preparing' && 'Initializing upload process...'}
-            {status === 'validating' && `Pre-validating all ${employees.length} employees. Upload will only proceed if ALL are valid.`}
+            {status === 'validating' && `Pre-validating all ${employees.length} employees. Upload only starts once everything is valid.`}
             {status === 'authenticating' && 'Authentication expired. Automatically refreshing your session...'}
-            {status === 'uploading' && `Upload in progress - all ${employees.length} employees must succeed.`}
+            {status === 'uploading' && `Upload in progress - failed rows are recorded and skipped so the rest still upload.`}
             {status === 'post-processing' && 'Setting pay rates and assigning supervisors...'}
-            {status === 'completed' && 'All employees have been successfully uploaded to Planday!'}
-            {status === 'error' && 'Upload stopped due to validation or API errors. No partial uploads.'}
+            {status === 'completed' && 'Finished processing all employees. Review the results below.'}
+            {status === 'aborted' && 'Upload was stopped. Employees already created remain in Planday. Review the results below.'}
+            {status === 'error' && 'Upload could not start. Fix the issues and try again.'}
           </p>
         </div>
       </Card>
@@ -660,38 +749,49 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
 
             {/* Progress Bar */}
             <div className="w-full bg-gray-200 rounded-full h-3">
-              <div 
+              <div
                 className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
                 style={{ width: `${progressPercentage}%` }}
               ></div>
             </div>
 
-            {/* Progress Stats */}
+            {/* Live Counters: Successful / Partial / Failure */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <div className="text-2xl font-bold text-gray-900">{progress.total}</div>
-                <div className="text-sm text-gray-600">Total</div>
-              </div>
               <div className="p-3 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">{progress.completed}</div>
                 <div className="text-sm text-gray-600">Successful</div>
               </div>
+              <div className="p-3 bg-yellow-50 rounded-lg">
+                <div className="text-2xl font-bold text-yellow-600">{partialCount}</div>
+                <div className="text-sm text-gray-600">Partial</div>
+              </div>
               <div className="p-3 bg-red-50 rounded-lg">
                 <div className="text-2xl font-bold text-red-600">{progress.failed}</div>
-                <div className="text-sm text-gray-600">Failed</div>
+                <div className="text-sm text-gray-600">Failure</div>
               </div>
               <div className="p-3 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
-                  {progress.currentBatch}/{progress.totalBatches}
+                  {progress.currentBatch}/{progress.total}
                 </div>
-                <div className="text-sm text-gray-600">Batches</div>
+                <div className="text-sm text-gray-600">Processed</div>
               </div>
             </div>
 
-            {/* Batch Progress */}
+            {/* Abort button (during upload) */}
             {status === 'uploading' && (
-              <div className="text-center text-sm text-gray-600">
-                Processing batch {progress.currentBatch} of {progress.totalBatches}...
+              <div className="flex flex-col items-center space-y-2 pt-2">
+                <Button
+                  variant="error"
+                  onClick={() => setShowAbortConfirm(true)}
+                  disabled={abortPending}
+                  className="flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <rect x="9" y="9" width="6" height="6" />
+                  </svg>
+                  <span>{abortPending ? 'Stopping after current row...' : 'Abort'}</span>
+                </Button>
               </div>
             )}
           </div>
@@ -726,7 +826,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       )}
 
       {/* Contract Rule Results (processed inline, before deferred operations) */}
-      {status === 'completed' && contractRuleResults && contractRuleResults.length > 0 && (
+      {isTerminal && contractRuleResults && contractRuleResults.length > 0 && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Contract Rule Results</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -762,7 +862,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       )}
 
       {/* Pay Rate Results */}
-      {status === 'completed' && payrateResults && payrateResults.length > 0 && (
+      {isTerminal && payrateResults && payrateResults.length > 0 && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Pay Rate Results</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -795,7 +895,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       )}
 
       {/* Fixed Salary Results */}
-      {status === 'completed' && salaryResults && salaryResults.length > 0 && (
+      {isTerminal && salaryResults && salaryResults.length > 0 && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Fixed Salary Results</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -828,7 +928,7 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
       )}
 
       {/* Supervisor Results */}
-      {status === 'completed' && supervisorResults && supervisorResults.length > 0 && (
+      {isTerminal && supervisorResults && supervisorResults.length > 0 && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Supervisor Assignment Results</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -869,15 +969,15 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <h4 className="font-medium text-red-800 mb-2">Validation Errors - Upload Aborted</h4>
+                <h4 className="font-medium text-red-800 mb-2">Validation Errors - Upload Blocked</h4>
                 <p className="text-red-700 text-sm mb-4">
-                  {validationErrors.length} employees failed validation. ALL issues must be fixed before upload can proceed.
+                  {validationErrors.length} employees failed validation. Go back to the edit table to fix these issues before uploading.
                   <br/>
                   <strong>Note:</strong> No employees have been uploaded to Planday.
                 </p>
               </div>
             </div>
-            
+
             <div className="max-h-60 overflow-y-auto">
               <h5 className="font-medium text-red-800 mb-2">Employees with validation errors:</h5>
               <div className="space-y-3">
@@ -912,65 +1012,6 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         </Card>
       )}
 
-      {/* Upload Failure Details */}
-      {status === 'error' && results && results.length > 0 && (
-        <Card className="border-red-200 bg-red-50">
-          <div className="space-y-4">
-            <div className="flex items-start space-x-3">
-              <svg className="w-6 h-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <h4 className="font-medium text-red-800 mb-2">Upload Failed</h4>
-                <p className="text-red-700 text-sm mb-4">
-                  {errorMessage}
-                  <br/>
-                  <strong>Note:</strong> Upload stopped at first failure to maintain data integrity.
-                </p>
-              </div>
-            </div>
-
-            {/* Detailed Results */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {results.filter(r => r.success).length}
-                  </div>
-                  <div className="text-sm text-green-700">Successfully Created</div>
-                </div>
-                <div className="p-4 bg-red-50 rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">
-                    {results.filter(r => !r.success).length}
-                  </div>
-                  <div className="text-sm text-red-700">Failed to Create</div>
-                </div>
-              </div>
-
-              {/* Failed Employees Details */}
-              {results.some(r => !r.success) && (
-                <div>
-                  <h5 className="font-medium text-red-800 mb-2">Failed Upload Details:</h5>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {results
-                      .filter(r => !r.success)
-                      .map((result, index) => (
-                        <div key={index} className="p-3 bg-white rounded border border-red-200">
-                          <div className="font-medium text-red-800 mb-1">
-                            {result.employee.firstName} {result.employee.lastName} (Row {result.rowIndex + 1})
-                          </div>
-                          <div className="text-sm text-red-600">{result.error}</div>
-                        </div>
-                      ))
-                    }
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-      )}
-
       {/* Processing Log */}
       <Card>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Processing Log</h3>
@@ -989,37 +1030,68 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         </div>
       </Card>
 
-      {/* Results Summary */}
-      {status === 'completed' && results && (
+      {/* Results Summary (terminal: completed or aborted) */}
+      {isTerminal && results && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Results</h3>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-green-50 rounded-lg">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-4 bg-green-50 rounded-lg text-center">
                 <div className="text-2xl font-bold text-green-600">
-                  {results.filter(r => r.success).length}
+                  {results.filter(r => r.success && !(r.partialErrors && r.partialErrors.length)).length}
                 </div>
-                <div className="text-sm text-green-700">Successfully Created</div>
+                <div className="text-sm text-green-700">Successful</div>
               </div>
-              <div className="p-4 bg-red-50 rounded-lg">
+              <div className="p-4 bg-yellow-50 rounded-lg text-center">
+                <div className="text-2xl font-bold text-yellow-600">
+                  {results.filter(r => r.success && r.partialErrors && r.partialErrors.length > 0).length}
+                </div>
+                <div className="text-sm text-yellow-700">Partial</div>
+              </div>
+              <div className="p-4 bg-red-50 rounded-lg text-center">
                 <div className="text-2xl font-bold text-red-600">
                   {results.filter(r => !r.success).length}
                 </div>
-                <div className="text-sm text-red-700">Failed to Create</div>
+                <div className="text-sm text-red-700">Failure</div>
               </div>
             </div>
+
+            {/* Partial Employees Details */}
+            {results.some(r => r.success && r.partialErrors && r.partialErrors.length > 0) && (
+              <div>
+                <h4 className="font-medium text-yellow-800 mb-2">Partially Created (already exist in Planday - fix manually or via the bulk update tool):</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {results
+                    .filter(r => r.success && r.partialErrors && r.partialErrors.length > 0)
+                    .map((result, index) => (
+                      <div key={index} className="p-3 bg-yellow-50 rounded text-sm">
+                        <div className="font-medium text-yellow-800">
+                          {result.employee.firstName} {result.employee.lastName}
+                          {result.plandayId ? <span className="text-yellow-700 font-normal"> (ID: {result.plandayId})</span> : null}
+                        </div>
+                        <ul className="text-yellow-700 list-disc list-inside">
+                          {result.partialErrors!.map((err, i) => (
+                            <li key={i}>{err}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
 
             {/* Failed Employees Details */}
             {results.some(r => !r.success) && (
               <div>
-                <h4 className="font-medium text-gray-900 mb-2">Failed Uploads:</h4>
+                <h4 className="font-medium text-gray-900 mb-2">Failed (not created):</h4>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {results
                     .filter(r => !r.success)
                     .map((result, index) => (
                       <div key={index} className="p-3 bg-red-50 rounded text-sm">
                         <div className="font-medium text-red-800">
-                          {result.employee.firstName} {result.employee.lastName}
+                          {result.employee.firstName} {result.employee.lastName} (Row {result.rowIndex + 1})
                         </div>
                         <div className="text-red-600">{result.error}</div>
                       </div>
@@ -1027,6 +1099,13 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
                   }
                 </div>
               </div>
+            )}
+
+            {results.some(r => r.success) && (
+              <p className="text-sm text-gray-600">
+                Use “Go back to edit table” to return to the review table. Created employees (successful and partial)
+                are removed there so a re-run won’t duplicate them; failed rows stay for correction and retry.
+              </p>
             )}
           </div>
         </Card>
@@ -1047,17 +1126,17 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
         </Button>
 
         <div className="space-x-3">
-          {/* Validation Error - Go back to fix issues */}
+          {/* Validation Error - Go back to the edit table to fix issues */}
           {status === 'error' && validationErrors.length > 0 && (
             <Button
               variant="primary"
-              onClick={onBack}
+              onClick={() => onBackToEditTable(results || [])}
               className="flex items-center space-x-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
-              <span>Fix Validation Errors</span>
+              <span>Go back to edit table</span>
             </Button>
           )}
 
@@ -1066,6 +1145,8 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
             <Button
               variant="secondary"
               onClick={() => {
+                abortRef.current = false;
+                setAbortPending(false);
                 setStatus('preparing');
                 setErrorMessage(null);
                 setValidationErrors([]);
@@ -1077,8 +1158,22 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
               Retry Upload
             </Button>
           )}
-          
-          {status === 'completed' && (
+
+          {/* Terminal states (completed / aborted): always offer "Go back to edit table" */}
+          {isTerminal && (
+            <Button
+              variant="secondary"
+              onClick={() => onBackToEditTable(results || [])}
+              className="flex items-center space-x-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span>Go back to edit table</span>
+            </Button>
+          )}
+
+          {isTerminal && hasSuccessfulRows && (
             <Button
               variant="primary"
               onClick={handleComplete}
@@ -1140,4 +1235,4 @@ const BulkUploadStep: React.FC<BulkUploadStepProps> = ({
   );
 };
 
-export default BulkUploadStep; 
+export default BulkUploadStep;
