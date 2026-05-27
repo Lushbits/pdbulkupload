@@ -21,6 +21,7 @@ import type {
   PlandaySalaryType,
   PlandayContractRule,
   PlandayEmployeeResponse,
+  SsnExistenceCheckResult,
   PlandayEmployeeCreateRequest,
   EmployeeUploadResult,
   BulkUploadProgress,
@@ -137,7 +138,7 @@ interface PlandayApiActions {
 
   checkExistingEmployeesBySsn: (
     ssnValues: string[]
-  ) => Promise<Map<string, PlandayEmployeeResponse>>;
+  ) => Promise<SsnExistenceCheckResult>;
 
   // Pay rate actions
   bulkSetPayrates: (
@@ -999,7 +1000,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
    */
   const checkExistingEmployeesBySsn = useCallback(async (
     ssnValues: string[]
-  ): Promise<Map<string, PlandayEmployeeResponse>> => {
+  ): Promise<SsnExistenceCheckResult> => {
     if (!state.isAuthenticated) {
       throw new Error('Not authenticated. Please authenticate first.');
     }
@@ -1009,7 +1010,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     } catch (error) {
       // Don't block the upload flow if the SSN lookup can't run.
       console.warn('⚠️ Failed to check existing employees by SSN:', error);
-      return new Map<string, PlandayEmployeeResponse>();
+      return { existing: new Map<string, PlandayEmployeeResponse>(), available: false };
     }
   }, [state.isAuthenticated]);
 

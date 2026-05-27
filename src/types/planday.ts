@@ -289,6 +289,17 @@ export interface PlandayEmployeeResponse {
 }
 
 /**
+ * Result of an SSN-vs-Planday existence check.
+ * `available` is false when SSN data couldn't be read (the protected SSN scope
+ * appears to be missing), so callers can surface a "check skipped" notice rather
+ * than treat the empty map as "no duplicates found".
+ */
+export interface SsnExistenceCheckResult {
+  existing: Map<string, PlandayEmployeeResponse>;
+  available: boolean;
+}
+
+/**
  * Employee Field Definitions Types
  * Based on Planday API: GET /hr/v1.0/employees/fielddefinitions
  */

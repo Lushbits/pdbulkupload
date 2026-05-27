@@ -78,6 +78,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [existingEmployees, setExistingEmployees] = useState<Map<string, PlandayEmployeeResponse>>(new Map());
   const [existingSsnEmployees, setExistingSsnEmployees] = useState<Map<string, PlandayEmployeeResponse>>(new Map());
+  const [ssnCheckUnavailable, setSsnCheckUnavailable] = useState(false);
   
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -119,8 +120,9 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         }
 
         if (ssnValues.length > 0) {
-          const existingSsnEmps = await plandayApi.checkExistingEmployeesBySsn(ssnValues);
-          setExistingSsnEmployees(existingSsnEmps);
+          const ssnResult = await plandayApi.checkExistingEmployeesBySsn(ssnValues);
+          setExistingSsnEmployees(ssnResult.existing);
+          setSsnCheckUnavailable(!ssnResult.available);
         }
 
         // Existing employees check completed
@@ -403,7 +405,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     if (!plandayApi.isAuthenticated || ssnValues.length === 0) return;
 
     try {
-      const existingSsnEmps = await plandayApi.checkExistingEmployeesBySsn(ssnValues);
+      const ssnResult = await plandayApi.checkExistingEmployeesBySsn(ssnValues);
+      setSsnCheckUnavailable(!ssnResult.available);
 
       setExistingSsnEmployees(prev => {
         const updated = new Map(prev);
@@ -414,7 +417,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         });
 
         // Add new entries if duplicates were found
-        existingSsnEmps.forEach((employee, ssn) => {
+        ssnResult.existing.forEach((employee, ssn) => {
           updated.set(ssn, employee);
         });
 
@@ -914,6 +917,22 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
             </div>
             <p className="text-yellow-700 text-sm mt-2">
               Click <strong>Skip Duplicates</strong> to exclude them from upload while keeping them visible for review.
+            </p>
+          </div>
+        )}
+
+        {/* SSN duplicate check unavailable (protected scope not granted) */}
+        {!isCheckingDuplicates && ssnCheckUnavailable && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center">
+              <span className="text-amber-600 text-lg mr-2">⚠️</span>
+              <span className="text-amber-800 font-medium">
+                SSN check skipped — this Planday connection can't read existing SSNs
+              </span>
+            </div>
+            <p className="text-amber-700 text-sm mt-2">
+              Duplicate SSNs <strong>within this file</strong> are still flagged, but rows whose SSN already
+              exists in Planday can't be detected without the SSN access scope. Verify these manually if needed.
             </p>
           </div>
         )}
