@@ -25,6 +25,7 @@ import type {
   ExcelColumnMapping,
   ValidationError,
   PlandayEmployeeCreateRequest,
+  ExcelColumnType,
 } from '../types/planday';
 import { VALIDATION_CONFIG } from '../constants';
 import { AUTO_MAPPING_RULES } from '../constants/autoMappingRules';
@@ -130,21 +131,39 @@ export class ExcelParser {
 
       // Extract all data as a 2D array
       const rawData: any[][] = [];
-      
+
+      // Track the source Excel value type per column so date handling can later
+      // branch on real date cells vs. raw serial numbers vs. free text, rather
+      // than re-guessing from a value that has been flattened to a string.
+      const columnTypeFlags: Array<{ hasDate: boolean; hasNumber: boolean; hasText: boolean }> =
+        Array.from({ length: columnCount }, () => ({ hasDate: false, hasNumber: false, hasText: false }));
+
       // Read all rows
       for (let rowNum = 1; rowNum <= rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
         const rowData: any[] = [];
-        
+
         // Read all columns in this row
         for (let colNum = 1; colNum <= columnCount; colNum++) {
           const cell = row.getCell(colNum);
           const cellValue = this.extractCellValue(cell);
           rowData.push(cellValue);
+
+          // Classify the source cell type (data rows only, skip the header row)
+          if (rowNum > 1) {
+            this.recordCellType(cell, columnTypeFlags[colNum - 1]);
+          }
         }
-        
+
         rawData.push(rowData);
       }
+
+      // Whether the workbook uses the 1904 date system (affects serial → date).
+      const date1904 = Boolean(
+        (worksheet as any)?.properties?.date1904 ??
+        (workbook as any)?.properties?.date1904 ??
+        false
+      );
 
       // Check for empty file
       if (rawData.length === 0) {
@@ -239,9 +258,15 @@ export class ExcelParser {
 
       // Keep only headers and data for columns that have actual data
       const headers = columnsWithData.map(col => col.header);
-      const filteredRows = nonEmptyRows.map(row => 
+      const filteredRows = nonEmptyRows.map(row =>
         columnsWithData.map(col => row[col.index])
       );
+
+      // Map the captured source types onto the surviving (non-empty) columns
+      const columnExcelTypes: Record<string, ExcelColumnType> = {};
+      columnsWithData.forEach(col => {
+        columnExcelTypes[col.header] = this.classifyColumnType(columnTypeFlags[col.index]);
+      });
 
       const result: ParsedExcelData = {
         headers,
@@ -250,7 +275,9 @@ export class ExcelParser {
         fileName: file.name,
         fileSize: file.size,
         columnAnalysis, // Include analysis for debugging/info
-        discardedColumns: emptyColumns.map(col => col.header)
+        discardedColumns: emptyColumns.map(col => col.header),
+        columnExcelTypes,
+        date1904
       };
 
       console.log(`✅ Excel parsing complete: ${result.totalRows} rows, ${result.headers.length} columns with data`);
@@ -1124,6 +1151,60 @@ export class ExcelParser {
 
     // Fallback to string conversion
     return String(value);
+  }
+
+  /**
+   * Record the source Excel value type for a cell into a per-column tally.
+   * ExcelJS reports real date cells as ValueType.Date and "General"-formatted
+   * date serials as ValueType.Number, which lets us distinguish them later.
+   */
+  private static recordCellType(
+    cell: ExcelJS.Cell,
+    flags: { hasDate: boolean; hasNumber: boolean; hasText: boolean }
+  ): void {
+    if (!cell || cell.value === null || cell.value === undefined) {
+      return;
+    }
+
+    let type = cell.type;
+    // Unwrap formula cells to the type of their computed result.
+    if (type === ExcelJS.ValueType.Formula) {
+      const result = (cell.value as any)?.result;
+      if (result instanceof Date) type = ExcelJS.ValueType.Date;
+      else if (typeof result === 'number') type = ExcelJS.ValueType.Number;
+      else if (typeof result === 'string' && result.trim()) type = ExcelJS.ValueType.String;
+      else return;
+    }
+
+    switch (type) {
+      case ExcelJS.ValueType.Date:
+        flags.hasDate = true;
+        break;
+      case ExcelJS.ValueType.Number:
+        flags.hasNumber = true;
+        break;
+      case ExcelJS.ValueType.String:
+      case ExcelJS.ValueType.SharedString:
+      case ExcelJS.ValueType.RichText:
+      case ExcelJS.ValueType.Hyperlink:
+        if (cell.text && cell.text.trim()) flags.hasText = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Reduce a column's per-cell type tally to a single source classification.
+   * Real date cells win over numbers (serials), which win over free text.
+   */
+  private static classifyColumnType(
+    flags: { hasDate: boolean; hasNumber: boolean; hasText: boolean }
+  ): ExcelColumnType {
+    if (flags.hasDate) return 'date';
+    if (flags.hasNumber && !flags.hasText) return 'numeric';
+    if (flags.hasText || flags.hasNumber) return 'text';
+    return 'empty';
   }
 
   /**

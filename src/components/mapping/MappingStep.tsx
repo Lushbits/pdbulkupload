@@ -14,6 +14,7 @@ import { Button } from '../ui/Button';
 import { FieldSelectionModal } from '../ui/FieldSelectionModal';
 import { AUTO_MAPPING_RULES } from '../../constants/autoMappingRules';
 import { ValidationService, FieldDefinitionValidator } from '../../services/mappingService';
+import { DateParser } from '../../utils/dateParser';
 import type { Employee, ColumnMapping, ExcelColumnMapping, ParsedExcelData } from '../../types/planday';
 
 interface MappingStepProps {
@@ -47,7 +48,7 @@ interface PlandayField {
 const MappingStep: React.FC<MappingStepProps> = ({
   employees,
   headers,
-  // excelData, // Not currently used - reserved for future features
+  excelData,
   initialColumnMappings,
   savedMappings,
   savedCustomValues,
@@ -336,6 +337,14 @@ const MappingStep: React.FC<MappingStepProps> = ({
    * Apply column mappings to create Employee objects
    */
   const applyColumnMappings = (rawRows: any[][], mappings: ColumnMapping): Employee[] => {
+    // Date fields whose source column held raw serial numbers ("General"-formatted
+    // dates) need serial → ISO conversion up front, since they never reach the
+    // string-based date parser otherwise. Real date cells already arrive as ISO;
+    // text columns are left untouched for the ambiguity flow. (Issue #25)
+    const dateFields = new Set(ValidationService.getAllDateFields());
+    const columnExcelTypes = excelData?.columnExcelTypes;
+    const date1904 = excelData?.date1904 ?? false;
+
     return rawRows.map((row, index) => {
       const employee: Partial<Employee> = {
         rowIndex: index + 1
@@ -350,7 +359,19 @@ const MappingStep: React.FC<MappingStepProps> = ({
       // Map each field from Excel columns (skip ignored columns)
       for (const [columnName, fieldName] of Object.entries(mappings)) {
         if (fieldName && fieldName !== '__IGNORE__' && rowObject[columnName] !== undefined) {
-          employee[fieldName as keyof Employee] = rowObject[columnName];
+          let value = rowObject[columnName];
+
+          if (dateFields.has(fieldName) && columnExcelTypes?.[columnName] === 'numeric') {
+            const serial = Number(String(value).trim());
+            // Only treat plausible Excel serials as dates; larger integers (e.g.
+            // an 8-digit YYYYMMDD typed as a number) fall through to normal parsing.
+            if (Number.isInteger(serial) && serial >= 1 && serial <= 2958465) {
+              const iso = DateParser.excelSerialToISO(serial, date1904);
+              if (iso) value = iso;
+            }
+          }
+
+          employee[fieldName as keyof Employee] = value;
         }
       }
 
