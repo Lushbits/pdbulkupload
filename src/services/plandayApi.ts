@@ -25,6 +25,7 @@ import type {
   PlandayContractRulesResponse,
   PlandayEmployeeCreateRequest,
   PlandayEmployeeResponse,
+  SsnExistenceCheckResult,
   BulkUploadProgress,
   EmployeeUploadResult,
   PlandayFieldDefinitionsSchema,
@@ -652,16 +653,18 @@ export class PlandayApiClient {
    * Fetch employees from Planday with pagination
    * Used for verification after upload to ensure employees were created correctly
    */
-  async fetchEmployees(limit: number = 100, offset: number = 0): Promise<{
+  async fetchEmployees(limit: number = 100, offset: number = 0, special?: string): Promise<{
     employees: PlandayEmployeeResponse[];
     total: number;
     hasMore: boolean;
   }> {
     try {
+      // `special` requests protected fields (e.g. "Ssn") that need an extra OAuth scope.
+      const specialParam = special ? `&Special=${encodeURIComponent(special)}` : '';
       const response = await this.makeAuthenticatedRequest<{
         paging: { offset: number; limit: number; total: number };
         data: PlandayEmployeeResponse[];
-      }>(`${API_ENDPOINTS.EMPLOYEES}?limit=${limit}&offset=${offset}`);
+      }>(`${API_ENDPOINTS.EMPLOYEES}?limit=${limit}&offset=${offset}${specialParam}`);
       
       return {
         employees: response.data,
@@ -730,10 +733,84 @@ export class PlandayApiClient {
       // Existing employee check completed
       
       return existingEmployees;
-      
+
     } catch (error) {
       console.error('❌ Failed to check existing employees by email:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Check if employees with specific SSNs already exist in Planday.
+   * Returns the matched SSNs (exact-string keys, no normalization) plus an
+   * `available` flag.
+   *
+   * SSN is a protected field requiring an extra OAuth scope. If the portal/token
+   * doesn't grant it, the check degrades gracefully and reports `available: false`
+   * so the caller can surface a notice instead of treating it as "no duplicates":
+   *  - the request throws (e.g. 403), or
+   *  - employees are returned but none expose an `ssn` field at all.
+   */
+  async checkExistingEmployeesBySsn(ssnValues: string[]): Promise<SsnExistenceCheckResult> {
+    const existing = new Map<string, PlandayEmployeeResponse>();
+
+    // Exact-match set; only normalization is dropping empty/whitespace entries.
+    const wantedSsns = new Set<string>();
+    ssnValues.forEach(value => {
+      if (value !== null && value !== undefined && String(value).trim() !== '') {
+        wantedSsns.add(String(value));
+      }
+    });
+
+    if (wantedSsns.size === 0) {
+      return { existing, available: true };
+    }
+
+    try {
+      let offset = 0;
+      const limit = 50; // Planday API maximum is 50 records per request
+      let hasMore = true;
+      let sawEmployees = false;
+      let sawSsnField = false;
+
+      while (hasMore) {
+        // Request the protected ssn field explicitly.
+        const result = await this.fetchEmployees(limit, offset, 'Ssn');
+
+        for (const employee of result.employees) {
+          sawEmployees = true;
+          if ('ssn' in employee) {
+            sawSsnField = true;
+          }
+          const employeeSsn = (employee as any).ssn;
+          if (employeeSsn !== null && employeeSsn !== undefined) {
+            const ssnString = String(employeeSsn);
+            if (wantedSsns.has(ssnString)) {
+              existing.set(ssnString, employee);
+            }
+          }
+        }
+
+        hasMore = result.hasMore;
+        offset += limit;
+
+        // Add a small delay between batches to respect rate limits
+        if (hasMore) {
+          await this.delay(200);
+        }
+      }
+
+      // If the portal has employees but none expose ssn, the scope is withheld.
+      const available = !(sawEmployees && !sawSsnField);
+      if (!available) {
+        console.warn('⚠️ SSN existence check unavailable: employee records did not include SSN (scope likely not granted).');
+      }
+      return { existing, available };
+
+    } catch (error) {
+      // Degrade gracefully: SSN scope may not be granted for this portal/token.
+      console.warn('⚠️ SSN existence check skipped (Planday may not return SSN for this token):', error);
+      return { existing, available: false };
     }
   }
 
@@ -1631,12 +1708,12 @@ export const PlandayApi = {
   /**
    * Fetch employees for verification
    */
-  async fetchEmployees(limit: number = 100, offset: number = 0): Promise<{
+  async fetchEmployees(limit: number = 100, offset: number = 0, special?: string): Promise<{
     employees: PlandayEmployeeResponse[];
     total: number;
     hasMore: boolean;
   }> {
-    return plandayApiClient.fetchEmployees(limit, offset);
+    return plandayApiClient.fetchEmployees(limit, offset, special);
   },
 
   /**
@@ -1670,4 +1747,12 @@ export const PlandayApi = {
   async checkExistingEmployeesByEmail(emailAddresses: string[]): Promise<Map<string, PlandayEmployeeResponse>> {
     return plandayApiClient.checkExistingEmployeesByEmail(emailAddresses);
   },
-}; 
+
+  /**
+   * Check if employees with specific SSNs already exist in Planday
+   * Returns a map of SSN -> existing employee data
+   */
+  async checkExistingEmployeesBySsn(ssnValues: string[]): Promise<SsnExistenceCheckResult> {
+    return plandayApiClient.checkExistingEmployeesBySsn(ssnValues);
+  },
+};

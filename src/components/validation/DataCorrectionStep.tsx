@@ -77,6 +77,8 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   // New state for duplicate checking
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [existingEmployees, setExistingEmployees] = useState<Map<string, PlandayEmployeeResponse>>(new Map());
+  const [existingSsnEmployees, setExistingSsnEmployees] = useState<Map<string, PlandayEmployeeResponse>>(new Map());
+  const [ssnCheckUnavailable, setSsnCheckUnavailable] = useState(false);
   
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -99,18 +101,32 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
           .map(emp => emp.email)
           .filter(email => email && email.trim() !== '')
           .map(email => email!.toLowerCase().trim());
-        
-        if (emailAddresses.length === 0) {
+
+        // Extract SSNs (exact-string, no normalization beyond dropping empties)
+        const ssnValues = employees
+          .map(emp => (emp as any).ssn)
+          .filter(ssn => ssn !== null && ssn !== undefined && String(ssn).trim() !== '')
+          .map(ssn => String(ssn));
+
+        if (emailAddresses.length === 0 && ssnValues.length === 0) {
           setIsCheckingDuplicates(false);
           return;
         }
-        
-        // Check for existing employees
-        const existingEmps = await plandayApi.checkExistingEmployeesByEmail(emailAddresses);
-        setExistingEmployees(existingEmps);
-        
+
+        // Check for existing employees by email and SSN
+        if (emailAddresses.length > 0) {
+          const existingEmps = await plandayApi.checkExistingEmployeesByEmail(emailAddresses);
+          setExistingEmployees(existingEmps);
+        }
+
+        if (ssnValues.length > 0) {
+          const ssnResult = await plandayApi.checkExistingEmployeesBySsn(ssnValues);
+          setExistingSsnEmployees(ssnResult.existing);
+          setSsnCheckUnavailable(!ssnResult.available);
+        }
+
         // Existing employees check completed
-        
+
       } catch (error) {
         console.error('❌ Failed to check for existing employees:', error);
         // Don't block validation if duplicate check fails - just log and continue
@@ -131,7 +147,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     validateAllEmployees().catch(error => {
       console.error('❌ Validation failed:', error);
     });
-  }, [employees, existingEmployees]); // Re-validate when existing employees data changes
+  }, [employees, existingEmployees, existingSsnEmployees]); // Re-validate when existing employees data changes
 
   // Focus input when editing cell (only on initial edit start)
   useEffect(() => {
@@ -254,8 +270,19 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
         console.warn(`⚠️ Custom field warnings for employee at row ${index}:`, customFieldResult.warnings);
       }
 
-      // NOTE: Department/employee group validation is handled in the bulk correction phase
-      // Individual validation should only check format/field-level issues, not name-to-ID mapping
+      // Every employee must have at least one department. This is a field-level
+      // emptiness check (not name-to-ID mapping, which stays in the bulk phase), so
+      // clearing the departments cell re-flags the row live and refilling clears it.
+      const departmentsValue = (employee as any).departments;
+      if (!departmentsValue || departmentsValue.toString().trim() === '') {
+        errors.push({
+          field: 'departments',
+          value: '',
+          message: 'At least one department must be assigned to each employee',
+          rowIndex: index,
+          severity: 'error'
+        });
+      }
 
       if (errors.length > 0) {
         newValidationErrors.set(employeeKey, errors);
@@ -285,8 +312,20 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       });
     }
 
+    // Validate against existing SSNs in Planday (duplicate checking)
+    if (existingSsnEmployees.size > 0) {
+      const existingSsnErrors = ValidationService.validateExistingEmployeesBySsn(employees, existingSsnEmployees);
+
+      existingSsnErrors.forEach(error => {
+        const employeeKey = `employee-${error.rowIndex}`;
+        const existingErrors = newValidationErrors.get(employeeKey) || [];
+        existingErrors.push(error);
+        newValidationErrors.set(employeeKey, existingErrors);
+      });
+    }
+
     setValidationErrors(newValidationErrors);
-  }, [employees, existingEmployees]);
+  }, [employees, existingEmployees, existingSsnEmployees]);
 
   /**
    * Handle cell click to start editing
@@ -360,6 +399,36 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   }, [plandayApi]);
 
   /**
+   * Re-check Planday for specific SSNs (exact-string match, no normalization)
+   */
+  const recheckDuplicatesForSsns = useCallback(async (ssnValues: string[]) => {
+    if (!plandayApi.isAuthenticated || ssnValues.length === 0) return;
+
+    try {
+      const ssnResult = await plandayApi.checkExistingEmployeesBySsn(ssnValues);
+      setSsnCheckUnavailable(!ssnResult.available);
+
+      setExistingSsnEmployees(prev => {
+        const updated = new Map(prev);
+
+        // Remove old entries for the checked SSNs
+        ssnValues.forEach(ssn => {
+          updated.delete(String(ssn));
+        });
+
+        // Add new entries if duplicates were found
+        ssnResult.existing.forEach((employee, ssn) => {
+          updated.set(ssn, employee);
+        });
+
+        return updated;
+      });
+    } catch (error) {
+      console.error('❌ Failed to re-check SSN duplicates:', error);
+    }
+  }, [plandayApi]);
+
+  /**
    * Commit cell edit
    */
   const commitCellEdit = useCallback(() => {
@@ -403,8 +472,26 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
       }
     }
 
+    // If SSN field was modified, re-check Planday for the new value (exact-string)
+    if (field === 'ssn' && value !== oldValue) {
+      // Drop the old SSN from the existing-SSN map if it was flagged
+      if (oldValue !== null && oldValue !== undefined && String(oldValue).trim() !== '') {
+        const oldSsn = String(oldValue);
+        setExistingSsnEmployees(prev => {
+          const updated = new Map(prev);
+          updated.delete(oldSsn);
+          return updated;
+        });
+      }
+
+      // Check the new SSN against Planday if non-empty
+      if (value !== null && value !== undefined && String(value).trim() !== '') {
+        recheckDuplicatesForSsns([String(value)]);
+      }
+    }
+
     setEditingCell(null);
-  }, [editingCell, employees, recheckDuplicatesForEmails]);
+  }, [editingCell, employees, recheckDuplicatesForEmails, recheckDuplicatesForSsns]);
 
   /**
    * Cancel cell edit
@@ -830,6 +917,22 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
             </div>
             <p className="text-yellow-700 text-sm mt-2">
               Click <strong>Skip Duplicates</strong> to exclude them from upload while keeping them visible for review.
+            </p>
+          </div>
+        )}
+
+        {/* SSN duplicate check unavailable (protected scope not granted) */}
+        {!isCheckingDuplicates && ssnCheckUnavailable && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center">
+              <span className="text-amber-600 text-lg mr-2">⚠️</span>
+              <span className="text-amber-800 font-medium">
+                SSN check skipped — this Planday connection can't read existing SSNs
+              </span>
+            </div>
+            <p className="text-amber-700 text-sm mt-2">
+              Duplicate SSNs <strong>within this file</strong> are still flagged, but rows whose SSN already
+              exists in Planday can't be detected without the SSN access scope. Verify these manually if needed.
             </p>
           </div>
         )}

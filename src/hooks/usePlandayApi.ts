@@ -21,6 +21,7 @@ import type {
   PlandaySalaryType,
   PlandayContractRule,
   PlandayEmployeeResponse,
+  SsnExistenceCheckResult,
   PlandayEmployeeCreateRequest,
   EmployeeUploadResult,
   BulkUploadProgress,
@@ -134,7 +135,11 @@ interface PlandayApiActions {
   checkExistingEmployeesByEmail: (
     emailAddresses: string[]
   ) => Promise<Map<string, PlandayEmployeeResponse>>;
-  
+
+  checkExistingEmployeesBySsn: (
+    ssnValues: string[]
+  ) => Promise<SsnExistenceCheckResult>;
+
   // Pay rate actions
   bulkSetPayrates: (
     assignments: PayrateAssignment[],
@@ -990,6 +995,26 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   }, [state.isAuthenticated, handleError]);
 
   /**
+   * Check if employees with specific SSNs already exist in Planday.
+   * Degrades gracefully (returns empty map) if the SSN scope is unavailable.
+   */
+  const checkExistingEmployeesBySsn = useCallback(async (
+    ssnValues: string[]
+  ): Promise<SsnExistenceCheckResult> => {
+    if (!state.isAuthenticated) {
+      throw new Error('Not authenticated. Please authenticate first.');
+    }
+
+    try {
+      return await PlandayApi.checkExistingEmployeesBySsn(ssnValues);
+    } catch (error) {
+      // Don't block the upload flow if the SSN lookup can't run.
+      console.warn('⚠️ Failed to check existing employees by SSN:', error);
+      return { existing: new Map<string, PlandayEmployeeResponse>(), available: false };
+    }
+  }, [state.isAuthenticated]);
+
+  /**
    * Bulk set pay rates for employees in employee groups
    */
   const bulkSetPayrates = useCallback(async (
@@ -1282,6 +1307,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     fetchEmployees,
     fetchEmployeesByIds,
     checkExistingEmployeesByEmail,
+    checkExistingEmployeesBySsn,
     bulkSetPayrates,
     bulkAssignSupervisors,
     bulkAssignFixedSalaries,
