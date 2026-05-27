@@ -34,6 +34,7 @@ interface DataCorrectionStepProps {
   employeeGroups: PlandayEmployeeGroup[];
   employeeTypes: PlandayEmployeeType[];
   plandayApi: UsePlandayApiReturn;
+  resyncNonce?: number;
   onComplete: (correctedEmployees: Employee[], excludedEmployees?: ExcludedEmployee[]) => void;
   onBack: () => void;
   className?: string;
@@ -56,6 +57,7 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
   employeeGroups,
   employeeTypes,
   plandayApi,
+  resyncNonce,
   onComplete,
   onBack,
   className = ''
@@ -141,13 +143,16 @@ export const DataCorrectionStep: React.FC<DataCorrectionStepProps> = ({
     }
   }, [employees.length]); // Only run when employees change, not on every re-render
 
-  // Validate all employees on component mount and when data changes
+  // Validate all employees on component mount and when data changes.
+  // resyncNonce is included so a portal-data resync (which repopulates the validation
+  // caches without changing the employee rows) forces a fresh validation pass — newly
+  // created portal options then clear their "not found in Planday" errors.
   useEffect(() => {
     // Re-running validation due to data changes
     validateAllEmployees().catch(error => {
       console.error('❌ Validation failed:', error);
     });
-  }, [employees, existingEmployees, existingSsnEmployees]); // Re-validate when existing employees data changes
+  }, [employees, existingEmployees, existingSsnEmployees, resyncNonce]); // Re-validate when existing employees data changes or after a resync
 
   // Focus input when editing cell (only on initial edit start)
   useEffect(() => {

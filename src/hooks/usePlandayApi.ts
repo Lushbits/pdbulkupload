@@ -105,6 +105,7 @@ interface PlandayApiActions {
   refreshFieldDefinitions: () => Promise<void>;
   refreshPortalInfo: () => Promise<void>;
   refreshPlandayData: () => Promise<void>;
+  resyncPortalData: () => Promise<void>;
   
   // Upload actions
   uploadEmployees: (
@@ -778,6 +779,91 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
   }, [state.isAuthenticated, refreshDepartments, refreshEmployeeGroups, refreshEmployeeTypes, refreshSupervisors, refreshSkills, refreshFieldDefinitions, refreshPortalInfo]);
 
   /**
+   * Resync all portal option data (departments, employee groups, employee types,
+   * supervisors, skills, salary types, contract rules, field definitions) in a single
+   * pass and re-initialize every cache layer at once.
+   *
+   * Unlike refreshPlandayData (which runs the per-field refreshers in parallel, each
+   * re-initializing MappingUtils from a partially-stale state snapshot), this fetches
+   * everything first and then re-initializes the services once with the complete, fresh
+   * dataset — mirroring the initial load in authenticate(). This avoids the partial-refresh
+   * trap where a newly-created portal option is missed because one cache layer kept old data.
+   *
+   * It refreshes only the portal's option lists — it never touches the user's mapped or
+   * corrected employee rows.
+   */
+  const resyncPortalData = useCallback(async (): Promise<void> => {
+    if (!PlandayApi.isAuthenticated()) {
+      throw new Error('Not authenticated');
+    }
+
+    // Helper for optional fetches that return empty array on failure (e.g., CORS issues)
+    const fetchOptional = async <T>(
+      fetchFn: () => Promise<T[]>,
+      name: string
+    ): Promise<T[]> => {
+      try {
+        return await fetchFn();
+      } catch (error) {
+        console.warn(`⚠️ Could not fetch ${name}, feature will be unavailable:`, error);
+        return [];
+      }
+    };
+
+    // Fetch everything in parallel before touching any cache
+    const [departments, employeeGroups, employeeTypes, supervisors, skills, salaryTypes, contractRules, fieldDefinitions, employeeSample] = await Promise.all([
+      PlandayApi.getDepartments(),
+      PlandayApi.getEmployeeGroups(),
+      PlandayApi.getEmployeeTypes(),
+      PlandayApi.getSupervisors(),
+      PlandayApi.getSkills(),
+      PlandayApi.getSalaryTypes(),
+      fetchOptional(() => PlandayApi.getContractRules(), 'contract rules'),
+      PlandayApi.getFieldDefinitions(),
+      PlandayApi.fetchEmployeeSample(5)
+    ]);
+
+    // Discover and merge fields from employee sample before initializing services
+    if (employeeSample.length > 0) {
+      const discoveredFields = discoverFieldsFromEmployees(employeeSample);
+      mergeDiscoveredFields(fieldDefinitions, discoveredFields);
+    }
+
+    // Re-initialize all cache layers once with the complete fresh dataset
+    MappingUtils.initialize(departments, employeeGroups, employeeTypes);
+    MappingUtils.setSupervisors(supervisors);
+    MappingUtils.setSkills(skills);
+    MappingUtils.setSalaryTypes(salaryTypes);
+    MappingUtils.setContractRules(contractRules);
+    ValidationService.initialize(fieldDefinitions);
+    FieldDefinitionValidator.initialize(fieldDefinitions);
+
+    // Refresh portal info / phone parser country (non-critical)
+    try {
+      const portalInfo = await PlandayApi.getPortalInfo();
+      const { PhoneParser } = await import('../utils');
+      PhoneParser.setPortalCountry(portalInfo.country);
+      updateState({ portalInfo });
+    } catch (error) {
+      console.warn('⚠️ Could not refresh portal info during resync:', error);
+    }
+
+    // Push fresh data into hook state (new array references trigger downstream re-validation)
+    updateState({
+      departments,
+      employeeGroups,
+      employeeTypes,
+      supervisors,
+      skills,
+      salaryTypes,
+      contractRules,
+      fieldDefinitions,
+    });
+
+    console.log('✅ Portal data resynced and all caches re-initialized');
+  }, [updateState]);
+
+  /**
    * Upload employees to Planday
    */
   const uploadEmployees = useCallback(async (
@@ -1302,6 +1388,7 @@ export const usePlandayApi = (): UsePlandayApiReturn => {
     refreshFieldDefinitions,
     refreshPortalInfo,
     refreshPlandayData,
+    resyncPortalData,
     uploadEmployees,
     atomicUploadEmployees,
     fetchEmployees,

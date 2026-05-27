@@ -100,6 +100,36 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   const plandayApi = usePlandayApi();
   const { departments, employeeGroups, employeeTypes } = plandayApi;
 
+  // Resync state - lets the user pull fresh portal options (departments, groups, types,
+  // supervisors, enum fields, ...) mid-flow after creating a missing option in Planday,
+  // then re-validate the rows without restarting from authentication. The nonce is bumped
+  // on every successful resync and threaded into the validation step to force a fresh
+  // validation pass against the newly-loaded options (entered cell values are preserved).
+  const [isResyncing, setIsResyncing] = useState(false);
+  const [resyncNonce, setResyncNonce] = useState(0);
+  const [resyncError, setResyncError] = useState<string | null>(null);
+  const [resyncJustSucceeded, setResyncJustSucceeded] = useState(false);
+
+  const handleResync = async () => {
+    if (isResyncing) return;
+    setIsResyncing(true);
+    setResyncError(null);
+    setResyncJustSucceeded(false);
+    try {
+      await plandayApi.resyncPortalData();
+      setResyncNonce(prev => prev + 1);
+      setResyncJustSucceeded(true);
+      setTimeout(() => setResyncJustSucceeded(false), 4000);
+    } catch (error) {
+      console.error('❌ Resync failed:', error);
+      setResyncError(
+        error instanceof Error ? error.message : 'Failed to resync portal data. Please try again.'
+      );
+    } finally {
+      setIsResyncing(false);
+    }
+  };
+
   // Security: Clean up any stray tokens from localStorage on app initialization
   useEffect(() => {
     // Our app uses sessionStorage for security, but clean localStorage
@@ -357,6 +387,9 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   // generic top-left "Back one step" there.
   const showBackButton = showTopNav && currentStep !== WorkflowStep.Results;
 
+  // The resync control is only relevant while validating/correcting against portal options
+  const showResyncButton = currentStep === WorkflowStep.ValidationCorrection;
+
   return (
     <>
       {/* App Header - Only shown on step 1, slides up and disappears on step 2+ */}
@@ -383,22 +416,50 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
       </div>
 
       {/* Top navigation - Shown on all steps except step 1.
-          Left: non-destructive "Back one step" (where users instinctively look).
+          Left: non-destructive "Back one step" plus the portal "Resync" control
+          (where users instinctively look).
           Right: demoted, confirmation-guarded "Start over" (the destructive reset). */}
       {showTopNav && (
-        <div className="mb-6 flex items-center justify-between transition-all duration-500">
-          {showBackButton ? (
-            <Button
-              variant="outline"
-              onClick={handlePreviousStep}
-              disabled={isUploadBusy}
-              title={isUploadBusy ? 'Please wait for the current upload to finish' : undefined}
-            >
-              ← Back one step
-            </Button>
-          ) : (
-            <span />
-          )}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 transition-all duration-500">
+          <div className="flex flex-wrap items-center gap-3">
+            {showBackButton ? (
+              <Button
+                variant="outline"
+                onClick={handlePreviousStep}
+                disabled={isUploadBusy}
+                title={isUploadBusy ? 'Please wait for the current upload to finish' : undefined}
+              >
+                ← Back one step
+              </Button>
+            ) : (
+              <span />
+            )}
+
+            {showResyncButton && (
+              <Button
+                variant="outline"
+                onClick={handleResync}
+                disabled={isResyncing}
+                title="Re-fetch departments, employee groups, employee types, supervisors and other field options from Planday, then re-validate the rows. Your entered corrections are kept."
+                className="text-blue-600 border-blue-300 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-60"
+              >
+                {isResyncing ? (
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></span>
+                    Resyncing…
+                  </span>
+                ) : (
+                  '⟳ Resync portal data'
+                )}
+              </Button>
+            )}
+            {showResyncButton && resyncJustSucceeded && (
+              <span className="text-sm text-green-700">✓ Portal data refreshed</span>
+            )}
+            {showResyncButton && resyncError && (
+              <span className="text-sm text-red-700">{resyncError}</span>
+            )}
+          </div>
 
           <button
             onClick={() => setIsStartOverConfirmOpen(true)}
@@ -525,6 +586,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
               departments={departments}
               employeeGroups={employeeGroups}
               employeeTypes={employeeTypes}
+              resyncNonce={resyncNonce}
               resolvedPatterns={resolvedBulkCorrectionPatterns}
               onPatternsResolved={(patterns) => {
                 setResolvedBulkCorrectionPatterns(patterns);
