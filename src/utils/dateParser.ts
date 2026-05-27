@@ -34,11 +34,19 @@ export class DateParser {
    * every real-world employee date. The 1904 system shifts the epoch by 1462 days.
    */
   static excelSerialToISO(serial: number, date1904 = false): string | null {
-    if (!Number.isFinite(serial) || serial < 1 || serial > 2958465) {
+    const minSerial = date1904 ? 0 : 1;
+    if (!Number.isFinite(serial) || serial < minSerial || serial > 2958465) {
       return null;
     }
 
-    const epochOffset = date1904 ? 24107 : 25569;
+    // 1900 mode: serial 60 is Excel's fictitious 1900-02-29 (the leap-year bug)
+    // and has no real date; serials 1..59 predate it, so shift the epoch back a
+    // day. The 25569 offset (1970-01-01) is correct from serial 61 onward.
+    if (!date1904 && serial === 60) {
+      return null;
+    }
+
+    const epochOffset = date1904 ? 24107 : (serial < 60 ? 25568 : 25569);
     const ms = Math.round((serial - epochOffset) * 86400000);
     const date = new Date(ms);
 

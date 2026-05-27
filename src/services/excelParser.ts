@@ -1202,8 +1202,11 @@ export class ExcelParser {
     flags: { hasDate: boolean; hasNumber: boolean; hasText: boolean }
   ): ExcelColumnType {
     if (flags.hasDate) return 'date';
-    if (flags.hasNumber && !flags.hasText) return 'numeric';
-    if (flags.hasText || flags.hasNumber) return 'text';
+    // Any number present marks the column 'numeric' so serials still convert in
+    // partially dirty columns (e.g. 46113 mixed with text); the per-value guard
+    // in MappingStep leaves non-numeric cells untouched for the ambiguity flow.
+    if (flags.hasNumber) return 'numeric';
+    if (flags.hasText) return 'text';
     return 'empty';
   }
 
