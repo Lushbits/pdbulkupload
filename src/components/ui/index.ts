@@ -15,6 +15,7 @@ export { TermsOfServiceModal } from './TermsOfServiceModal';
 export { VersionModal, getCurrentVersion } from './VersionModal';
 export { FieldDefinitionsModal, FieldDefinitionsDebugButton } from './FieldDefinitionsModal';
 export { FieldSelectionModal } from './FieldSelectionModal';
+export { ConfirmDialog } from './ConfirmDialog';
 // DateFormatModal replaced with DateFormatSelectionStep (normal page instead of modal)
 
 // Beta Components

@@ -5,8 +5,8 @@
  * This component handles the actual business logic while App.tsx handles routing
  */
 
-import { useState, useEffect } from 'react';
-import { Button, Card, ProgressIndicator, PrivacyModal, CookieModal, TermsOfServiceModal, VersionModal, getCurrentVersion, BetaBanner, BetaTag } from './ui';
+import { useState, useEffect, useRef } from 'react';
+import { Button, Card, ProgressIndicator, PrivacyModal, CookieModal, TermsOfServiceModal, VersionModal, getCurrentVersion, BetaBanner, BetaTag, ConfirmDialog } from './ui';
 import { AuthenticationStep } from './auth/AuthenticationStep';
 import { FileUploadStep } from './upload/FileUploadStep';
 import MappingStep from './mapping/MappingStep';
@@ -79,7 +79,23 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
   
   // Version modal state
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
-  
+
+  // "Start over" confirmation dialog (guards the destructive reset)
+  const [isStartOverConfirmOpen, setIsStartOverConfirmOpen] = useState(false);
+
+  // True while the bulk upload is actively running. Used to block the top-left
+  // "Back" control so the user can't navigate away mid-upload.
+  const [isUploadBusy, setIsUploadBusy] = useState(false);
+
+  // Refs read by the global popstate/beforeunload handlers (bound once on mount),
+  // so they always see the latest values without re-binding the listeners.
+  const currentStepRef = useRef(currentStep);
+  currentStepRef.current = currentStep;
+  const isUploadBusyRef = useRef(isUploadBusy);
+  isUploadBusyRef.current = isUploadBusy;
+  const handlePreviousStepRef = useRef<() => void>(() => {});
+  const historyTrapArmedRef = useRef(false);
+
   // Planday API integration - centralized hook usage
   const plandayApi = usePlandayApi();
   const { departments, employeeGroups, employeeTypes } = plandayApi;
@@ -148,6 +164,61 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
     }
   }, [currentStep, onStepChange]);
 
+  // Arm a single history "trap" entry when the user enters the workflow (leaves
+  // Authentication). The 7 steps are React state, not routes, so without this the
+  // browser back button would leave the SPA entirely and silently destroy an
+  // in-progress upload. With the trap in place, back fires popstate (handled
+  // below) instead of unloading the app.
+  useEffect(() => {
+    if (currentStep !== WorkflowStep.Authentication && !historyTrapArmedRef.current) {
+      window.history.pushState({ workflowTrap: true }, '');
+      historyTrapArmedRef.current = true;
+    } else if (currentStep === WorkflowStep.Authentication) {
+      historyTrapArmedRef.current = false;
+    }
+  }, [currentStep]);
+
+  // Map the browser back button to a single workflow step-back, and warn before
+  // a tab close / reload that would lose an in-progress upload. Bound once.
+  useEffect(() => {
+    const onPopState = () => {
+      const step = currentStepRef.current;
+      if (step === WorkflowStep.Authentication) {
+        // On step 1 there's nothing to go back to within the workflow; let the
+        // browser navigate away normally.
+        return;
+      }
+      // While an upload is actively running, swallow the back press entirely
+      // (re-arm the trap, don't navigate) so we never abandon a run mid-flight.
+      if (isUploadBusyRef.current) {
+        window.history.pushState({ workflowTrap: true }, '');
+        return;
+      }
+      // Re-arm the trap so the next back press is caught too — unless this press
+      // returns the user to Authentication (FileUpload is the last trapped step).
+      if (step !== WorkflowStep.FileUpload) {
+        window.history.pushState({ workflowTrap: true }, '');
+      } else {
+        historyTrapArmedRef.current = false;
+      }
+      handlePreviousStepRef.current();
+    };
+
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (currentStepRef.current !== WorkflowStep.Authentication) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, []);
+
   /**
    * Move to the next step in the workflow
    */
@@ -158,7 +229,7 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
     if (currentIndex < mainSteps.length - 1) {
       // Mark current step as completed
       setCompletedSteps(prev => [...prev, currentStep]);
-      
+
       // Move to next main step
       setCurrentStep(mainSteps[currentIndex + 1]);
     }
@@ -258,11 +329,63 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
     }
   };
 
+  /**
+   * Go back exactly one step in the workflow (non-destructive). Powers the
+   * top-left "← Back" control and the browser back button. Each branch mirrors
+   * the per-step back transition (target step + completedSteps reset) that
+   * previously lived inline on each step component's back button.
+   *
+   * The Results step is special: its literal previous step (BulkUpload) re-runs
+   * the upload on mount, which would create duplicates. So "back" from Results
+   * routes through the safe edit-table round-trip, which strips already-created
+   * rows before returning to the validation/correction table.
+   */
+  const handlePreviousStep = () => {
+    switch (currentStep) {
+      case WorkflowStep.FileUpload:
+        setCurrentStep(WorkflowStep.Authentication);
+        setCompletedSteps([]);
+        break;
+      case WorkflowStep.ColumnMapping:
+        setCurrentStep(WorkflowStep.FileUpload);
+        setCompletedSteps([WorkflowStep.Authentication]);
+        break;
+      case WorkflowStep.ValidationCorrection:
+        // Returning to mapping resets the bulk-correction round-trip notice
+        setRoundTripNotice(null);
+        setCurrentStep(WorkflowStep.ColumnMapping);
+        setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload]);
+        break;
+      case WorkflowStep.FinalPreview:
+        setCurrentStep(WorkflowStep.ValidationCorrection);
+        setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload, WorkflowStep.ColumnMapping]);
+        break;
+      case WorkflowStep.BulkUpload:
+        // Safe: FinalPreview is a static review and never auto-uploads.
+        setCurrentStep(WorkflowStep.FinalPreview);
+        setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload, WorkflowStep.ColumnMapping, WorkflowStep.ValidationCorrection]);
+        break;
+      case WorkflowStep.Results:
+        // Safe round-trip: strips already-created rows so a re-run can't duplicate them.
+        handleBackToEditTable(uploadResults);
+        break;
+      default:
+        // Authentication (or any unknown step) has nowhere to go back to.
+        break;
+    }
+  };
+  handlePreviousStepRef.current = handlePreviousStep;
+
   // Determine if we should show the main header (only on step 1)
   const showMainHeader = currentStep === WorkflowStep.Authentication;
-  
-  // Determine if we should show the cancel button (steps 2-7)
-  const showCancelButton = currentStep !== WorkflowStep.Authentication;
+
+  // Determine if we should show the top navigation bar (steps 2-7)
+  const showTopNav = currentStep !== WorkflowStep.Authentication;
+
+  // The Results step is terminal: its only purpose-built backward action is the
+  // safe "Go back to edit table" button it renders itself, so we don't show a
+  // generic top-left "Back one step" there.
+  const showBackButton = showTopNav && currentStep !== WorkflowStep.Results;
 
   // The resync control is only relevant while validating/correcting against portal options
   const showResyncButton = currentStep === WorkflowStep.ValidationCorrection;
@@ -292,40 +415,58 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
         />
       </div>
 
-      {/* Top-left controls - Shown on all steps except step 1 */}
-      {showCancelButton && (
-        <div className="mb-6 transition-all duration-500 flex flex-wrap items-center gap-3">
-          {showResyncButton && (
-            <Button
-              variant="outline"
-              onClick={handleResync}
-              disabled={isResyncing}
-              title="Re-fetch departments, employee groups, employee types, supervisors and other field options from Planday, then re-validate the rows. Your entered corrections are kept."
-              className="text-blue-600 border-blue-300 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-60"
-            >
-              {isResyncing ? (
-                <span className="flex items-center gap-2">
-                  <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></span>
-                  Resyncing…
-                </span>
-              ) : (
-                '⟳ Resync portal data'
-              )}
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={handleCancelUpload}
-            className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+      {/* Top navigation - Shown on all steps except step 1.
+          Left: non-destructive "Back one step" plus the portal "Resync" control
+          (where users instinctively look).
+          Right: demoted, confirmation-guarded "Start over" (the destructive reset). */}
+      {showTopNav && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 transition-all duration-500">
+          <div className="flex flex-wrap items-center gap-3">
+            {showBackButton ? (
+              <Button
+                variant="outline"
+                onClick={handlePreviousStep}
+                disabled={isUploadBusy}
+                title={isUploadBusy ? 'Please wait for the current upload to finish' : undefined}
+              >
+                ← Back one step
+              </Button>
+            ) : (
+              <span />
+            )}
+
+            {showResyncButton && (
+              <Button
+                variant="outline"
+                onClick={handleResync}
+                disabled={isResyncing}
+                title="Re-fetch departments, employee groups, employee types, supervisors and other field options from Planday, then re-validate the rows. Your entered corrections are kept."
+                className="text-blue-600 border-blue-300 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-60"
+              >
+                {isResyncing ? (
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></span>
+                    Resyncing…
+                  </span>
+                ) : (
+                  '⟳ Resync portal data'
+                )}
+              </Button>
+            )}
+            {showResyncButton && resyncJustSucceeded && (
+              <span className="text-sm text-green-700">✓ Portal data refreshed</span>
+            )}
+            {showResyncButton && resyncError && (
+              <span className="text-sm text-red-700">{resyncError}</span>
+            )}
+          </div>
+
+          <button
+            onClick={() => setIsStartOverConfirmOpen(true)}
+            className="text-sm text-gray-500 hover:text-red-600 underline transition-colors"
           >
-            ← Cancel upload and start over
-          </Button>
-          {showResyncButton && resyncJustSucceeded && (
-            <span className="text-sm text-green-700">✓ Portal data refreshed</span>
-          )}
-          {showResyncButton && resyncError && (
-            <span className="text-sm text-red-700">{resyncError}</span>
-          )}
+            Start over
+          </button>
         </div>
       )}
 
@@ -483,10 +624,6 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
       {currentStep === WorkflowStep.FinalPreview && employees.length > 0 && (
         <FinalPreviewStep
           employees={employees}
-          onBack={() => {
-            setCurrentStep(WorkflowStep.ValidationCorrection);
-            setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload, WorkflowStep.ColumnMapping]);
-          }}
           onStartUpload={() => {
             handleNextStep(); // Go to bulk upload step
           }}
@@ -507,11 +644,8 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             }
             handleNextStep(); // Go to results verification step
           }}
-          onBack={() => {
-            setCurrentStep(WorkflowStep.FinalPreview);
-            setCompletedSteps([WorkflowStep.Authentication, WorkflowStep.FileUpload, WorkflowStep.ColumnMapping, WorkflowStep.ValidationCorrection]);
-          }}
           onBackToEditTable={handleBackToEditTable}
+          onBusyChange={setIsUploadBusy}
         />
       )}
 
@@ -536,16 +670,6 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
             setOriginalEmployees([]);
             setPostCreationResults({});
             setExcludedEmployees([]);
-          }}
-          onBack={() => {
-            setCurrentStep(WorkflowStep.BulkUpload);
-            setCompletedSteps([
-              WorkflowStep.Authentication,
-              WorkflowStep.FileUpload,
-              WorkflowStep.ColumnMapping,
-              WorkflowStep.ValidationCorrection,
-              WorkflowStep.FinalPreview
-            ]);
           }}
           onReset={() => {
             // Complete reset of the entire application state
@@ -732,6 +856,27 @@ export function WorkflowApp({ onStepChange }: WorkflowAppProps = {}) {
       <VersionModal
         isOpen={isVersionModalOpen}
         onClose={() => setIsVersionModalOpen(false)}
+      />
+
+      {/* Start-over confirmation - guards the destructive reset */}
+      <ConfirmDialog
+        isOpen={isStartOverConfirmOpen}
+        title="Start over?"
+        message={
+          <>
+            This clears all uploaded data, mappings, and corrections, and logs you out
+            of Planday. You'll have to authenticate and re-upload from scratch.
+            This can't be undone.
+          </>
+        }
+        confirmLabel="Yes, start over"
+        cancelLabel="Keep my progress"
+        confirmVariant="error"
+        onConfirm={() => {
+          setIsStartOverConfirmOpen(false);
+          handleCancelUpload();
+        }}
+        onCancel={() => setIsStartOverConfirmOpen(false)}
       />
     </>
   );

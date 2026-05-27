@@ -5,7 +5,6 @@ import { mappingService, ValidationService, MappingUtils, getFieldGroupRank } fr
 
 interface FinalPreviewStepProps {
   employees: Employee[];
-  onBack: () => void;
   onStartUpload: () => void;
 }
 
@@ -21,7 +20,6 @@ interface FinalPreviewStepProps {
  */
 const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
   employees,
-  onBack,
   onStartUpload
 }) => {
   const [convertedEmployee, setConvertedEmployee] = useState<any>(null);
@@ -546,19 +544,8 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
         </div>
       </Card>
 
-      {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6">
-        <Button
-          variant="secondary"
-          onClick={onBack}
-          className="flex items-center space-x-2 w-full sm:w-auto"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-          </svg>
-          <span>Back to Validation</span>
-        </Button>
-
+      {/* Action Buttons (step-back lives in the top navigation bar) */}
+      <div className="flex flex-col sm:flex-row justify-end items-center gap-4 pt-6">
         <Button
           variant="primary"
           onClick={onStartUpload}

@@ -38,7 +38,6 @@ interface FileUploadStepProps extends StepComponentProps {
 
 export const FileUploadStep: React.FC<FileUploadStepProps> = ({
   onNext,
-  onPrevious,
   onFileProcessed,
   isLoading = false,
   isAuthenticated = false,
@@ -607,16 +606,8 @@ export const FileUploadStep: React.FC<FileUploadStepProps> = ({
         renderResults()
       )}
 
-      {/* Action Buttons */}
-      <div className="flex justify-between">
-        <Button
-          variant="secondary"
-          onClick={onPrevious}
-          disabled={isLoading || isProcessing}
-        >
-          ← Back to Authentication
-        </Button>
-        
+      {/* Action Buttons (step-back lives in the top navigation bar) */}
+      <div className="flex justify-end">
         <Button
           onClick={onNext}
           disabled={isLoading || isProcessing || !parseResult?.data}
