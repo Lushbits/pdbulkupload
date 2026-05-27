@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Card } from '../ui';
 import type { Employee } from '../../types/planday';
-import { mappingService, ValidationService, MappingUtils } from '../../services/mappingService';
+import { mappingService, ValidationService, MappingUtils, getFieldGroupRank } from '../../services/mappingService';
 
 interface FinalPreviewStepProps {
   employees: Employee[];
@@ -219,11 +219,26 @@ const FinalPreviewStep: React.FC<FinalPreviewStepProps> = ({
       });
     });
     
-    // Sort fields with important ones first
-    const importantFields = ['firstName', 'lastName', 'email'];
-    const otherFields = Array.from(fieldSet).filter(field => !importantFields.includes(field)).sort();
-    
-    setAllFields([...importantFields.filter(field => fieldSet.has(field)), ...otherFields]);
+    // Order columns by the shared group order (HR -> Custom -> Supervisor ->
+    // Contract Rule -> wageValidFrom -> Fixed Salary -> Skills -> Departments ->
+    // Employee Groups) so the review table matches the downloaded template.
+    // firstName/lastName/email stay pinned at the front of the HR group.
+    const pinnedFields = ['firstName', 'lastName', 'email'];
+    const sortedFields = Array.from(fieldSet).sort((a, b) => {
+      const rankA = getFieldGroupRank(a);
+      const rankB = getFieldGroupRank(b);
+      if (rankA !== rankB) return rankA - rankB;
+      const pinA = pinnedFields.indexOf(a);
+      const pinB = pinnedFields.indexOf(b);
+      if (pinA !== -1 || pinB !== -1) {
+        if (pinA === -1) return 1;
+        if (pinB === -1) return -1;
+        return pinA - pinB;
+      }
+      return a.localeCompare(b);
+    });
+
+    setAllFields(sortedFields);
   }, [convertedEmployees]);
 
   // Show loading state while converting

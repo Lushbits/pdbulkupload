@@ -1672,25 +1672,21 @@ export class MappingService {
       fieldMap.set(field.field, field);
     });
     
-    // Define logical order for common fields (most important first)
-    const logicalFieldOrder = [
+    // Column group order shared with the in-app review table (see getFieldGroupRank):
+    // 1. HR -> 2. Custom -> 3. Supervisor -> 4. Contract Rule -> 5. wageValidFrom ->
+    // 6. Fixed Salary -> 7. Skills -> 8. Departments -> 9. Employee Groups.
+
+    // Curated order for the HR group (personal/employment fields). Supervisor,
+    // contract rule, wageValidFrom and fixed-salary fields are emitted as their
+    // own ordered groups below rather than interleaved here.
+    const hrFieldOrder = [
       'firstName',
       'lastName',
       'email',
       'cellPhone',
       'cellPhoneCountryCode',
-      // departments and employeeGroups removed - now using individual fields like departments.Kitchen, employeeGroups.Waiter
       'employeeTypeId',
-      'contractRule', // Contract Rule (contracted hours per week/month/year)
       'hiredFrom',
-      'wageValidFrom', // For hourly pay rates AND fixed salary - when they take effect
-      // Fixed salary fields (optional)
-      'salaryPeriod', // Fixed Salary - Period (Monthly, Weekly, etc.)
-      'salaryHours', // Fixed Salary - Expected working hours
-      'salaryAmount', // Fixed Salary - Amount
-      // Supervisor fields (optional)
-      'supervisorId', // Assigns a supervisor to this employee (by name or ID)
-      'isSupervisor', // Makes this employee a supervisor (true/false)
       'gender',
       'birthDate',
       'street1',
@@ -1700,9 +1696,12 @@ export class MappingService {
       'ssn',
       'payrollId'
     ];
-    
-    // Add fields in logical order first
-    logicalFieldOrder.forEach(fieldName => {
+
+    const supervisorFields = ['supervisorId', 'isSupervisor'];
+    const fixedSalaryFields = ['salaryPeriod', 'salaryHours', 'salaryAmount'];
+
+    // Add a single named standard field (if present and not excluded/already added)
+    const addNamedField = (fieldName: string) => {
       const field = fieldMap.get(fieldName);
       if (field && !excludedFields.includes(field.field) && !processedFields.has(field.field)) {
         fieldOrder.push({
@@ -1715,17 +1714,12 @@ export class MappingService {
         });
         processedFields.add(field.field);
       }
-    });
-    
-    // Add remaining standard fields in logical groups:
-    // 1. Departments, 2. Employee Groups, 3. Skills, 4. Other remaining fields
+    };
 
-    const remainingFields = allAvailableFields
-      .filter(field => !field.isCustom && !processedFields.has(field.field) && !excludedFields.includes(field.field));
-
-    // Helper to add fields of a category
+    // Add a dynamic category of standard fields, sorted by display name
     const addFieldCategory = (filterFn: (field: any) => boolean) => {
-      remainingFields
+      allAvailableFields
+        .filter(field => !field.isCustom && !processedFields.has(field.field) && !excludedFields.includes(field.field))
         .filter(filterFn)
         .sort((a, b) => a.displayName.localeCompare(b.displayName))
         .forEach(field => {
@@ -1740,17 +1734,20 @@ export class MappingService {
         });
     };
 
-    // Add Skills (fields starting with "skills.")
-    addFieldCategory(f => f.field.startsWith('skills.'));
+    // 1. HR fields — curated order first, then any remaining standard fields that
+    //    don't belong to one of the dedicated groups below (alphabetical).
+    hrFieldOrder.forEach(addNamedField);
+    addFieldCategory(f =>
+      !f.field.startsWith('skills.') &&
+      !f.field.startsWith('departments.') &&
+      !f.field.startsWith('employeeGroups.') &&
+      !supervisorFields.includes(f.field) &&
+      !fixedSalaryFields.includes(f.field) &&
+      f.field !== 'contractRule' &&
+      f.field !== 'wageValidFrom'
+    );
 
-    // Add Hourly Rates (fields starting with "hourlyRate.")
-    addFieldCategory(f => f.field.startsWith('hourlyRate.'));
-
-    // Add any other remaining standard fields
-    addFieldCategory(f => !processedFields.has(f.field) && !f.field.startsWith('departments.') && !f.field.startsWith('employeeGroups.'));
-
-    // Add custom fields
-
+    // 2. Custom fields (right after the standard HR fields)
     allAvailableFields
       .filter(field => field.isCustom && !processedFields.has(field.field))
       .forEach(field => {
@@ -1765,10 +1762,28 @@ export class MappingService {
         processedFields.add(field.field);
       });
 
-    // Add Departments last (fields starting with "departments.")
+    // 3. Supervisor fields
+    supervisorFields.forEach(addNamedField);
+
+    // 4. Contract Rule
+    addNamedField('contractRule');
+
+    // 5. wageValidFrom (between Contract Rule and Fixed Salary)
+    addNamedField('wageValidFrom');
+
+    // 6. Fixed Salary fields
+    fixedSalaryFields.forEach(addNamedField);
+
+    // 7. Skills (fields starting with "skills.") — placed just before
+    //    Departments/Employee Groups so portals with hundreds of skills don't
+    //    push the commonly scanned columns far to the right.
+    addFieldCategory(f => f.field.startsWith('skills.'));
+
+    // 8. Departments (fields starting with "departments.")
     addFieldCategory(f => f.field.startsWith('departments.'));
 
-    // Add Employee Groups last (fields starting with "employeeGroups.")
+    // 9. Employee Groups (fields starting with "employeeGroups.")
+    //    Hourly rates are entered via this column, not a separate hourlyRate column.
     addFieldCategory(f => f.field.startsWith('employeeGroups.'));
 
     // Generate headers (only include relevant fields)
@@ -2444,6 +2459,37 @@ export class MappingService {
  * Singleton instance of the mapping service
  */
 export const mappingService = new MappingService();
+
+/**
+ * Canonical column group order, shared by the Excel template
+ * (MappingService.generatePortalTemplate) and the in-app review table
+ * (FinalPreviewStep) so both surfaces present columns in the same group order.
+ *
+ * Lower rank = further left. Order:
+ *   1. HR / standard fields
+ *   2. Custom fields (custom_*)
+ *   3. Supervisor fields
+ *   4. Contract Rule
+ *   5. wageValidFrom
+ *   6. Fixed Salary fields
+ *   7. Skills
+ *   8. Departments
+ *   9. Employee Groups
+ *
+ * Works for both the template's individual sub-fields (e.g. "skills.Bartending")
+ * and the review table's consolidated columns (e.g. "skills").
+ */
+export function getFieldGroupRank(field: string): number {
+  if (field.startsWith('employeeGroups.') || field === 'employeeGroups') return 9;
+  if (field.startsWith('departments.') || field === 'departments') return 8;
+  if (field.startsWith('skills.') || field === 'skills') return 7;
+  if (field === 'salaryPeriod' || field === 'salaryHours' || field === 'salaryAmount') return 6;
+  if (field === 'wageValidFrom') return 5;
+  if (field === 'contractRule') return 4;
+  if (field === 'supervisorId' || field === 'isSupervisor') return 3;
+  if (field.startsWith('custom_')) return 2;
+  return 1; // HR / standard fields
+}
 
 /**
  * Convenience functions for common operations
