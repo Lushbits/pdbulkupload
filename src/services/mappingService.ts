@@ -1194,17 +1194,15 @@ export class MappingService {
       // Always create editable field, even if empty
       converted.departments = '';
       converted.__departmentsIds = [];
-      // Validate that at least one department is assigned
-      const hasDepartmentFields = Object.keys(employee).some(key => key.startsWith('departments.'));
-      if (hasDepartmentFields) {
-        errors.push({
-          field: 'departments' as any,
-          value: '',
-          message: 'At least one department must be assigned to each employee',
-          rowIndex: employee.rowIndex || 0,
-          severity: 'error'
-        });
-      }
+      // Every employee must have at least one department (required by Planday),
+      // even when no department column was mapped at all.
+      errors.push({
+        field: 'departments' as any,
+        value: '',
+        message: 'At least one department must be assigned to each employee',
+        rowIndex: employee.rowIndex || 0,
+        severity: 'error'
+      });
     }
 
     // Handle employee groups - NEW: Individual field approach with hourly rate support
@@ -3712,20 +3710,26 @@ export class ValidationService {
    */
   static validateUniqueFields(employees: any[]): ValidationError[] {
     const errors: ValidationError[] = [];
-    const uniqueFields = this.getUniqueFields();
+    // Always enforce email and ssn uniqueness in-file, even if the portal schema
+    // doesn't flag them as unique. ssn compares exact-string (no normalization),
+    // unlike the lowercase+trim applied to email and schema-driven unique fields.
+    const uniqueFields = new Set<string>([...this.getUniqueFields(), 'email', 'ssn']);
 
     for (const fieldName of uniqueFields) {
       const valueMap = new Map<string, number[]>();
-      
+      const isSsn = fieldName === 'ssn';
+
       // Collect all values for this field
       employees.forEach((employee, index) => {
-        const value = employee[fieldName];
-        if (value && typeof value === 'string' && value.trim() !== '') {
-          const normalizedValue = value.trim().toLowerCase();
-          const indices = valueMap.get(normalizedValue) || [];
-          indices.push(index);
-          valueMap.set(normalizedValue, indices);
-        }
+        const rawValue = employee[fieldName];
+        if (rawValue === null || rawValue === undefined) return;
+        const stringValue = String(rawValue);
+        if (stringValue.trim() === '') return;
+        // SSN must match character-sensitive (e.g. "123-45-6789" !== "123456789").
+        const key = isSsn ? stringValue : stringValue.trim().toLowerCase();
+        const indices = valueMap.get(key) || [];
+        indices.push(index);
+        valueMap.set(key, indices);
       });
 
       // Check for duplicates
@@ -3773,7 +3777,42 @@ export class ValidationService {
         }
       }
     });
-    
+
+    return errors;
+  }
+
+  /**
+   * Validate employees against existing Planday SSNs to check for duplicates.
+   * SSN is matched character-sensitive (no normalization), mirroring the in-file rule.
+   */
+  static validateExistingEmployeesBySsn(
+    employees: any[],
+    existingSsnEmployees: Map<string, any>
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+
+    if (existingSsnEmployees.size === 0) {
+      return errors;
+    }
+
+    employees.forEach((employee, index) => {
+      const ssn = employee.ssn;
+      if (ssn === null || ssn === undefined) return;
+      const ssnValue = String(ssn);
+      if (ssnValue.trim() === '') return;
+
+      const existingEmployee = existingSsnEmployees.get(ssnValue);
+      if (existingEmployee) {
+        errors.push({
+          field: 'ssn',
+          value: ssn,
+          message: `Employee with SSN "${ssnValue}" already exists in Planday (ID: ${existingEmployee.id}, Name: ${existingEmployee.firstName} ${existingEmployee.lastName})`,
+          rowIndex: index,
+          severity: 'error'
+        });
+      }
+    });
+
     return errors;
   }
 
