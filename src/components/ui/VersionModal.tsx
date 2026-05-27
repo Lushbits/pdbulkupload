@@ -13,6 +13,24 @@ interface VersionModalProps {
 // Version history data - single source of truth for all versions
 const versionHistory = [
   {
+    version: '0.4.0',
+    date: '2026-05-27',
+    title: 'Resilient Uploads, Resync & Safer Navigation',
+    features: [
+      'Upload no longer aborts the whole batch on the first failure - each failing row records its error and the upload continues, with live Successful / Partial / Failure counters',
+      'Added an Abort button (with confirmation) that stops a running upload cleanly after the in-flight row finishes',
+      '"Go back to edit table" round-trip after upload - successful rows are stripped so a re-run cannot duplicate them, partial rows are flagged, and failed rows stay for correction and retry',
+      'Added a "Resync portal data" button on the Validate/Correct step - picks up departments, employee groups, types, supervisors, and skills created in Planday mid-flow without restarting from authentication',
+      'Moved "Back one step" to the top-left where users expect it, and demoted the destructive "start over" to a subtle top-right link behind a confirmation',
+      'Browser back button and tab-close no longer silently destroy an in-progress upload - back maps to a single step, and a warning appears before leaving',
+      'Enforced unique email and SSN across the file, with duplicates flagged live in the table editor',
+      'Added an SSN-vs-Planday duplicate check, plus an amber notice when the SSN scope is unavailable and the in-Planday check has to be skipped',
+      'Every employee now requires at least one department, validated even when no department column was mapped',
+      'Fixed spurious date format prompts - dates are now resolved by how they were stored in the Excel file, so canonical YYYY-MM-DD columns no longer trigger the format picker',
+      'Template and in-app review table now show columns in the same consistent group order, with Skills moved before Departments so portals with many skills do not push common columns out of view',
+    ]
+  },
+  {
     version: '0.3.9',
     date: '2026-02-06',
     title: 'Error Message Display Fix',
