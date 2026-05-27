@@ -23,6 +23,7 @@ interface ValidationAndCorrectionStepProps {
   onComplete: (correctedEmployees: any[], excludedEmployees?: ExcludedEmployee[]) => void;
   onBack: () => void;
   plandayApi: UsePlandayApiReturn;
+  resyncNonce?: number;
   className?: string;
 }
 
@@ -33,10 +34,11 @@ const DataCorrectionStepWithPreprocessing: React.FC<{
   employeeGroups: any[];
   employeeTypes: any[];
   plandayApi: UsePlandayApiReturn;
+  resyncNonce?: number;
   onComplete: (correctedEmployees: any[], excludedEmployees?: ExcludedEmployee[]) => void;
   onBack: () => void;
   className?: string;
-}> = ({ employees, departments, employeeGroups, employeeTypes, plandayApi, onComplete, onBack, className }) => {
+}> = ({ employees, departments, employeeGroups, employeeTypes, plandayApi, resyncNonce, onComplete, onBack, className }) => {
   const [preprocessedEmployees, setPreprocessedEmployees] = useState<any[]>([]);
   const [isPreprocessing, setIsPreprocessing] = useState(true);
 
@@ -85,7 +87,13 @@ const DataCorrectionStepWithPreprocessing: React.FC<{
       setPreprocessedEmployees(employees);
       setIsPreprocessing(false);
     }
-  }, [employees, departments, employeeGroups, employeeTypes]);
+    // Intentionally depends only on `employees`. A portal-data resync changes the
+    // departments/groups/types references, but re-preprocessing here would unmount
+    // DataCorrectionStep and rebuild it from the pre-edit baseline, discarding the
+    // user's in-progress cell edits. Resync re-validation is handled inside
+    // DataCorrectionStep via resyncNonce instead, which preserves entered values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees]);
 
   if (isPreprocessing) {
     return (
@@ -107,6 +115,7 @@ const DataCorrectionStepWithPreprocessing: React.FC<{
       employeeGroups={employeeGroups}
       employeeTypes={employeeTypes}
       plandayApi={plandayApi}
+      resyncNonce={resyncNonce}
       onComplete={onComplete}
       onBack={onBack}
       className={className}
@@ -389,6 +398,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
   onComplete,
   onBack,
   plandayApi,
+  resyncNonce,
   className = ''
 }) => {
   const [currentPhase, setCurrentPhase] = useState<'bulk-correction' | 'date-format-selection' | 'individual-correction' | 'complete'>('bulk-correction');
@@ -842,6 +852,7 @@ const ValidationAndCorrectionStep: React.FC<ValidationAndCorrectionStepProps> = 
         employeeGroups={employeeGroups}
         employeeTypes={employeeTypes}
         plandayApi={plandayApi}
+        resyncNonce={resyncNonce}
         onComplete={(correctedEmployees, excludedEmployees) => {
           setCurrentEmployees(correctedEmployees);
           // Individual corrections completed
