@@ -396,7 +396,15 @@ export interface ParsedExcelData {
     sampleData: any[];
   }>;
   discardedColumns?: string[];
+  // Source Excel cell type per column (keyed by header). Lets the validation
+  // pipeline branch on how a date was stored (real date cell vs. raw serial
+  // number vs. free text) instead of guessing from a stringified value.
+  columnExcelTypes?: Record<string, ExcelColumnType>;
+  // Workbook date epoch flag (false = 1900 system, true = 1904 system).
+  date1904?: boolean;
 }
+
+export type ExcelColumnType = 'date' | 'numeric' | 'text' | 'empty';
 
 export interface ValidationResult {
   isValid: boolean;

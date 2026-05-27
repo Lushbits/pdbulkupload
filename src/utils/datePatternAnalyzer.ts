@@ -112,9 +112,12 @@ export class DatePatternAnalyzer {
       return false;
     }
     
-    // All supported ambiguous date patterns
+    // Year-FIRST dates (YYYY-MM-DD and friends) are treated as canonical ISO and
+    // are NOT ambiguous: this is the form every real Excel date cell is converted
+    // to, and YYYY-DD-MM is not a real-world format. Excluding it here stops the
+    // picker from appearing for date-typed columns (issue #25). Only genuinely
+    // ambiguous year-last and 8-digit text patterns reach the picker.
     const ambiguousPatterns = [
-      /^\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}$/,     // YYYY-MM-DD vs YYYY-DD-MM
       /^\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}$/,   // MM/DD/YYYY vs DD/MM/YYYY
       /^\d{8}$/                                     // 8-digit patterns
     ];

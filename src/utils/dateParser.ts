@@ -23,6 +23,46 @@ export class DateParser {
   }
   
   /**
+   * Convert a raw Excel date serial number to an ISO (YYYY-MM-DD) string.
+   *
+   * Used for "General"/Number-formatted cells that hold a date as a bare serial
+   * (e.g. 46113 → 2026-04-01). The month/day order is unambiguous, so these never
+   * need the format picker. Returns null for values outside the valid Excel range.
+   *
+   * The 25569 offset is the Excel serial for 1970-01-01 and already bakes in the
+   * Excel 1900 leap-year bug for all serials past 1900-02-28, so it is correct for
+   * every real-world employee date. The 1904 system shifts the epoch by 1462 days.
+   */
+  static excelSerialToISO(serial: number, date1904 = false): string | null {
+    const minSerial = date1904 ? 0 : 1;
+    if (!Number.isFinite(serial) || serial < minSerial || serial > 2958465) {
+      return null;
+    }
+
+    // 1900 mode: serial 60 is Excel's fictitious 1900-02-29 (the leap-year bug)
+    // and has no real date; serials 1..59 predate it, so shift the epoch back a
+    // day. The 25569 offset (1970-01-01) is correct from serial 61 onward.
+    if (!date1904 && serial === 60) {
+      return null;
+    }
+
+    const epochOffset = date1904 ? 24107 : (serial < 60 ? 25568 : 25569);
+    const ms = Math.round((serial - epochOffset) * 86400000);
+    const date = new Date(ms);
+
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+
+    // Use UTC getters: the serial maps to a UTC-midnight instant, so UTC parts
+    // give the intended calendar date in every timezone.
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
    * Check if a value could be a date in any supported format
    */
   static couldBeDate(value: string): boolean {

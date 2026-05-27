@@ -27,15 +27,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
       option1: {
         format: 'MM/DD/YYYY',
         description: 'US format - Month/Day/Year',
-        example1: '01/02/1984 → 1984-01-02 (January 2, 1984)',
-        example2: '03/15/1984 → 1984-03-15 (March 15, 1984)',
+        example1: '01/02/1984 → January 2, 1984',
+        example2: '03/15/1984 → March 15, 1984',
         mapsToPlandayFormat: 'MM/DD/YYYY'
       },
       option2: {
         format: 'DD/MM/YYYY',
         description: 'European format - Day/Month/Year',
-        example1: '01/02/1984 → 1984-02-01 (February 1, 1984)',
-        example2: '15/03/1984 → 1984-03-15 (March 15, 1984)',
+        example1: '01/02/1984 → February 1, 1984',
+        example2: '15/03/1984 → March 15, 1984',
         mapsToPlandayFormat: 'DD/MM/YYYY'
       }
     };
@@ -55,15 +55,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'YYYY/MM/DD',
           description: 'Year/Month/Day format',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '1984/03/15 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '1984/03/15 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'YYYY/DD/MM',
           description: 'Year/Day/Month format',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '1984/15/03 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '1984/15/03 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -77,15 +77,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'MM/DD/YYYY',
           description: 'US format - Month/Day/Year',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '03/15/1984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '03/15/1984 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'DD/MM/YYYY',
           description: 'European format - Day/Month/Year',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '15/03/1984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '15/03/1984 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -104,15 +104,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'YYYY.MM.DD',
           description: 'Year.Month.Day format',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '1984.03.15 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '1984.03.15 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'YYYY.DD.MM',
           description: 'Year.Day.Month format',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '1984.15.03 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '1984.15.03 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -126,15 +126,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'MM.DD.YYYY',
           description: 'Month.Day.Year format',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '03.15.1984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '03.15.1984 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'DD.MM.YYYY',
           description: 'Day.Month.Year format',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '15.03.1984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '15.03.1984 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -153,15 +153,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'YYYY-MM-DD',
           description: 'Year-Month-Day format',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '1984-03-15 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '1984-03-15 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'YYYY-DD-MM',
           description: 'Year-Day-Month format',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '1984-15-03 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '1984-15-03 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -175,15 +175,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'MM-DD-YYYY',
           description: 'Month-Day-Year format',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '03-15-1984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '03-15-1984 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'DD-MM-YYYY',
           description: 'Day-Month-Year format',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '15-03-1984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '15-03-1984 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -202,15 +202,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'YYYYMMDD',
           description: 'Year Month Day (8-digit)',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '19840315 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '19840315 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'YYYYDDMM',
           description: 'Year Day Month (8-digit)',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '19841503 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '19841503 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -224,15 +224,15 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
         option1: {
           format: 'MMDDYYYY',
           description: 'Month Day Year (8-digit)',
-          example1: `${sample} → ${year}-${part1}-${part2} (${getMonthName(part1)} ${parseInt(part2)}, ${year})`,
-          example2: '03151984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part1)} ${parseInt(part2)}, ${year}`,
+          example2: '03151984 → March 15, 1984',
           mapsToPlandayFormat: 'MM/DD/YYYY'
         },
         option2: {
           format: 'DDMMYYYY',
           description: 'Day Month Year (8-digit)',
-          example1: `${sample} → ${year}-${part2}-${part1} (${getMonthName(part2)} ${parseInt(part1)}, ${year})`,
-          example2: '15031984 → 1984-03-15 (March 15, 1984)',
+          example1: `${sample} → ${getMonthName(part2)} ${parseInt(part1)}, ${year}`,
+          example2: '15031984 → March 15, 1984',
           mapsToPlandayFormat: 'DD/MM/YYYY'
         }
       };
@@ -245,14 +245,14 @@ function detectFormatOptions(samples: string[]): { option1: FormatOption; option
       format: 'MM/DD/YYYY',
       description: 'US format - Month/Day/Year',
       example1: `${sample} → (Month first interpretation)`,
-      example2: '03/15/1984 → 1984-03-15 (March 15, 1984)',
+      example2: '03/15/1984 → March 15, 1984',
       mapsToPlandayFormat: 'MM/DD/YYYY'
     },
     option2: {
       format: 'DD/MM/YYYY',
       description: 'European format - Day/Month/Year',
       example1: `${sample} → (Day first interpretation)`,
-      example2: '15/03/1984 → 1984-03-15 (March 15, 1984)',
+      example2: '15/03/1984 → March 15, 1984',
       mapsToPlandayFormat: 'DD/MM/YYYY'
     }
   };
@@ -307,12 +307,9 @@ export const DateFormatSelectionStep: React.FC<DateFormatSelectionStepProps> = (
             Date Format Selection Required
           </h3>
           <p className="text-gray-600">
-            Your Excel file contains ambiguous dates like "<strong>{exampleDate}</strong>" in date fields that could be interpreted in multiple ways. 
-            Please specify what format your <strong>source data</strong> is in so we can parse it correctly.
+            Your Excel file contains dates like "<strong>{exampleDate}</strong>" that could be read as either
+            month-first or day-first. Please tell us which one your <strong>source data</strong> uses so we read it correctly.
           </p>
-          <div className="text-sm text-gray-500 mt-2">
-            (All dates will be converted to YYYY-MM-DD format for Planday)
-          </div>
         </div>
       </Card>
 
